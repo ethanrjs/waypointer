@@ -82,7 +82,11 @@ public final class RouteCatalogScreen extends Screen {
     private static final int SEARCH_DEBOUNCE_TICKS = 4;
     private static final int SEARCH_CACHE_LIMIT = 32;
     // Previews load once a route has stayed selected for a moment, so arrowing through is cheap.
-    private static final int PREVIEW_DELAY_TICKS = 6;
+    /** A short pause so holding an arrow key doesn't request every route on the way. */
+    private static final int PREVIEW_DELAY_TICKS = 1;
+    /** Previews of the routes on screen load ahead, a few at a time. */
+    private static final int PREVIEW_PREFETCH = 16;
+    private static final int PREVIEW_PARALLEL = 3;
     private static final int PREVIEW_CACHE_LIMIT = 24;
     private static final int ZONE_ROW_H = GuiTokens.ROW_H;
     private static final int ZONE_DROPDOWN_MIN_W = 150;
@@ -128,7 +132,8 @@ public final class RouteCatalogScreen extends Screen {
     private final LinkedHashMap<String, CatalogRoutePreview> previews = boundedPageCache(PREVIEW_CACHE_LIMIT);
     private final java.util.Set<String> previewFailures = new java.util.HashSet<>();
     private String previewWantedId;
-    private String previewLoadingId;
+    private final java.util.Set<String> previewLoading = new java.util.HashSet<>();
+    private final java.util.ArrayDeque<CatalogRouteSummary> previewQueue = new java.util.ArrayDeque<>();
     private int previewDelayTicks;
     private int previewTicket;
 
@@ -192,7 +197,6 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     protected void init() {
         requests.activate();
-        ZoneBackdrops.clearCache();
         initializing = true;
         browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
 
@@ -389,6 +393,7 @@ public final class RouteCatalogScreen extends Screen {
             browser.select(browser.routes().getFirst());
             wantPreview(browser.selectedRoute());
         }
+        prefetchPreviews(browser.routes());
         updateListStatus();
         rebuildWidgets();
     }
@@ -974,6 +979,7 @@ public final class RouteCatalogScreen extends Screen {
             descriptionScroll = 0;
         }
         wantPreview(browser.selectedRoute());
+        prefetchPreviews(browser.routes());
         updateListStatus();
     }
 
@@ -1000,15 +1006,37 @@ public final class RouteCatalogScreen extends Screen {
         previewDelayTicks = PREVIEW_DELAY_TICKS;
     }
 
-    /** Loads the selected route once it has stayed selected briefly; one request at a time. */
+    /** Queues the previews of a page's first routes so they are ready before they are clicked. */
+    private void prefetchPreviews(List<CatalogRouteSummary> routes) {
+        previewQueue.clear();
+        for (CatalogRouteSummary route : routes) {
+            if (previewQueue.size() >= PREVIEW_PREFETCH) break;
+            if (!previews.containsKey(route.id()) && !previewFailures.contains(route.id())) previewQueue.add(route);
+        }
+    }
+
+    /** The selected route's preview goes first; the queued ones fill the remaining slots. */
     private void tickPreview() {
         CatalogRouteSummary route = selectedRoute();
-        if (route == null || !route.id().equals(previewWantedId) || previewLoadingId != null) return;
-        if (previews.containsKey(route.id()) || previewFailures.contains(route.id())) return;
-        if (previewDelayTicks-- > 0) return;
+        if (route != null && route.id().equals(previewWantedId) && needsPreview(route)
+                && previewDelayTicks-- <= 0) {
+            loadPreview(route);
+        }
+        while (previewLoading.size() < PREVIEW_PARALLEL && !previewQueue.isEmpty()) {
+            CatalogRouteSummary next = previewQueue.poll();
+            if (needsPreview(next)) loadPreview(next);
+        }
+    }
+
+    private boolean needsPreview(CatalogRouteSummary route) {
+        return !previews.containsKey(route.id()) && !previewFailures.contains(route.id())
+                && !previewLoading.contains(route.id());
+    }
+
+    private void loadPreview(CatalogRouteSummary route) {
         String id = route.id();
-        int ticket = ++previewTicket;
-        previewLoadingId = id;
+        int ticket = previewTicket;
+        previewLoading.add(id);
         catalogClient.getRoutePreview(id)
                 .thenApply(CatalogRoutePreview::of)
                 // Catalogs without the preview endpoint still have the full route.
@@ -1018,7 +1046,7 @@ public final class RouteCatalogScreen extends Screen {
                                 CatalogRouteInstaller.decodeForPreview(details))))
                 .whenComplete((preview, failure) -> runOnClient(() -> {
                     if (ticket != previewTicket) return;
-                    previewLoadingId = null;
+                    previewLoading.remove(id);
                     if (failure != null || preview == null) {
                         previewFailures.add(id);
                     } else {
@@ -1215,10 +1243,7 @@ public final class RouteCatalogScreen extends Screen {
         CatalogRoutePreview.Point hovered = null;
         if (detailH > 0) {
             CatalogRouteSummary selected = selectedRoute();
-            if (selected == null || !ZoneBackdrops.draw(graphics, selected.zoneId(),
-                    detailX, detailY, detailX + detailW, detailY + detailH)) {
-                graphics.fill(detailX, detailY, detailX + detailW, detailY + detailH, SURFACE_SUBTLE);
-            }
+            graphics.fill(detailX, detailY, detailX + detailW, detailY + detailH, SURFACE_SUBTLE);
             hovered = renderDetails(graphics, selected, backgroundMouseX, backgroundMouseY);
         }
 
@@ -1578,7 +1603,8 @@ public final class RouteCatalogScreen extends Screen {
     public void removed() {
         requests.deactivate();
         previewTicket++;
-        previewLoadingId = null;
+        previewLoading.clear();
+        previewQueue.clear();
         if (listLoading || appending) {
             // Retry interrupted requests on return, keeping loaded rows and cache.
             restartAppendOnReentry = appending && browser.nextCursor() != null;

@@ -200,7 +200,6 @@
   "waypointer.command.route.deleted": "Երթուղին ջնջվեց՝ \"%1$s\"",
   "waypointer.screen.main.delete.confirm.tooltip": "Կրկնակի սեղմեք՝ %1$s-ը ընդմիշտ ջնջելու համար։",
   "waypointer.screen.main.search.tooltip": "Զտել երթուղիներն ըստ անվանման, գոտու, Waypoint-ի կամ առաջընթացի։",
-  "waypointer.screen.main.settings.tooltip": "Բացել Waypointer-ի կարգավորումները։",
   "waypointer.screen.main.show_less": "Ցուցադրել ավելի քիչ",
   "waypointer.screen.main.show_more": "Ցուցադրել ավելին",
   "waypointer.screen.main.menu.import_clipboard": "Ներմուծել սեղմատախտակից",

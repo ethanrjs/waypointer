@@ -2,9 +2,13 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.render.RenderHelpers;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +24,12 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
  * overlap, so they get a short summary instead of a map.
  */
 final class CatalogRoutePreview {
+
+    private static final Identifier DOT = Identifier.fromNamespaceAndPath(
+            com.babbur.waypointer.Waypointer.MOD_ID, "textures/gui/map_dot.png");
+    private static final int DOT_SIZE = 32;
+    /** Path width in GUI pixels. */
+    private static final double LINE_WIDTH = 1.25;
 
     record Point(int x, int y, int z, int color, boolean subwaypoint, String label, String name) {}
 
@@ -136,29 +146,45 @@ final class CatalogRoutePreview {
         double midX = (minX + maxX) / 2.0;
         double midZ = (minZ + maxZ) / 2.0;
 
+        // Smooth lines and round points at sub-pixel positions, so the map stays sharp at any GUI scale.
+        double guiScale = Minecraft.getInstance().getWindow().getGuiScale();
         Point hovered = null;
-        int hoveredDistance = 26;
+        double hoveredDistance = 26;
+        double hoveredX = 0, hoveredY = 0;
         g.enableScissor(x1 + 1, y1 + 1, x2 - 1, y2 - 1);
         for (List<Point> path : paths) {
-            int[] previous = null;
-            for (Point point : path) {
-                int sx = (int) Math.round(centerX + (point.x() - midX) * scale);
-                int sy = (int) Math.round(centerY + (point.z() - midZ) * scale);
-                if (previous != null) line(g, previous[0], previous[1], sx, sy, (previous[2] & 0xFFFFFF) | 0x90000000);
-                previous = new int[]{sx, sy, point.color()};
+            double px = 0, py = 0;
+            int previousColor = 0;
+            for (int i = 0; i < path.size(); i++) {
+                Point point = path.get(i);
+                double sx = centerX + (point.x() - midX) * scale;
+                double sy = centerY + (point.z() - midZ) * scale;
+                if (i > 0) {
+                    RenderHelpers.drawScreenLine(g, px, py, sx, sy, (previousColor & 0xFFFFFF) | 0xB0000000,
+                            LINE_WIDTH * guiScale, true);
+                }
+                px = sx;
+                py = sy;
+                previousColor = point.color();
             }
             for (int i = path.size() - 1; i >= 0; i--) {
                 Point point = path.get(i);
-                int sx = (int) Math.round(centerX + (point.x() - midX) * scale);
-                int sy = (int) Math.round(centerY + (point.z() - midZ) * scale);
-                int dx = mouseX - sx;
-                int dy = mouseY - sy;
+                double sx = centerX + (point.x() - midX) * scale;
+                double sy = centerY + (point.z() - midZ) * scale;
+                double dx = mouseX - sx;
+                double dy = mouseY - sy;
                 if (dx * dx + dy * dy < hoveredDistance) {
                     hoveredDistance = dx * dx + dy * dy;
                     hovered = point;
+                    hoveredX = sx;
+                    hoveredY = sy;
                 }
                 dot(g, sx, sy, point, i == 0);
             }
+        }
+        if (hovered != null) {
+            disc(g, hoveredX, hoveredY, 4.0, TEXT);
+            disc(g, hoveredX, hoveredY, 3.0, hovered.color());
         }
         g.disableScissor();
 
@@ -174,15 +200,24 @@ final class CatalogRoutePreview {
         return hovered;
     }
 
-    private static void dot(GuiGraphicsExtractor g, int x, int y, Point point, boolean first) {
+    /** A waypoint: a colored disc in a dark ring, a white ring for the start, smaller for subwaypoints. */
+    private static void dot(GuiGraphicsExtractor g, double x, double y, Point point, boolean first) {
         if (point.subwaypoint()) {
-            g.fill(x - 1, y - 1, x + 1, y + 1, 0xE0000000);
-            g.fill(x, y, x + 1, y + 1, point.color());
+            disc(g, x, y, 1.9, 0xE0101216);
+            disc(g, x, y, 1.2, point.color());
             return;
         }
-        int ring = first ? TEXT : 0xE0000000;
-        g.fill(x - 2, y - 2, x + 3, y + 3, ring);
-        g.fill(x - 1, y - 1, x + 2, y + 2, point.color());
+        disc(g, x, y, 3.0, first ? TEXT : 0xE0101216);
+        disc(g, x, y, 2.1, point.color());
+    }
+
+    private static void disc(GuiGraphicsExtractor g, double x, double y, double radius, int argb) {
+        var pose = g.pose();
+        pose.pushMatrix();
+        pose.translate((float) (x - radius), (float) (y - radius));
+        pose.scale((float) (radius * 2 / DOT_SIZE), (float) (radius * 2 / DOT_SIZE));
+        g.blit(RenderPipelines.GUI_TEXTURED, DOT, 0, 0, 0f, 0f, DOT_SIZE, DOT_SIZE, DOT_SIZE, DOT_SIZE, argb);
+        pose.popMatrix();
     }
 
     private static void drawGrid(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
@@ -196,23 +231,6 @@ final class CatalogRoutePreview {
         g.fill(x1, y2 - 1, x2, y2, color);
         g.fill(x1, y1, x1 + 1, y2, color);
         g.fill(x2 - 1, y1, x2, y2, color);
-    }
-
-    /** Bresenham line in GUI pixels. */
-    private static void line(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1, int color) {
-        int dx = Math.abs(x1 - x0);
-        int dy = -Math.abs(y1 - y0);
-        int sx = x0 < x1 ? 1 : -1;
-        int sy = y0 < y1 ? 1 : -1;
-        int err = dx + dy;
-        int guard = 0;
-        while (guard++ < 4096) {
-            g.fill(x0, y0, x0 + 1, y0 + 1, color);
-            if (x0 == x1 && y0 == y1) return;
-            int e2 = 2 * err;
-            if (e2 >= dy) { err += dy; x0 += sx; }
-            if (e2 <= dx) { err += dx; y0 += sy; }
-        }
     }
 
     /** Tooltip lines for a waypoint on the map. */

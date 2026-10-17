@@ -371,7 +371,7 @@ public final class GroupEditScreen extends Screen {
                     contextMenu.close();
                     rebuildWidgets();
                 },
-                Tooltip.create(Component.translatable("waypointer.screen.group_edit.peek.tooltip")),
+                null,
                 peeking ? Icons.Icon.EYE_OFF : Icons.Icon.EYE));
         ((GuiTokens.StyledButton) peekButton).setIconOnly(compactHeader);
 

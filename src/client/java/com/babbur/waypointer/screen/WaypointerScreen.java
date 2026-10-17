@@ -335,15 +335,11 @@ public final class WaypointerScreen extends Screen {
                 SETTINGS_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.settings"), b -> openSettings());
         ((GuiTokens.StyledButton) settingsButton).icon(Icons.Icon.GEAR);
-        settingsButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.settings.tooltip")));
         addRenderableWidget(settingsButton);
 
         islandSelectorBtn = new GuiTokens.StyledButton(
                 width - PAD_OUTER - ISLAND_SELECTOR_W, HEADER_BTN_Y,
                 ISLAND_SELECTOR_W, BTN_H, islandSelectorLabel(), b -> toggleIslandDropdown());
-        islandSelectorBtn.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.zone_selector.tooltip")));
         addRenderableWidget(islandSelectorBtn);
 
         zoneSearchBox = new EditBox(font, 0, 0, ISLAND_DROPDOWN_W - 2 - GAP_TIGHT * 2, BTN_H,
@@ -1208,18 +1204,6 @@ public final class WaypointerScreen extends Screen {
                             : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
                     () -> MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
                             this, config, WaypointerClient.dungeonConfig(), look))));
-        }
-        String zoneKey = AppearanceTarget.zoneLookKey(group.zoneId());
-        if (zoneKey != null) {
-            int zoneCount = com.babbur.waypointer.config.WaypointStyles.setCount(config.zoneStyle(zoneKey));
-            items.add(ContextMenuOverlay.Item.of(
-                    Component.translatable("waypointer.screen.main.menu.zone_look",
-                            AppearanceTarget.zoneLabel(zoneKey)),
-                    zoneCount == 0 ? null
-                            : Component.translatable("waypointer.screen.appearance.set_count", zoneCount).getString(),
-                    () -> MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
-                            this, config, WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, zoneKey))))
-                    .withIcon(Icons.Icon.GLOBE));
         }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable(group.enabled()

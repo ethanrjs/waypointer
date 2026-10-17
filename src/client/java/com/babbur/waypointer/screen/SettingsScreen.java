@@ -139,7 +139,7 @@ public final class SettingsScreen extends Screen {
                            AppearanceTarget target) {
         super(target == null
                 ? Component.translatable("waypointer.screen.settings.title")
-                : Component.translatable("waypointer.screen.appearance.title", target.name()));
+                : Component.translatable("waypointer.screen.appearance.title", target.coloredName()));
         this.parent = parent;
         this.target = target;
         this.globalConfig = config;
@@ -325,8 +325,7 @@ public final class SettingsScreen extends Screen {
         int w = Math.min(font.width(label) + BUTTON_TEXT_PADDING + 8, (layout.mainRight() - layout.mainLeft()) / 2);
         scopeSwitcher = styledButton(layout.mainRight() - GAP - w, layout.top() + 4, w, BTN_H,
                 Component.literal(font.plainSubstrByWidth(label.getString(), w - BUTTON_TEXT_PADDING) + " \u25be"),
-                b -> openScopeMenu(b),
-                Tooltip.create(Component.translatable("waypointer.screen.appearance.editing.tooltip")));
+                b -> openScopeMenu(b), null);
         addRenderableWidget(scopeSwitcher);
     }
 
@@ -1407,12 +1406,13 @@ public final class SettingsScreen extends Screen {
             g.fill(0, 0, width, layout.top(), GuiTokens.panel(SCOPED_PANEL));
             g.fill(0, layout.bottom(), width, height, GuiTokens.panel(SCOPED_PANEL));
         }
-        String title = font.plainSubstrByWidth(getTitle().getString(), Math.max(0, width / 2 - PAD_OUTER));
-        g.text(font, title, PAD_OUTER, PAD_OUTER, TEXT, false);
+        var title = font.substrByWidth(getTitle(), Math.max(0, width / 2 - PAD_OUTER));
+        int titleW = font.width(title);
+        g.text(font, Language.getInstance().getVisualOrder(title), PAD_OUTER, PAD_OUTER, TEXT, false);
         Component hint = target == null ? Component.empty() : breadcrumb();
-        String hintText = font.plainSubstrByWidth(hint.getString(),
-                Math.max(0, width - PAD_OUTER * 2 - font.width(title) - GAP_SECTION));
-        g.text(font, hintText, width - PAD_OUTER - font.width(hintText), PAD_OUTER, TEXT_DIM, false);
+        var hintText = font.substrByWidth(hint, Math.max(0, width - PAD_OUTER * 2 - titleW - GAP_SECTION));
+        g.text(font, Language.getInstance().getVisualOrder(hintText),
+                width - PAD_OUTER - font.width(hintText), PAD_OUTER, TEXT_DIM, false);
 
         railTooltip = null;
         renderSidebar(g, layout, widgetMouseX, widgetMouseY);
@@ -1830,6 +1830,9 @@ public final class SettingsScreen extends Screen {
         }
         if (searchClearButton != null && searchClearButton.isMouseOver(mx, my)) {
             return searchClearButton.mouseClicked(event, doubleClick);
+        }
+        if (scopeSwitcher != null && scopeSwitcher.isMouseOver(mx, my)) {
+            return scopeSwitcher.mouseClicked(event, doubleClick);
         }
 
         if (inContentDeadStrip(mx, my, layout.mainLeft(), layout.mainRight(),

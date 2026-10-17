@@ -23,7 +23,6 @@
   "waypointer.screen.group_edit.color.one.tooltip": "One route colour.\nApplies in One colour mode.",
   "waypointer.screen.group_edit.color_mode": "Colour: %1$s",
   "waypointer.screen.group_edit.color_mode.color": "Colour",
-  "waypointer.screen.group_edit.color_mode.tooltip": "Waypoint colour mode.\nColour: edit waypoint swatches.\nGradient: sweep between endpoints.\nOne: repaint the whole route.\nPaint: use painted waypoint faces.",
   "waypointer.screen.group_edit.info.color_swatch.label": "Colour swatch",
   "waypointer.screen.group_edit.info.color_swatch.description": "Edit colour; Shift-click unlocks",
   "waypointer.screen.painter.colors": "Colours",

@@ -82,7 +82,7 @@ class WaypointerCommandTreeTest {
                 "wp list", "wp target", "wp target 2", "wp target Ruby route", "wp target auto",
                 "wp waypoints",
                 "wp route", "wp route new Fairy souls", "wp route rename Ruby route",
-                "wp route delete", "wp route delete confirm", "wp route mode step", "wp route mode all",
+                "wp route delete", "wp route delete confirm", "wp route mode sequence", "wp route mode static",
                 "wp route radius 4.5", "wp route skipahead", "wp route skipahead off",
                 "wp route colormode gradient", "wp route color 4FE05A", "wp route gradient 00BFFF FF3040",
                 "wp route zone current", "wp route zone the_park", "wp route move up", "wp route move down",

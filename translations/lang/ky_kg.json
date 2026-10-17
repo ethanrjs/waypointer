@@ -170,7 +170,6 @@
   "waypointer.screen.main.hide_all": "Бардыгын жашыруу",
   "waypointer.screen.main.hide_all.tooltip": "Бул аймакта көрсөтүлгөн ар бир жолду жашырыңыз.\nТастыктоо үчүн эки жолу чыкылдатыңыз.",
   "waypointer.screen.main.settings": "Орнотуулар",
-  "waypointer.screen.main.zone_selector.tooltip": "Кайсы аралдын маршруттарын тандагыла.\nАзыркы учурда сиз жашаган аралда ачылат.",
   "waypointer.screen.main.show_more": "Көбүрөөк көрсөтүү",
   "waypointer.screen.main.menu.import_clipboard": "Клипборддон импорттоо",
   "waypointer.screen.main.empty.search": "Издөөгө эч кандай маршрут дал келбейт.",

@@ -202,8 +202,8 @@ final class WaypointerCommandSuggestions {
 
     SuggestionProvider<FabricClientCommandSource> suggestLoadModes() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "step", Component.translatable("waypointer.screen.group_edit.mode.sequence"));
-            CommandHelpers.suggestText(builder, "all", Component.translatable("waypointer.screen.group_edit.mode.static"));
+            CommandHelpers.suggestText(builder, "sequence", Component.translatable("waypointer.screen.group_edit.mode.sequence"));
+            CommandHelpers.suggestText(builder, "static", Component.translatable("waypointer.screen.group_edit.mode.static"));
             return builder.buildFuture();
         };
     }

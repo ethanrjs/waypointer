@@ -52,9 +52,7 @@ public final class AddTempScreen extends Screen {
         int y = panelY + 32;
 
         modeBtn = styledButton(inner, y, fieldW, BTN_H, modeLabel(),
-                this::onModeButtonPressed,
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.add_temp.mode.tooltip")));
+                this::onModeButtonPressed, modeTooltip());
         addRenderableWidget(modeBtn);
         y += BTN_H + GAP;
 
@@ -111,11 +109,21 @@ public final class AddTempScreen extends Screen {
     private void cycleMode() {
         mode = nextTempMode(mode);
         modeBtn.setMessage(modeLabel());
+        modeBtn.setTooltip(modeTooltip());
         updateDurationVisibility();
     }
 
     private Component modeLabel() {
         return Component.translatable("waypointer.screen.add_temp.mode", tempModeComponent(mode));
+    }
+
+    /** What the current choice does; the button cycles through the others. */
+    private Tooltip modeTooltip() {
+        return Tooltip.create(Component.translatable(switch (Waypoint.normalizeTempMode(mode)) {
+            case Waypoint.TEMP_UNTIL_REACHED -> "waypointer.screen.add_temp.mode.tooltip.reach";
+            case Waypoint.TEMP_UNTIL_LEAVE -> "waypointer.screen.add_temp.mode.tooltip.leave";
+            default -> "waypointer.screen.add_temp.mode.tooltip.time";
+        }));
     }
 
     private static Component tempModeComponent(int mode) {

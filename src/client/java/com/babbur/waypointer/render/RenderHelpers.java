@@ -202,7 +202,7 @@ public final class RenderHelpers {
         seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz, width);
     }
 
-    static void drawScreenLine(GuiGraphicsExtractor graphics, double x1, double y1,
+    public static void drawScreenLine(GuiGraphicsExtractor graphics, double x1, double y1,
                                double x2, double y2, int argb, double thickness,
                                boolean antialiasing) {
         if (!Double.isFinite(x1) || !Double.isFinite(y1)

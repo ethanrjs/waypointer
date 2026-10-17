@@ -39,8 +39,8 @@ final class CommandSmokeTest {
             check(route.get(0).hasFlag(Waypoint.FLAG_LOCKED_COLOR), "own waypoint color");
             wp(client, "skipto 2");
             check(route.currentIndex() == 2, "skipto uses the editor label");
-            wp(client, "route mode all");
-            check(route.loadMode() == WaypointGroup.LoadMode.STATIC, "route mode all");
+            wp(client, "route mode static");
+            check(route.loadMode() == WaypointGroup.LoadMode.STATIC, "route mode static");
             wp(client, "route radius 2.5");
             check(route.defaultRadius() == 2.5, "route radius");
 

@@ -6,19 +6,15 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppearanceTargetTest {
 
     @Test
-    void routeMenusEditTheZoneLookTheRouteFollows() {
-        assertEquals("crystal_hollows", AppearanceTarget.zoneLookKey("crystal_hollows"));
-        assertEquals("dwarven_mines", AppearanceTarget.zoneLookKey("dwarven_mines"));
-        assertEquals("mineshaft", AppearanceTarget.zoneLookKey("mineshaft_topaz"));
-        assertNull(AppearanceTarget.zoneLookKey("private_world"));
-        assertNull(AppearanceTarget.zoneLookKey(""));
-        assertNull(AppearanceTarget.zoneLookKey(null));
+    void darkColorsAreLiftedSoTheNameStaysReadable() {
+        assertEquals(0xFF5555, AppearanceTarget.readable(0xFF5555));
+        int lifted = AppearanceTarget.readable(0x101060);
+        assertTrue((lifted & 0xFF) > 0x60 && ((lifted >> 16) & 0xFF) > 0x10);
     }
 
     @Test

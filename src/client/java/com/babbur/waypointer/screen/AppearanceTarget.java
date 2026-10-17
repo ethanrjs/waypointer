@@ -13,7 +13,14 @@ import java.util.Set;
 import com.babbur.waypointer.text.AmpersandFormatting;
 import net.minecraft.network.chat.Component;
 
-record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWrite) {
+record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWrite, int color) {
+
+    /** No color of its own: zones and saved styles. */
+    static final int NO_COLOR = -1;
+
+    AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWrite) {
+        this(scope, name, afterWrite, NO_COLOR);
+    }
 
     static final List<String> ZONE_FAMILIES = List.of("dungeon", "mineshaft", "crystal_hollows");
 
@@ -39,7 +46,9 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
             stored.setStyleOverride(style);
             if (visible != stored) visible.setStyleOverride(style);
         });
-        return new AppearanceTarget(scope, Component.literal(AmpersandFormatting.translate(stored.name())), afterWrite);
+        int color = stored.isEmpty() ? stored.staticColor() : stored.get(0).color();
+        return new AppearanceTarget(scope, Component.literal(AmpersandFormatting.translate(stored.name())),
+                afterWrite, color & 0xFFFFFF);
     }
 
     static AppearanceTarget waypoint(ActiveGroupManager manager, WaypointerConfig config,
@@ -53,7 +62,27 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
                 ? Component.translatable("waypointer.screen.appearance.waypoint_number",
                         group.displayIndexLabel(index).replaceFirst("^#", ""))
                 : Component.literal(AmpersandFormatting.translate(label));
-        return new AppearanceTarget(scope, name, afterWrite);
+        return new AppearanceTarget(scope, name, afterWrite, group.get(index).color() & 0xFFFFFF);
+    }
+
+    /**
+     * The name in the route's or waypoint's own color, lifted toward white when it is too dark to
+     * read on the panel. Color codes typed into the name still win.
+     */
+    Component coloredName() {
+        if (color == NO_COLOR) return name;
+        return name.copy().withColor(readable(color));
+    }
+
+    static int readable(int rgb) {
+        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+        double luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+        if (luminance >= 0.45) return rgb & 0xFFFFFF;
+        double t = (0.45 - luminance) / 0.45 * 0.6;
+        r = (int) Math.round(r + (255 - r) * t);
+        g = (int) Math.round(g + (255 - g) * t);
+        b = (int) Math.round(b + (255 - b) * t);
+        return (r << 16) | (g << 8) | b;
     }
 
     boolean includes(String settingId) {
@@ -83,7 +112,7 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         if (scope.level() == AppearanceScope.Level.WAYPOINT) {
             crumbs.add(Component.translatable("waypointer.screen.appearance.source.route"));
         }
-        crumbs.add(name);
+        crumbs.add(coloredName());
         return crumbs;
     }
 
@@ -97,18 +126,6 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
                 yield Component.literal(room != null ? room.displayName() : Zone.fromId(zoneKey).displayName());
             }
         };
-    }
-
-    /**
-     * The zone look a route in {@code zoneId} follows and can edit from its menu: the family for
-     * dungeon rooms and mineshafts, otherwise the zone itself. Null where zone looks don't apply.
-     */
-    static String zoneLookKey(String zoneId) {
-        List<String> keys = com.babbur.waypointer.config.WaypointStyles.zoneKeys(zoneId);
-        if (keys.isEmpty()) return null;
-        String key = keys.getFirst();
-        return key.equals(Zone.PRIVATE_WORLD.id()) || key.equals(Zone.UNKNOWN.id())
-                || key.startsWith("temp") ? null : key;
     }
 
     static List<String> switcherZoneKeys(Zone current) {
