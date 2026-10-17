@@ -187,6 +187,39 @@ public final class SettingsScreen extends Screen {
         return true;
     }
 
+    /** Opens a zone's look ({@code dwarven_mines}, or a family such as {@code mineshaft}). */
+    public static void openZoneAppearance(WaypointerConfig config, String zoneKey) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client, forAppearance(null, config,
+                WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, zoneKey))));
+    }
+
+    /** Opens the Appearance page of the settings, which applies everywhere. */
+    public static void openGlobalAppearance(WaypointerConfig config) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            SettingsScreen screen = new SettingsScreen(null, config, WaypointerClient.dungeonConfig());
+            if (categoryAvailable("appearance", config)) {
+                screen.activeCategoryId = "appearance";
+                lastCategoryId = "appearance";
+            }
+            MinecraftCompat.setScreen(client, screen);
+        });
+    }
+
+    /** Zones with a look of their own, as the Editing switcher lists them. */
+    public static List<String> appearanceZoneKeys(com.babbur.waypointer.core.ActiveGroupManager manager,
+                                                  WaypointerConfig config) {
+        List<String> routeZones = manager.allGroups().stream()
+                .filter(group -> !group.temp() && !group.runtimeOnly())
+                .map(WaypointGroup::zoneId).distinct().toList();
+        return AppearanceTarget.switcherZoneKeys(manager.currentZone(), routeZones, config.zoneStyles().keySet());
+    }
+
+    public static Component appearanceZoneLabel(String zoneKey) {
+        return AppearanceTarget.zoneLabel(zoneKey);
+    }
+
     /** Opens the settings screen. */
     public static void open(WaypointerConfig config) {
         Minecraft client = Minecraft.getInstance();

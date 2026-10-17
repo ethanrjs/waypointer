@@ -1320,7 +1320,7 @@
   "waypointer.command.help.hide": "Oculta la ruta objetivo, otra ruta, o todas las rutas de esta zona.",
   "waypointer.command.help.folder": "Crea, renombra, recolorea o borra una carpeta en esta zona. Pon entre comillas los nombres con espacios cuando sigan más palabras.",
   "waypointer.command.help.edit": "Abre la ruta objetivo en el editor.",
-  "waypointer.command.help.appearance": "Cambia cómo se ve la ruta objetivo.",
+  "waypointer.command.help.appearance": "Cambia el aspecto de la ruta objetivo, de un punto, de una zona o de todo.",
   "waypointer.command.help.publish": "Publica la ruta objetivo en el catálogo de la comunidad.",
   "waypointer.command.help.add_target": "Añade un punto donde estás a la ruta objetivo.",
   "waypointer.command.help.insert_before": "Añade un punto donde estás, antes del punto #.",

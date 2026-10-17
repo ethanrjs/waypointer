@@ -1330,7 +1330,7 @@
   "waypointer.command.help.hide": "대상 경로, 다른 경로, 또는 이 구역의 모든 경로를 숨깁니다.",
   "waypointer.command.help.folder": "이 구역의 폴더를 만들거나 이름을 바꾸거나 색을 바꾸거나 삭제합니다. 뒤에 다른 단어가 오면 공백이 있는 이름은 따옴표로 감싸세요.",
   "waypointer.command.help.edit": "대상 경로를 경로 편집기에서 엽니다.",
-  "waypointer.command.help.appearance": "대상 경로의 모양을 바꿉니다.",
+  "waypointer.command.help.appearance": "대상 경로, 웨이포인트 하나, 구역 또는 전체의 모양을 바꿉니다.",
   "waypointer.command.help.publish": "대상 경로를 커뮤니티 목록에 공개합니다.",
   "waypointer.command.help.add_target": "지금 위치에 경로점을 만들어 대상 경로에 추가합니다.",
   "waypointer.command.help.insert_before": "지금 위치에 경로점을 만들어 경로점 # 앞에 넣습니다.",

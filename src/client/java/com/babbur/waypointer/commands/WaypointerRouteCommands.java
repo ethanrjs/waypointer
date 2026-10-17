@@ -175,8 +175,42 @@ final class WaypointerRouteCommands {
         return literal("edit").executes(ctx -> runOpenEditor(ctx.getSource()));
     }
 
-    LiteralArgumentBuilder<FabricClientCommandSource> appearanceCommand() {
-        return literal("appearance").executes(ctx -> runOpenAppearance(ctx.getSource()));
+    /** {@code appearance} edits the target route's look; the subcommands reach every other look. */
+    LiteralArgumentBuilder<FabricClientCommandSource> appearanceCommand(WaypointerWaypointCommands waypoints) {
+        return literal("appearance")
+                .executes(ctx -> runOpenAppearance(ctx.getSource()))
+                .then(literal("route")
+                        .then(argument("route", StringArgumentType.greedyString())
+                                .suggests(suggestions.suggestRoutes())
+                                .executes(ctx -> runOpenRouteAppearance(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "route")))))
+                .then(literal("waypoint")
+                        .then(argument("waypoint", StringArgumentType.word())
+                                .suggests(suggestions.suggestWaypointLabels())
+                                .executes(ctx -> waypoints.runOpenAppearance(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "waypoint")))))
+                .then(literal("zone")
+                        .executes(ctx -> runOpenZoneAppearance(ctx.getSource(), null))
+                        .then(argument("zone", StringArgumentType.greedyString())
+                                .suggests(this::suggestAppearanceZones)
+                                .executes(ctx -> runOpenZoneAppearance(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "zone")))))
+                .then(literal("everywhere").executes(ctx -> {
+                    SettingsScreen.openGlobalAppearance(config);
+                    return 1;
+                }));
+    }
+
+    private java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestAppearanceZones(
+            com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> ctx,
+            com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+        String typed = builder.getRemaining().toLowerCase(Locale.ROOT);
+        for (String key : SettingsScreen.appearanceZoneKeys(manager, config)) {
+            if (key.startsWith(typed)) {
+                CommandHelpers.suggestText(builder, key, SettingsScreen.appearanceZoneLabel(key));
+            }
+        }
+        return builder.buildFuture();
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> publishCommand() {
@@ -653,6 +687,48 @@ final class WaypointerRouteCommands {
             error(src, Component.translatable("waypointer.screen.group_edit.menu.appearance.room_copy"));
             return 0;
         }
+        return 1;
+    }
+
+    int runOpenRouteAppearance(FabricClientCommandSource src, String reference) {
+        RouteTargets.Lookup<WaypointGroup> found = targets.route(reference);
+        if (!found.ok()) {
+            error(src, found.error());
+            return 0;
+        }
+        if (!SettingsScreen.openRouteAppearance(manager, config, found.value())) {
+            error(src, Component.translatable("waypointer.screen.group_edit.menu.appearance.room_copy"));
+            return 0;
+        }
+        return 1;
+    }
+
+    /** A zone key or name; none means the zone the player is in. */
+    int runOpenZoneAppearance(FabricClientCommandSource src, String reference) {
+        List<String> keys = SettingsScreen.appearanceZoneKeys(manager, config);
+        String key = null;
+        if (reference == null || reference.isBlank()) {
+            Zone zone = manager.currentZone();
+            List<String> own = zone == null ? List.of()
+                    : com.babbur.waypointer.config.WaypointStyles.zoneKeys(zone.id());
+            if (!own.isEmpty() && keys.contains(own.getLast())) key = own.getLast();
+            else if (!own.isEmpty() && keys.contains(own.getFirst())) key = own.getFirst();
+        } else {
+            String wanted = reference.strip().toLowerCase(Locale.ROOT);
+            for (String candidate : keys) {
+                if (candidate.equals(wanted) || candidate.equals(wanted.replace(' ', '_'))
+                        || SettingsScreen.appearanceZoneLabel(candidate).getString().toLowerCase(Locale.ROOT).equals(wanted)) {
+                    key = candidate;
+                    break;
+                }
+            }
+        }
+        if (key == null) {
+            error(src, Component.translatable("waypointer.command.error.appearance_zone",
+                    reference == null || reference.isBlank() ? targets.zoneName() : Component.literal(reference)));
+            return 0;
+        }
+        SettingsScreen.openZoneAppearance(config, key);
         return 1;
     }
 

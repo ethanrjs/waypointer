@@ -1313,7 +1313,7 @@
   "waypointer.command.help.hide": "Masque l'itinéraire cible, un autre itinéraire, ou tous les itinéraires de cette zone.",
   "waypointer.command.help.folder": "Crée, renomme, recolore ou supprime un dossier dans cette zone. Mets entre guillemets les noms avec espaces quand d'autres mots suivent.",
   "waypointer.command.help.edit": "Ouvre l'itinéraire cible dans l'éditeur.",
-  "waypointer.command.help.appearance": "Change l'apparence de l'itinéraire cible.",
+  "waypointer.command.help.appearance": "Modifie l'apparence de l'itinéraire cible, d'un point, d'une zone ou de tout.",
   "waypointer.command.help.publish": "Publie l'itinéraire cible dans le catalogue de la communauté.",
   "waypointer.command.help.add_target": "Ajoute un point là où tu es à l'itinéraire cible.",
   "waypointer.command.help.insert_before": "Ajoute un point là où tu es, avant le point #.",

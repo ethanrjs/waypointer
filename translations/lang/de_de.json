@@ -1313,7 +1313,7 @@
   "waypointer.command.help.hide": "Blendet die Zielroute, eine andere Route oder alle Routen dieser Zone aus.",
   "waypointer.command.help.folder": "Erstellt, benennt um, färbt oder löscht einen Ordner in dieser Zone. Setze Namen mit Leerzeichen in Anführungszeichen, wenn weitere Wörter folgen.",
   "waypointer.command.help.edit": "Öffnet die Zielroute im Routen-Editor.",
-  "waypointer.command.help.appearance": "Ändert, wie die Zielroute aussieht.",
+  "waypointer.command.help.appearance": "Ändert das Aussehen der Zielroute, eines Wegpunkts, einer Zone oder von allem.",
   "waypointer.command.help.publish": "Veröffentlicht die Zielroute im Community-Katalog.",
   "waypointer.command.help.add_target": "Fügt der Zielroute einen Wegpunkt hinzu, wo du stehst.",
   "waypointer.command.help.insert_before": "Fügt einen Wegpunkt hinzu, wo du stehst, vor Wegpunkt #.",

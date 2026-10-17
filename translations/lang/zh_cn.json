@@ -1332,7 +1332,7 @@
   "waypointer.command.help.hide": "隐藏目标路线、另一条路线，或此区域的所有路线。",
   "waypointer.command.help.folder": "在此区域创建、重命名、改色或删除文件夹。名称含空格且后面还有内容时请加引号。",
   "waypointer.command.help.edit": "在路线编辑器中打开目标路线。",
-  "waypointer.command.help.appearance": "更改目标路线的外观。",
+  "waypointer.command.help.appearance": "更改目标路线、单个路径点、某个区域或全部的外观。",
   "waypointer.command.help.publish": "将目标路线发布到社区目录。",
   "waypointer.command.help.add_target": "在你所站的位置为目标路线添加路径点。",
   "waypointer.command.help.insert_before": "在你所站的位置添加路径点，放在路径点 # 之前。",

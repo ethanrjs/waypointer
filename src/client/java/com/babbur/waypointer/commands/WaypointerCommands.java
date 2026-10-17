@@ -111,7 +111,7 @@ public final class WaypointerCommands {
                 .then(routeCommands.editCommand()
                         .then(literal("mode").executes(this::runToggleEditModeCommand)))
                 .then(literal("editmode").executes(this::runToggleEditModeCommand))
-                .then(routeCommands.appearanceCommand())
+                .then(routeCommands.appearanceCommand(waypointCommands))
                 .then(routeCommands.publishCommand())
                 .then(literal("minimap").executes(ctx -> {
                     Minecraft client = Minecraft.getInstance();

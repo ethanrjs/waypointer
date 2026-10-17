@@ -950,7 +950,7 @@
   "waypointer.command.help.hide": "隱藏目標路線、另一條路線，或此區域的所有路線。",
   "waypointer.command.help.folder": "在此區域建立、重新命名、改色或刪除資料夾。名稱含空格且後面還有內容時請加引號。",
   "waypointer.command.help.edit": "在路線編輯器中開啟目標路線。",
-  "waypointer.command.help.appearance": "變更目標路線的外觀。",
+  "waypointer.command.help.appearance": "變更目標路線、單一路徑點、某個區域或全部的外觀。",
   "waypointer.command.help.publish": "將目標路線發布到社群目錄。",
   "waypointer.command.help.add_target": "在你站的位置為目標路線新增路徑點。",
   "waypointer.command.help.insert_before": "在你站的位置新增路徑點，放在路徑點 # 之前。",

@@ -1323,7 +1323,7 @@
   "waypointer.command.help.hide": "Oculta a rota alvo, outra rota, ou todas as rotas desta zona.",
   "waypointer.command.help.folder": "Cria, renomeia, recolore ou exclui uma pasta nesta zona. Coloque entre aspas nomes com espaços quando vierem mais palavras.",
   "waypointer.command.help.edit": "Abre a rota alvo no editor.",
-  "waypointer.command.help.appearance": "Muda a aparência da rota alvo.",
+  "waypointer.command.help.appearance": "Muda a aparência da rota alvo, de um ponto, de uma zona ou de tudo.",
   "waypointer.command.help.publish": "Publica a rota alvo no catálogo da comunidade.",
   "waypointer.command.help.add_target": "Adiciona um marcador onde estás à rota alvo.",
   "waypointer.command.help.insert_before": "Adiciona um marcador onde estás, antes do marcador #.",

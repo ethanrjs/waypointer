@@ -1333,7 +1333,7 @@
   "waypointer.command.help.hide": "Скрыть целевой маршрут, другой маршрут или все маршруты этой зоны.",
   "waypointer.command.help.folder": "Создать, переименовать, перекрасить или удалить папку в этой зоне. Берите имена с пробелами в кавычки, если дальше есть слова.",
   "waypointer.command.help.edit": "Открыть целевой маршрут в редакторе.",
-  "waypointer.command.help.appearance": "Изменить внешний вид целевого маршрута.",
+  "waypointer.command.help.appearance": "Меняет вид целевого маршрута, одной точки, зоны или всего сразу.",
   "waypointer.command.help.publish": "Опубликовать целевой маршрут в каталоге сообщества.",
   "waypointer.command.help.add_target": "Добавить точку там, где вы стоите, в целевой маршрут.",
   "waypointer.command.help.insert_before": "Добавить точку там, где вы стоите, перед точкой #.",

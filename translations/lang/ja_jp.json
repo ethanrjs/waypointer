@@ -1331,7 +1331,7 @@
   "waypointer.command.help.hide": "ターゲットルート、別のルート、またはこのゾーンのすべてのルートを非表示にします。",
   "waypointer.command.help.folder": "このゾーンのフォルダーを作成、名前変更、色変更、削除します。後に言葉が続く場合、空白を含む名前は引用符で囲んでください。",
   "waypointer.command.help.edit": "ターゲットルートをルートエディターで開きます。",
-  "waypointer.command.help.appearance": "ターゲットルートの見た目を変更します。",
+  "waypointer.command.help.appearance": "対象ルート、1つのウェイポイント、ゾーン、または全体の見た目を変更します。",
   "waypointer.command.help.publish": "ターゲットルートをコミュニティカタログに公開します。",
   "waypointer.command.help.add_target": "今いる場所にウェイポイントを追加し、ターゲットルートに入れます。",
   "waypointer.command.help.insert_before": "今いる場所にウェイポイントを追加し、ウェイポイント # の前に入れます。",
