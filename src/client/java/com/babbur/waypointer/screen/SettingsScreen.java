@@ -1413,6 +1413,7 @@ public final class SettingsScreen extends Screen {
         if (dungeonConfig.showDungeonRouteLines()) changed++;
         if (dungeonConfig.showDungeonTracers()) changed++;
         if (dungeonConfig.secretCompletionSound()) changed++;
+        if (dungeonConfig.roomTimes()) changed++;
         return changed;
     }
 

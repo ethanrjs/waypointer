@@ -163,6 +163,26 @@ class DungeonConfigTest {
     }
 
     @Test
+    void roomBestTimesKeepTheFastestAndSurviveReloadAndReset(@TempDir Path dir) {
+        Path file = dir.resolve("dungeon.json");
+        DungeonConfig config = DungeonConfig.load(file);
+        assertTrue(config.roomTimes());
+        assertTrue(config.recordRoomTime("route-a", 12_000));
+        assertFalse(config.recordRoomTime("route-a", 13_000));
+        assertTrue(config.recordRoomTime("route-a", 9_500));
+        assertFalse(config.recordRoomTime("route-a", 0));
+        config.resetToDefaults();
+        config.disableAllSettings();
+        assertFalse(config.roomTimes());
+        config.flush();
+
+        DungeonConfig reloaded = DungeonConfig.load(file);
+        assertEquals(9_500, reloaded.roomBestMillis("route-a"));
+        assertEquals(0, reloaded.roomBestMillis("route-b"));
+        assertFalse(reloaded.roomTimes());
+    }
+
+    @Test
     void defaultDirectionAcceptsOnlyCardinalDungeonRotations() {
         DungeonConfig config = new DungeonConfig();
 

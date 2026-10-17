@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** User-tunable dungeon-waypoint settings stored in {@code dungeon.json}. */
 public final class DungeonConfig {
@@ -42,6 +43,10 @@ public final class DungeonConfig {
     /** Number of current and upcoming secret stages shown at once. */
     private int visibleSecretStages = 1;
     private boolean secretCompletionSound = true;
+    /** Shows how long a room's route took, with the best time for that route. */
+    private boolean roomTimes = true;
+    /** Best finish time in milliseconds by saved route id. Not a setting; never reset. Saved off-thread. */
+    private ConcurrentHashMap<String, Long> roomBestMillis = new ConcurrentHashMap<>();
 
     private transient Path file;
     private transient AsyncSaver saver;
@@ -162,6 +167,25 @@ public final class DungeonConfig {
     public boolean showDungeonTracers() { return showDungeonTracers; }
     public int visibleSecretStages() { return Math.max(1, Math.min(5, visibleSecretStages)); }
     public boolean secretCompletionSound() { return secretCompletionSound; }
+    public boolean roomTimes() { return roomTimes; }
+
+    /** The best time recorded for this route, or 0 when it has none. */
+    public long roomBestMillis(String routeId) {
+        if (routeId == null || roomBestMillis == null) return 0L;
+        Long best = roomBestMillis.get(routeId);
+        return best == null ? 0L : best;
+    }
+
+    /** Records a finish time; returns true when it is the route's new best. */
+    public boolean recordRoomTime(String routeId, long millis) {
+        if (routeId == null || routeId.isBlank() || millis <= 0) return false;
+        if (roomBestMillis == null) roomBestMillis = new ConcurrentHashMap<>();
+        long best = roomBestMillis(routeId);
+        if (best > 0 && best <= millis) return false;
+        roomBestMillis.put(routeId, millis);
+        save();
+        return true;
+    }
 
     public void setEnabled(boolean v) {
         if (enabled == v) return;
@@ -178,7 +202,8 @@ public final class DungeonConfig {
                 || hideCompletedRooms
                 || showDungeonRouteLines
                 || showDungeonTracers
-                || secretCompletionSound;
+                || secretCompletionSound
+                || roomTimes;
         if (!changed) return;
         enabled = false;
         debugLogRoomChanges = false;
@@ -186,6 +211,7 @@ public final class DungeonConfig {
         showDungeonRouteLines = false;
         showDungeonTracers = false;
         secretCompletionSound = false;
+        roomTimes = false;
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
@@ -203,7 +229,8 @@ public final class DungeonConfig {
                 || showDungeonRouteLines != defaults.showDungeonRouteLines
                 || showDungeonTracers != defaults.showDungeonTracers
                 || visibleSecretStages != defaults.visibleSecretStages
-                || secretCompletionSound != defaults.secretCompletionSound;
+                || secretCompletionSound != defaults.secretCompletionSound
+                || roomTimes != defaults.roomTimes;
         if (!changed) return;
         enabled = defaults.enabled;
         debugLogRoomChanges = defaults.debugLogRoomChanges;
@@ -213,6 +240,7 @@ public final class DungeonConfig {
         showDungeonTracers = defaults.showDungeonTracers;
         visibleSecretStages = defaults.visibleSecretStages;
         secretCompletionSound = defaults.secretCompletionSound;
+        roomTimes = defaults.roomTimes;
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
@@ -254,6 +282,12 @@ public final class DungeonConfig {
     public void setSecretCompletionSound(boolean v) {
         if (secretCompletionSound == v) return;
         secretCompletionSound = v;
+        save();
+        fireChanged();
+    }
+    public void setRoomTimes(boolean v) {
+        if (roomTimes == v) return;
+        roomTimes = v;
         save();
         fireChanged();
     }

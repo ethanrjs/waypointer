@@ -156,7 +156,7 @@ class SettingsScreenTest {
         config.setDebugLogRoomChanges(true);
         config.setShowDungeonTracers(true);
 
-        assertEquals(6, SettingsScreen.changedDungeonSettingsWhenDisabled(config));
+        assertEquals(7, SettingsScreen.changedDungeonSettingsWhenDisabled(config));
 
         config.disableAllSettings();
         assertEquals(0, SettingsScreen.changedDungeonSettingsWhenDisabled(config));

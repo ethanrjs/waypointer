@@ -24,6 +24,7 @@ import com.babbur.waypointer.crystal.WishingCompassController;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
+import com.babbur.waypointer.dungeon.DungeonRoomTimer;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import com.babbur.waypointer.dungeon.DungeonTriggerDetector;
@@ -307,6 +308,7 @@ public final class WaypointerClient implements ClientModInitializer {
         new DungeonRoomZoneBridge(manager, dungeonTracker).install();
         new DungeonRoomRouteSync(manager, dungeonTracker, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonConfig, manager).install();
+        new DungeonRoomTimer(manager, dungeonTracker, dungeonConfig).install();
         new DungeonCommands(dungeonTracker, dungeonConfig, manager).install();
     }
 

@@ -36,7 +36,7 @@ class SettingsCatalogTest {
 
     private static final Set<String> DUNGEON_EXEMPT = Set.of(
             "debugLogRoomChanges",
-            "defaultDirection", "visibleSecretStages");
+            "defaultDirection", "visibleSecretStages", "roomBestMillis");
 
     @Test
     void mainEntriesCoverEveryWaypointerConfigField() {
@@ -670,7 +670,7 @@ class SettingsCatalogTest {
                 "beaconBeamExtendsBelowWaypoint", "routeLineColor", "resetProgressOnWorldJoin",
                 "keepSubwaypointsVisibleUntilNextWaypoint",
                 "hideReachedStaticWaypointsUntilCycleComplete", "skipAheadMechanicEnabled",
-                "enabled", "hideCompletedRooms", "secretCompletionSound",
+                "enabled", "hideCompletedRooms", "secretCompletionSound", "roomTimes",
                 "showDungeonRouteLines", "showDungeonTracers",
                 "showDungeonEntryPathToFirstWaypoint",
                 "showDungeonEntryPathToFollowingWaypoints", "dungeonEntryPathColor",
