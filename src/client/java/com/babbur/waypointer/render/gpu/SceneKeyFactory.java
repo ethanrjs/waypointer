@@ -120,7 +120,7 @@ public final class SceneKeyFactory {
                 .mix(config.maxStaticWaypointRenderDistance());
         key.mix(config.routeMinRenderDistance()).mix(config.routeMaxRenderDistance())
                 .mix(config.showRouteLines()).mix(config.routeLineWidth()).mix(config.routeLineOpacity())
-                .mix(config.routeLineDashed()).mix(config.routeLineColor()).mix(config.useEtherwarpHeight())
+                .mix(config.routeLineDashed()).mix(config.routeLineColor()).mix(config.useEtherwarpHeight()).mix(config.lineOfSightOnly())
                 .mix(config.beaconWidthScale()).mix(config.beaconMotionSpeed())
                 .mix(config.completedWaypointOpacity()).mix(config.currentWaypointOpacity())
                 .mix(config.upcomingWaypointOpacity()).mix(config.sequenceContextOpacity());

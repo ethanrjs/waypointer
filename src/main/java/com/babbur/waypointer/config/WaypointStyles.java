@@ -51,6 +51,7 @@ public final class WaypointStyles {
                 "hideWaypointLabelsNearRadius",
                 "showRouteLines",
                 "useEtherwarpHeight",
+                "lineOfSightOnly",
                 "routeLineColor",
                 "showLabelBackdrop",
                 "showLabelTextShadow",

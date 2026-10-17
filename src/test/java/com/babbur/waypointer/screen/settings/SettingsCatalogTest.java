@@ -465,7 +465,8 @@ class SettingsCatalogTest {
                         "matchWaypointOutlineToWaypointColor",
                         "waypointOutlineColor",
                         "waypointOutlineOpacity",
-                        "waypointOutlineThickness"),
+                        "waypointOutlineThickness",
+                        "lineOfSightOnly"),
                 appearance.groups().getFirst().settings().stream().map(Setting::id).toList());
     }
 

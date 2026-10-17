@@ -146,6 +146,7 @@ public final class WaypointerConfigCodec {
     private static final int EDIT_MODE_PLACEMENT_REACH = 112;
     private static final int SHOW_CHAT_COORD_BLOCK_BUTTON = 113;
     private static final int COORDINATE_SHARE_HELPER = 114;
+    private static final int LINE_OF_SIGHT_ONLY = 115;
 
     private WaypointerConfigCodec() {
     }
@@ -330,6 +331,7 @@ public final class WaypointerConfigCodec {
                 config.crystalHollowsEntityDetection(),
                 defaults.crystalHollowsEntityDetection());
         writeBoolean(out, COORDINATE_SHARE_HELPER, config.coordinateShareHelper(), defaults.coordinateShareHelper());
+        writeBoolean(out, LINE_OF_SIGHT_ONLY, config.lineOfSightOnly(), defaults.lineOfSightOnly());
         writeBoolean(out, CRYSTAL_HOLLOWS_CHAT_DETECTION,
                 config.crystalHollowsChatDetection(), defaults.crystalHollowsChatDetection());
         writeBoolean(out, CRYSTAL_HOLLOWS_METAL_DETECTOR,
@@ -483,6 +485,7 @@ public final class WaypointerConfigCodec {
                 case CRYSTAL_HOLLOWS_ENTITY_DETECTION ->
                         config.setCrystalHollowsEntityDetection(in.readBoolean());
                 case COORDINATE_SHARE_HELPER -> config.setCoordinateShareHelper(in.readBoolean());
+                case LINE_OF_SIGHT_ONLY -> config.setLineOfSightOnly(in.readBoolean());
                 case CRYSTAL_HOLLOWS_CHAT_DETECTION ->
                         config.setCrystalHollowsChatDetection(in.readBoolean());
                 case CRYSTAL_HOLLOWS_METAL_DETECTOR -> config.setCrystalHollowsMetalDetector(in.readBoolean());
@@ -608,7 +611,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= COORDINATE_SHARE_HELPER
+        return tag >= DEFAULT_REACH_RADIUS && tag <= LINE_OF_SIGHT_ONLY
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN

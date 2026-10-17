@@ -135,6 +135,7 @@ public final class WaypointerConfig {
     private boolean skipAheadOnlyVisibleWaypoints = true;
     private boolean showRouteLines = false;
     private boolean useEtherwarpHeight = false;
+    private boolean lineOfSightOnly = false;
     private boolean showDungeonEntryPathToFirstWaypoint = false;
     private boolean showDungeonEntryPathToFollowingWaypoints = false;
     private int dungeonEntryPathColor = 0x00FF00;
@@ -736,6 +737,7 @@ public final class WaypointerConfig {
     public boolean skipAheadOnlyVisibleWaypoints() { return skipAheadOnlyVisibleWaypoints; }
     public boolean showRouteLines()           { return showRouteLines; }
     public boolean useEtherwarpHeight()       { return useEtherwarpHeight; }
+    public boolean lineOfSightOnly()          { return lineOfSightOnly; }
     public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
     public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
     public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
@@ -995,6 +997,10 @@ public final class WaypointerConfig {
         this.showRouteLines = v;
         save();
     }
+    public void setLineOfSightOnly(boolean v) {
+        this.lineOfSightOnly = v;
+        save();
+    }
     public void setUseEtherwarpHeight(boolean v) {
         this.useEtherwarpHeight = v;
         save();
@@ -1229,6 +1235,7 @@ public final class WaypointerConfig {
         skipAheadOnlyVisibleWaypoints = replacement.skipAheadOnlyVisibleWaypoints;
         showRouteLines = replacement.showRouteLines;
         useEtherwarpHeight = replacement.useEtherwarpHeight;
+        lineOfSightOnly = replacement.lineOfSightOnly;
         showDungeonEntryPathToFirstWaypoint = replacement.showDungeonEntryPathToFirstWaypoint;
         showDungeonEntryPathToFollowingWaypoints = replacement.showDungeonEntryPathToFollowingWaypoints;
         dungeonEntryPathColor = replacement.dungeonEntryPathColor;
@@ -1333,6 +1340,7 @@ public final class WaypointerConfig {
         skipAheadOnlyVisibleWaypoints = false;
         showRouteLines = false;
         useEtherwarpHeight = false;
+        lineOfSightOnly = false;
         showDungeonEntryPathToFirstWaypoint = false;
         showDungeonEntryPathToFollowingWaypoints = false;
         etherwarpAlignmentSound = "";
@@ -1471,6 +1479,7 @@ public final class WaypointerConfig {
         skipAheadOnlyVisibleWaypoints = defaults.skipAheadOnlyVisibleWaypoints;
         showRouteLines = defaults.showRouteLines;
         useEtherwarpHeight = defaults.useEtherwarpHeight;
+        lineOfSightOnly = defaults.lineOfSightOnly;
         showDungeonEntryPathToFirstWaypoint = defaults.showDungeonEntryPathToFirstWaypoint;
         showDungeonEntryPathToFollowingWaypoints = defaults.showDungeonEntryPathToFollowingWaypoints;
         dungeonEntryPathColor = defaults.dungeonEntryPathColor;

@@ -317,6 +317,8 @@
   "waypointer.settings.setting.showDungeonRouteLines.label": "Route connector lines",
   "waypointer.settings.setting.showDungeonRouteLines.tooltip": "Draw connector lines for dungeon room routes.",
   "waypointer.settings.setting.useEtherwarpHeight.label": "Use Etherwarp height",
+  "waypointer.settings.setting.lineOfSightOnly.label": "Line of sight only",
+  "waypointer.settings.setting.lineOfSightOnly.tooltip": "Only show waypoints you can see; blocks in the way hide them.",
   "waypointer.settings.setting.showDungeonTracers.label": "Tracers",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Draw a tracer from the crosshair to the active dungeon waypoint.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Pathfind to first waypoint",

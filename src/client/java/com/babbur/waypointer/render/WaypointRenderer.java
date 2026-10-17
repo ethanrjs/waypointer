@@ -217,7 +217,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             float outlineOpacity = (float) appearance.waypointOutlineOpacity();
             if (outlineOpacity <= 0) return;
             if (!withinRouteDistance(appearance, waypoint, camPos)) return;
-            boolean depthChecked = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
+            boolean depthChecked = lineOfSight(group, waypoint);
             if (!shouldRenderWaypointWorld(group, i, currentIdx, appearance.showCompleted(),
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
                     depthChecked, mc, level)) {
@@ -338,7 +338,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             }
             double sx = labelScreenScratch[0];
             double sy = labelScreenScratch[1];
-            if (w.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
+            if (lineOfSight(group, w)
                     && !shouldRenderProjectedDepthCheckedWaypoint(
                             mc, level, w, sx, sy, screenW, screenH)) {
                 return;

@@ -212,8 +212,8 @@ class WaypointWorldRenderer {
         if (!drawDungeonEntryPaths) clearPreparedDungeonEntryPaths();
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
                 && !drawDungeonEntryPaths) return false;
-        boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
-        boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
+        boolean hasDepthCheckedWaypoints = anyLineOfSight(groups);
+        boolean hasThroughWallWaypoints = anyThroughWall(groups) || drawDungeonEntryPaths;
         if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return false;
 
         if (ps == null || sink == null || origin == null) return false;
@@ -518,7 +518,7 @@ class WaypointWorldRenderer {
             Waypoint b = g.get(toIndex);
             WaypointerConfig style = styleFor(g, a);
             if (!routeLinesEnabled(g, a, config, dungeonConfig)) return;
-            if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) return;
+            if (!routeSegmentHasDepthVisibility(g, a, b, depthCheckedPass, mc, level)) return;
             Vec3 start = routeLineStart(
                     level, a, style.useEtherwarpHeight(), crouchingEyeHeight,
                     waypointBoxBoundsScratch);
@@ -534,12 +534,14 @@ class WaypointWorldRenderer {
         };
         if (isDungeonRoomRoute(g)) {
             forEachFocusedDungeonRouteLineSegment(
-                    g, depthCheckedPass, i -> withinRouteDistance(styleFor(g, g.get(i)), g.get(i), camPos), emitSegment);
+                    g, depthCheckedPass, waypoint -> lineOfSight(g, waypoint),
+                    i -> withinRouteDistance(styleFor(g, g.get(i)), g.get(i), camPos), emitSegment);
             return;
         }
         forEachRouteLineSegment(
                 g,
                 depthCheckedPass,
+                waypoint -> lineOfSight(g, waypoint),
                 routeStyle.sequenceVisibility(),
                 routeStyle.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
@@ -604,12 +606,23 @@ class WaypointWorldRenderer {
                                         boolean depthCheckedPass,
                                         IntPredicate endpointVisible,
                                         RouteLineSegmentConsumer consumer) {
-        forEachRouteLineSegment(group, depthCheckedPass, SequenceVisibility.DEFAULT,
+        forEachRouteLineSegment(group, depthCheckedPass, FLAG_LINE_OF_SIGHT, SequenceVisibility.DEFAULT,
                 false, endpointVisible, consumer);
     }
 
     public static void forEachRouteLineSegment(WaypointGroup group,
                                         boolean depthCheckedPass,
+                                        SequenceVisibility visibility,
+                                        boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                        IntPredicate endpointVisible,
+                                        RouteLineSegmentConsumer consumer) {
+        forEachRouteLineSegment(group, depthCheckedPass, FLAG_LINE_OF_SIGHT, visibility,
+                keepSubwaypointsVisibleUntilNextWaypoint, endpointVisible, consumer);
+    }
+
+    public static void forEachRouteLineSegment(WaypointGroup group,
+                                        boolean depthCheckedPass,
+                                        Predicate<Waypoint> lineOfSight,
                                         SequenceVisibility visibility,
                                         boolean keepSubwaypointsVisibleUntilNextWaypoint,
                                         IntPredicate endpointVisible,
@@ -621,7 +634,7 @@ class WaypointWorldRenderer {
             if (previous[0] >= 0) {
                 Waypoint a = group.get(previous[0]);
                 Waypoint b = group.get(i);
-                if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass)) {
+                if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass, lineOfSight)) {
                     consumer.accept(previous[0], i);
                 }
             }
@@ -631,6 +644,15 @@ class WaypointWorldRenderer {
 
     static void forEachFocusedDungeonRouteLineSegment(WaypointGroup group,
                                                       boolean depthCheckedPass,
+                                                      IntPredicate endpointVisible,
+                                                      RouteLineSegmentConsumer consumer) {
+        forEachFocusedDungeonRouteLineSegment(group, depthCheckedPass, FLAG_LINE_OF_SIGHT,
+                endpointVisible, consumer);
+    }
+
+    static void forEachFocusedDungeonRouteLineSegment(WaypointGroup group,
+                                                      boolean depthCheckedPass,
+                                                      Predicate<Waypoint> lineOfSight,
                                                       IntPredicate endpointVisible,
                                                       RouteLineSegmentConsumer consumer) {
         if (group == null || consumer == null) return;
@@ -643,7 +665,7 @@ class WaypointWorldRenderer {
         }
         Waypoint a = group.get(from);
         Waypoint b = group.get(to);
-        if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass)) {
+        if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass, lineOfSight)) {
             consumer.accept(from, to);
         }
     }
@@ -712,16 +734,14 @@ class WaypointWorldRenderer {
                 showCompleted, waypoint);
     }
 
-    private boolean routeSegmentHasDepthVisibility(Waypoint a, Waypoint b,
+    private boolean routeSegmentHasDepthVisibility(WaypointGroup group, Waypoint a, Waypoint b,
                                                    boolean depthCheckedPass,
                                                    Minecraft mc, ClientLevel level) {
         if (!depthCheckedPass) return true;
-        if (a.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
-                && !shouldRenderDepthCheckedWaypoint(mc, level, a)) {
+        if (lineOfSight(group, a) && !shouldRenderDepthCheckedWaypoint(mc, level, a)) {
             return false;
         }
-        return !b.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
-                || shouldRenderDepthCheckedWaypoint(mc, level, b);
+        return !lineOfSight(group, b) || shouldRenderDepthCheckedWaypoint(mc, level, b);
     }
 
     @FunctionalInterface
@@ -738,11 +758,41 @@ class WaypointWorldRenderer {
         if (!shouldRenderRouteLineEndpoint(group, index, currentIdx, showCompleted,
                 camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq)) return false;
         Waypoint waypoint = group.get(index);
-        if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED) != depthCheckedPass) return false;
+        if (lineOfSight(group, waypoint) != depthCheckedPass) return false;
         if (depthCheckedPass && !shouldRenderDepthCheckedWaypoint(mc, level, waypoint)) {
             return false;
         }
         return true;
+    }
+
+    /** Whether any waypoint draws only in line of sight; points without their own style share one lookup. */
+    boolean anyLineOfSight(Iterable<WaypointGroup> groups) {
+        for (WaypointGroup group : groups) {
+            for (Waypoint waypoint : group.waypoints()) {
+                if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) return true;
+            }
+            if (anyWaypointStyle(group, WaypointerConfig::lineOfSightOnly)) return true;
+        }
+        return false;
+    }
+
+    /** Whether any waypoint draws through walls. */
+    boolean anyThroughWall(Iterable<WaypointGroup> groups) {
+        for (WaypointGroup group : groups) {
+            Boolean shared = null;
+            for (Waypoint waypoint : group.waypoints()) {
+                if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) continue;
+                boolean los;
+                if (waypoint.styleOverride().isEmpty()) {
+                    if (shared == null) shared = styleFor(group, waypoint).lineOfSightOnly();
+                    los = shared;
+                } else {
+                    los = styleFor(group, waypoint).lineOfSightOnly();
+                }
+                if (!los) return true;
+            }
+        }
+        return false;
     }
 
     static boolean hasDepthCheckedWaypoint(Iterable<WaypointGroup> groups) {
@@ -765,8 +815,12 @@ class WaypointWorldRenderer {
 
     static boolean routeSegmentMatchesDepthPass(Waypoint a, Waypoint b,
                                                 boolean depthCheckedPass) {
-        boolean segmentDepthChecked = a.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
-                || b.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
+        return routeSegmentMatchesDepthPass(a, b, depthCheckedPass, FLAG_LINE_OF_SIGHT);
+    }
+
+    static boolean routeSegmentMatchesDepthPass(Waypoint a, Waypoint b, boolean depthCheckedPass,
+                                                Predicate<Waypoint> lineOfSight) {
+        boolean segmentDepthChecked = lineOfSight.test(a) || lineOfSight.test(b);
         return segmentDepthChecked == depthCheckedPass;
     }
 
@@ -824,7 +878,7 @@ class WaypointWorldRenderer {
             double maxStaticDistanceSq, double nearHideDistanceSq) {
         if (index < 0 || index >= group.size()) return;
         Waypoint waypoint = group.get(index);
-        if (!waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) return;
+        if (!lineOfSight(group, waypoint)) return;
         if (!shouldRenderRouteLineEndpoint(group, index, currentIdx, showCompleted,
                 camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq)) return;
         boolean visible = shouldRenderDepthCheckedWaypoint(mc, level, waypoint);
@@ -1771,6 +1825,13 @@ class WaypointWorldRenderer {
     protected WaypointerConfig styleFor(WaypointGroup group, Waypoint waypoint) {
         return WaypointStyles.resolve(config, group, waypoint);
     }
+
+    /** The waypoint's own line-of-sight flag, or Line of sight only from its appearance. */
+    boolean lineOfSight(WaypointGroup group, Waypoint waypoint) {
+        return waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED) || styleFor(group, waypoint).lineOfSightOnly();
+    }
+
+    static final Predicate<Waypoint> FLAG_LINE_OF_SIGHT = waypoint -> waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
 
     private boolean anyStyle(Iterable<WaypointGroup> groups, Predicate<WaypointerConfig> predicate) {
         for (WaypointGroup group : groups) {

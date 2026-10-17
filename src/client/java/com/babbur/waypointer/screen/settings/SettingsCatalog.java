@@ -278,7 +278,13 @@ public final class SettingsCatalog {
                                 .range(1.0, 12.0)
                                 .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.OUTLINED
                                         || c.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED)
-                                .aliases("width")),
+                                .aliases("width"),
+                        Setting.bool("lineOfSightOnly", MAIN, "Line of sight only",
+                                "Only show waypoints you can see; blocks in the way hide them.",
+                                (c, d) -> c.lineOfSightOnly(),
+                                (c, d, v) -> c.setLineOfSightOnly((Boolean) v))
+                                .impact(Setting.Impact.LOW)
+                                .aliases("los", "through walls", "behind blocks", "x-ray")),
                 Group.plain("sequenced", "Previous & next",
                         Setting.number("waypointSkipFadeMs", MAIN, "Waypoint fade time (ms)",
                                 "Fade waypoints and subwaypoints in and out when the current waypoint changes. 0 = off.",

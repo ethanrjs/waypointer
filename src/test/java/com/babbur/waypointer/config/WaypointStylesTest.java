@@ -37,6 +37,18 @@ class WaypointStylesTest {
         config.putNamedStyle("Small", WaypointStyle.EMPTY.with("labelScale", 1.5));
         assertEquals(1.5, WaypointStyles.resolve(config, route, point.withStyleOverride(null)).labelScale());
     }
+    @Test void lineOfSightOnlyCanBeSetEverywhereForARouteOrForOneWaypoint() {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup route = WaypointGroup.create("Gems", "crystal_hollows");
+        Waypoint point = Waypoint.at(1, 2, 3);
+        assertFalse(WaypointStyles.resolve(config, route, point).lineOfSightOnly());
+        config.setLineOfSightOnly(true);
+        assertTrue(WaypointStyles.resolve(config, route, point).lineOfSightOnly());
+        route.setStyleOverride(WaypointStyle.EMPTY.with("lineOfSightOnly", false));
+        assertFalse(WaypointStyles.resolve(config, route, point).lineOfSightOnly(), "routes beat Everywhere");
+        Waypoint seen = point.withStyleOverride(WaypointStyle.EMPTY.with("lineOfSightOnly", true));
+        assertTrue(WaypointStyles.resolve(config, route, seen).lineOfSightOnly(), "waypoints beat routes");
+    }
     @Test void zoneStylesSitBetweenGlobalAndRouteAndCoverZoneFamilies() {
         WaypointerConfig config = new WaypointerConfig();
         WaypointGroup shaft = WaypointGroup.create("Shaft", "mineshaft_crystal");
