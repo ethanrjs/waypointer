@@ -57,6 +57,7 @@ public final class WaypointGroup {
     private boolean paintEnabled = true;
     private CatalogRouteProvenance catalogProvenance;
     private transient boolean[] staticReached;
+    private transient boolean[] stepDone;
     private transient int proximitySuppressedIndex = -1;
     private transient Integer focusedVisibleIndex;
     private transient int activeSubwaypointParentIndex = -1;
@@ -428,6 +429,7 @@ public final class WaypointGroup {
                         Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
                     if (isWaypointEnabled(exactCurrent)) action.accept(exactCurrent);
                 }
+                emitRestOfStep(cur, exactCurrent, action);
                 int stage = mainIndexAt(cursor);
                 for (int remaining = visibleMainSteps - 1; remaining > 0 && stage >= 0; remaining--) {
                     stage = nextMainIndexAfter(stage);
@@ -463,6 +465,23 @@ public final class WaypointGroup {
             if (next < 0) break;
             if (activeParentAlreadyEmitted && next == activeParent) continue;
             action.accept(next);
+        }
+    }
+
+    /** The current step's remaining actions and its secret, shown alongside the cursor. */
+    private void emitRestOfStep(int main, int cursor, IntConsumer action) {
+        int end = childEndExclusive(main);
+        for (int i = Math.max(main, cursor) + 1; i < end; i++) {
+            if (!isWaypointEnabled(i) || isStepMemberDone(i)) continue;
+            Waypoint waypoint = waypoints.get(i);
+            if (!hasDungeonCompletion(waypoint)
+                    || waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) continue;
+            action.accept(i);
+        }
+        for (int i = main + 1; i < Math.min(end, cursor); i++) {
+            if (isAnyOrderStepMember(i) && isWaypointEnabled(i) && !isStepMemberDone(i)) {
+                action.accept(i);
+            }
         }
     }
 
@@ -757,6 +776,11 @@ public final class WaypointGroup {
     }
 
     public void advancePast(int reachedIndex) {
+        advancePastOnce(reachedIndex);
+        skipDoneDungeonTargets();
+    }
+
+    private void advancePastOnce(int reachedIndex) {
         if (isSubwaypoint(reachedIndex)) {
             int next = nextCompletableChildAfter(reachedIndex);
             if (next >= 0) {
@@ -795,7 +819,7 @@ public final class WaypointGroup {
         }
         int end = childEndExclusive(parentIndex);
         for (int i = parentIndex + 1; i < end; i++) {
-            if (isWaypointEnabled(i) && hasDungeonCompletion(waypoints.get(i))) return i;
+            if (isOrderedTarget(i)) return i;
         }
         return -1;
     }
@@ -805,9 +829,84 @@ public final class WaypointGroup {
         if (parent < 0) return -1;
         int end = childEndExclusive(parent);
         for (int i = childIndex + 1; i < end; i++) {
-            if (isWaypointEnabled(i) && hasDungeonCompletion(waypoints.get(i))) return i;
+            if (isOrderedTarget(i)) return i;
         }
         return -1;
+    }
+
+    /** A child the route cursor visits in order: completable, not any-order, not already done. */
+    private boolean isOrderedTarget(int index) {
+        if (!isWaypointEnabled(index) || !hasDungeonCompletion(waypoints.get(index))) return false;
+        if (routeKind != RouteKind.DUNGEON) return true;
+        return !isAnyOrderStepMember(index) && !isStepMemberDone(index);
+    }
+
+    /** A dungeon subwaypoint that can be done in any order while its step is active. */
+    public boolean isAnyOrderStepMember(int index) {
+        return routeKind == RouteKind.DUNGEON
+                && index > 0 && index < waypoints.size()
+                && isSubwaypoint(index)
+                && waypoints.get(index).hasFlag(Waypoint.FLAG_STEP_ANY_ORDER);
+    }
+
+    /** The main waypoint that heads the dungeon step the cursor is in, or -1 when complete. */
+    public int currentStepStart() {
+        if (currentIndex < 0 || currentIndex >= waypoints.size()) return -1;
+        return mainIndexAt(currentIndex);
+    }
+
+    public boolean isStepMemberDone(int index) {
+        return stepDone != null && index >= 0 && index < stepDone.length && stepDone[index];
+    }
+
+    /** Remembers a step member done out of order; the cursor skips it later. */
+    public boolean markStepMemberDone(int index) {
+        if (index < 0 || index >= waypoints.size() || isStepMemberDone(index)) return false;
+        if (stepDone == null || stepDone.length != waypoints.size()) {
+            stepDone = new boolean[waypoints.size()];
+        }
+        stepDone[index] = true;
+        return true;
+    }
+
+    public boolean[] stepDoneSnapshot() {
+        return stepDone == null ? new boolean[0] : stepDone.clone();
+    }
+
+    public void restoreStepDone(boolean[] snapshot) {
+        stepDone = snapshot == null || snapshot.length != waypoints.size()
+                ? null : snapshot.clone();
+    }
+
+    /** Moves the cursor past dungeon targets, and whole steps, whose secret was already done. */
+    private void skipDoneDungeonTargets() {
+        if (routeKind != RouteKind.DUNGEON || stepDone == null) return;
+        while (currentIndex >= 0 && currentIndex < waypoints.size()) {
+            int before = currentIndex;
+            if (isStepMemberDone(currentIndex)) {
+                advancePastOnce(currentIndex);
+            } else if (!isSubwaypoint(currentIndex) && stepSecretsDone(currentIndex)) {
+                int next = nextMainIndexAfter(currentIndex);
+                currentIndex = next >= 0 ? next : waypoints.size();
+                activeSubwaypointParentIndex = -1;
+            } else {
+                return;
+            }
+            if (currentIndex <= before) return;
+        }
+    }
+
+    private boolean stepSecretsDone(int main) {
+        int end = childEndExclusive(main);
+        boolean any = false;
+        for (int i = main + 1; i < end; i++) {
+            if (!isWaypointEnabled(i) || !waypoints.get(i).hasFlag(Waypoint.FLAG_DUNGEON_SECRET)) {
+                continue;
+            }
+            if (!isStepMemberDone(i)) return false;
+            any = true;
+        }
+        return any;
     }
 
     private static boolean hasDungeonCompletion(Waypoint waypoint) {
@@ -850,7 +949,7 @@ public final class WaypointGroup {
             if (!isWaypointEnabled(i)) continue;
             if (routeKind != RouteKind.DUNGEON
                     || !isSubwaypoint(i)
-                    || hasDungeonCompletion(waypoints.get(i))) {
+                    || hasDungeonCompletion(waypoints.get(i)) && !isAnyOrderStepMember(i)) {
                 return i;
             }
         }
@@ -872,6 +971,7 @@ public final class WaypointGroup {
         int firstMain = nextMainIndexAtOrAfter(0);
         currentIndex = firstMain >= 0 ? firstMain : waypoints.size();
         activeSubwaypointParentIndex = -1;
+        stepDone = null;
         resetStaticReachState();
         clearProximitySuppression();
     }
@@ -1113,6 +1213,7 @@ public final class WaypointGroup {
         }
         clearStandSkipHold();
         staticReached = null;
+        stepDone = null;
         invalidateProximityIndex();
     }
 

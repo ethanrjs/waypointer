@@ -9,6 +9,7 @@ import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import com.babbur.waypointer.dungeon.DungeonSecretCompletionSound;
+import com.babbur.waypointer.dungeon.DungeonStepProgress;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -27,7 +28,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.BlockHitResult;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public final class ProximityTracker {
@@ -79,6 +82,24 @@ public final class ProximityTracker {
                 && clientLevel != null
                 && isChest(world.getBlockState(pos));
         for (WaypointGroup group : manager.activeGroups()) {
+            if (DungeonStepProgress.appliesTo(group)) {
+                int reached = stepInteractedIndex(
+                        group, pos.getX(), pos.getY(), pos.getZ(), superboomHeld);
+                if (reached < 0) continue;
+                if (deferChest) {
+                    String groupId = group.id();
+                    chestInteractionGuard.defer(clientLevel, () -> {
+                        WaypointGroup current = manager.get(groupId);
+                        if (!DungeonStepProgress.appliesTo(current)) return;
+                        int index = stepInteractedIndex(
+                                current, pos.getX(), pos.getY(), pos.getZ(), superboomHeld);
+                        if (index >= 0) completeStepAction(current, index);
+                    });
+                } else {
+                    completeStepAction(group, reached);
+                }
+                continue;
+            }
             if (deferChest) {
                 int from = group.currentIndex();
                 int reachedIndex = interactedWaypointIndex(
@@ -119,11 +140,39 @@ public final class ProximityTracker {
         return InteractionResult.PASS;
     }
 
+    private void completeStepAction(WaypointGroup group, int index) {
+        boolean secret = group.get(index).hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
+        if (!DungeonStepProgress.complete(group, index)) return;
+        if (secret) DungeonSecretCompletionSound.play(dungeonConfig);
+        if (shouldHideCompletedDungeonRoomRoute(group)) manager.fireTransientDataChanged();
+    }
+
+    /** The current step's action, or a later step's secret, on this block; -1 when none. */
+    static int stepInteractedIndex(WaypointGroup group, int blockX, int blockY, int blockZ,
+                                   boolean superboomHeld) {
+        return DungeonStepProgress.findCandidate(group, true, i -> {
+            Waypoint waypoint = group.get(i);
+            if (!waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)) return false;
+            if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_SUPERBOOM) && !superboomHeld) return false;
+            return waypointMatchesBlock(waypoint, blockX, blockY, blockZ);
+        });
+    }
+
     private InteractionResult onUseItem(Player player, Level world, InteractionHand hand) {
         if (!world.isClientSide() || !player.getItemInHand(hand).is(Items.ENDER_PEARL)) {
             return InteractionResult.PASS;
         }
         for (WaypointGroup group : manager.activeGroups()) {
+            if (DungeonStepProgress.appliesTo(group)) {
+                int pearl = DungeonStepProgress.findCandidate(group, false, i -> {
+                    Waypoint waypoint = group.get(i);
+                    return waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL)
+                            && isWithinReach(group, waypoint,
+                            player.getX(), player.getY(), player.getZ());
+                });
+                if (pearl >= 0) completeStepAction(group, pearl);
+                continue;
+            }
             int current = group.currentIndex();
             if (current < 0 || current >= group.size()) continue;
             Waypoint waypoint = group.get(current);
@@ -158,9 +207,7 @@ public final class ProximityTracker {
         boolean allowBackwardProgress = config.allowBackwardProgress();
         Set<MineTarget> liveMineTargets = new HashSet<>();
         for (WaypointGroup group : manager.activeGroups()) {
-            int beforeIndex = group.currentIndex();
-            boolean completingSecret = beforeIndex >= 0 && beforeIndex < group.size()
-                    && group.get(beforeIndex).hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
+            int secretsBefore = secretsPassed(group);
             boolean skippingEnabled = globalSkipAhead && group.skipAheadEnabled();
             boolean mined = updateMinedWaypointProgress(group, (x, y, z) -> {
                 BlockPos pos = new BlockPos(x, y, z);
@@ -171,7 +218,7 @@ public final class ProximityTracker {
             boolean changed = updateGroupProgress(group, px, py, pz, loop, globalSkipAhead,
                     skipOnlyVisible, hideReachedStatic, config.sequenceVisibility(),
                     allowBackwardProgress);
-            if ((mined || changed) && completingSecret && group.currentIndex() != beforeIndex) {
+            if ((mined || changed) && secretsPassed(group) > secretsBefore) {
                 DungeonSecretCompletionSound.play(dungeonConfig);
             }
             if ((mined || changed) && shouldHideCompletedDungeonRoomRoute(group)) {
@@ -179,6 +226,18 @@ public final class ProximityTracker {
             }
         }
         observedMineTargets.retainAll(liveMineTargets);
+    }
+
+    /** Secrets behind the cursor or done early; rises when a secret is completed. */
+    static int secretsPassed(WaypointGroup group) {
+        if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) return 0;
+        int passed = 0;
+        int cursor = Math.min(group.currentIndex(), group.size());
+        for (int i = 0; i < group.size(); i++) {
+            if (!group.get(i).hasFlag(Waypoint.FLAG_DUNGEON_SECRET)) continue;
+            if (i < cursor || group.isStepMemberDone(i)) passed++;
+        }
+        return passed;
     }
 
     public static boolean updateGroupProgress(WaypointGroup group,
@@ -343,6 +402,13 @@ public final class ProximityTracker {
             }
         } else {
             reachedIndex = currentReachedIndex(group, from, px, py, pz, nowMillis);
+            if (reachedIndex < 0 && DungeonStepProgress.appliesTo(group)) {
+                int stepReached = stepStandReachedIndex(group, from, px, py, pz, nowMillis);
+                if (stepReached >= 0 && group.isAnyOrderStepMember(stepReached)) {
+                    return DungeonStepProgress.complete(group, stepReached);
+                }
+                reachedIndex = stepReached;
+            }
         }
         if (reachedIndex < 0) {
             return BackwardProgressionPolicy.retreatIfReached(
@@ -363,6 +429,17 @@ public final class ProximityTracker {
                 restartWhenComplete, skippingEnabled, false);
     }
 
+    /** Another of the current step's actions stood on exactly; -1 when none. */
+    private static int stepStandReachedIndex(WaypointGroup group, int cursor,
+                                             double px, double py, double pz, long nowMillis) {
+        return DungeonStepProgress.findCandidate(group, false, i -> {
+            if (i == cursor || group.isProximitySuppressed(i)) return false;
+            Waypoint waypoint = group.get(i);
+            return waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)
+                    && isStandSkipReached(group, i, waypoint, px, py, pz, nowMillis, true);
+        });
+    }
+
     static boolean updateMinedWaypointProgress(WaypointGroup group,
                                                MineBlockLookup blocks,
                                                Set<MineTarget> observed,
@@ -373,6 +450,9 @@ public final class ProximityTracker {
         if (!isEligibleDungeonTriggerGroup(group) || blocks == null
                 || observed == null || live == null) {
             return false;
+        }
+        if (DungeonStepProgress.appliesTo(group)) {
+            return updateMinedStepProgress(group, blocks, observed, live);
         }
 
         int from = group.currentIndex();
@@ -407,6 +487,42 @@ public final class ProximityTracker {
                 group, from, highestMined,
                 restartWhenComplete && !isDungeonRoomRouteGroup(group),
                 allowBackwardProgress);
+    }
+
+    /**
+     * Mining in the current step: every remaining mine action is watched, a block already
+     * gone counts as mined, and the furthest ordered one mined moves the cursor past it.
+     */
+    static boolean updateMinedStepProgress(WaypointGroup group, MineBlockLookup blocks,
+                                           Set<MineTarget> observed, Set<MineTarget> live) {
+        List<Integer> mined = new ArrayList<>();
+        DungeonStepProgress.forEachCandidate(group, false, i -> {
+            Waypoint waypoint = group.get(i);
+            if (!waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) return true;
+            MineTarget target = new MineTarget(
+                    group.id(), i, waypoint.x(), waypoint.y(), waypoint.z());
+            live.add(target);
+            int state = blocks.stateAt(waypoint.x(), waypoint.y(), waypoint.z());
+            if (state == MINE_BLOCK_PRESENT) {
+                observed.add(target);
+            } else if (state == MINE_BLOCK_AIR) {
+                observed.remove(target);
+                mined.add(i);
+            }
+            return true;
+        });
+        if (mined.isEmpty()) return false;
+        int furthestOrdered = -1;
+        boolean changed = false;
+        for (int index : mined) {
+            if (group.isAnyOrderStepMember(index)) {
+                changed |= DungeonStepProgress.complete(group, index);
+            } else {
+                furthestOrdered = Math.max(furthestOrdered, index);
+            }
+        }
+        if (furthestOrdered >= 0) changed |= DungeonStepProgress.complete(group, furthestOrdered);
+        return changed;
     }
 
     public static boolean advanceIfInteractedWithBlock(WaypointGroup group,

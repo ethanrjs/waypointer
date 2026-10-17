@@ -72,6 +72,8 @@ public record Waypoint(
     public static final int FLAG_DUNGEON_BAT = 1 << 19;
     /** Persistent state: keep this waypoint in the editor, but exclude it from the active route. */
     public static final int FLAG_DISABLED = 1 << 20;
+    /** Dungeon step member that can be done in any order while its step is active. */
+    public static final int FLAG_STEP_ANY_ORDER = 1 << 21;
     /** Any event-driven completion flag used by sequential dungeon actions. */
     public static final int DUNGEON_COMPLETION_FLAGS = FLAG_SKIP_ON_STAND
             | FLAG_SKIP_ON_INTERACT
@@ -93,7 +95,8 @@ public record Waypoint(
     public static final int STRUCTURAL_FLAGS  = FLAG_SUBWAYPOINT;
     public static final int PERSISTENT_BEHAVIOR_FLAGS = STRUCTURAL_FLAGS
             | DUNGEON_METADATA_FLAGS
-            | FLAG_DISABLED;
+            | FLAG_DISABLED
+            | FLAG_STEP_ANY_ORDER;
 
     public static final int TEMP_NONE = 0;
     public static final int TEMP_TIME = 1;

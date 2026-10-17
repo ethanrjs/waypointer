@@ -656,6 +656,10 @@ class WaypointWorldRenderer {
                                                       IntPredicate endpointVisible,
                                                       RouteLineSegmentConsumer consumer) {
         if (group == null || consumer == null) return;
+        if (forEachStepPathSegment(group, depthCheckedPass, lineOfSight, endpointVisible,
+                consumer)) {
+            return;
+        }
         int to = group.currentIndex();
         int from = focusedDungeonRoutePreviousIndex(group);
         if (from < 0 || to < 0 || to >= group.size()) return;
@@ -668,6 +672,48 @@ class WaypointWorldRenderer {
         if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass, lineOfSight)) {
             consumer.accept(from, to);
         }
+    }
+
+    /**
+     * Draws the path that ends the current step (its trailing subwaypoints with no action,
+     * as imported routes store it) as one line. Returns false when there is no such path
+     * of two or more points, so the plain segment is drawn instead.
+     */
+    static boolean forEachStepPathSegment(WaypointGroup group, boolean depthCheckedPass,
+                                          Predicate<Waypoint> lineOfSight,
+                                          IntPredicate endpointVisible,
+                                          RouteLineSegmentConsumer consumer) {
+        int start = group.currentStepStart();
+        if (start < 0) return false;
+        int end = group.childEndExclusive(start);
+        int first = end;
+        int points = 0;
+        while (first - 1 > start && (isStepPathPoint(group, first - 1)
+                || group.isWaypointDisabled(first - 1))) {
+            first--;
+            if (isStepPathPoint(group, first)) points++;
+        }
+        if (points < 2) return false;
+        int previous = -1;
+        for (int i = first; i < end; i++) {
+            if (!isStepPathPoint(group, i)) continue;
+            if (previous >= 0
+                    && (endpointVisible == null
+                    || endpointVisible.test(previous) && endpointVisible.test(i))
+                    && routeSegmentMatchesDepthPass(group.get(previous), group.get(i),
+                    depthCheckedPass, lineOfSight)) {
+                consumer.accept(previous, i);
+            }
+            previous = i;
+        }
+        return true;
+    }
+
+    static boolean isStepPathPoint(WaypointGroup group, int index) {
+        if (!group.isSubwaypoint(index) || group.isWaypointDisabled(index)) return false;
+        Waypoint waypoint = group.get(index);
+        return (waypoint.flags() & Waypoint.DUNGEON_COMPLETION_FLAGS) == 0
+                && !waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET);
     }
 
     static int focusedDungeonRoutePreviousIndex(WaypointGroup group) {

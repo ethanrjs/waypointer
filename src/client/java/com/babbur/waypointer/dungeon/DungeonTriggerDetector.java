@@ -136,6 +136,16 @@ public final class DungeonTriggerDetector {
     private void advanceCurrentAction(int actionFlag, double x, double y, double z) {
         if (manager == null) return;
         for (WaypointGroup group : manager.activeGroups()) {
+            if (DungeonStepProgress.appliesTo(group)) {
+                int index = nearestStepAction(group, actionFlag, x, y, z);
+                if (index < 0) continue;
+                boolean secret = group.get(index).hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
+                if (DungeonStepProgress.complete(group, index)) {
+                    if (secret) DungeonSecretCompletionSound.play(config);
+                    if (group.isComplete()) manager.fireTransientDataChanged();
+                }
+                continue;
+            }
             int currentIndex = group.currentIndex();
             if (currentIndex < 0 || currentIndex >= group.size()) continue;
             Waypoint current = group.get(currentIndex);
@@ -148,5 +158,31 @@ public final class DungeonTriggerDetector {
             group.advancePast(currentIndex);
             if (secret) DungeonSecretCompletionSound.play(config);
         }
+    }
+
+    /**
+     * The closest waypoint with this action in the current step, or for item and bat
+     * secrets also in later steps, within trigger range of where it happened.
+     */
+    static int nearestStepAction(WaypointGroup group, int actionFlag,
+                                 double x, double y, double z) {
+        boolean laterSecrets = actionFlag == Waypoint.FLAG_DUNGEON_ITEM
+                || actionFlag == Waypoint.FLAG_DUNGEON_BAT;
+        int[] best = { -1 };
+        double[] bestDistance = { ENTITY_TRIGGER_RANGE_SQ };
+        DungeonStepProgress.forEachCandidate(group, laterSecrets, i -> {
+            Waypoint waypoint = group.get(i);
+            if (!waypoint.hasFlag(actionFlag)) return true;
+            double dx = waypoint.centerX() - x;
+            double dy = waypoint.centerY() - y;
+            double dz = waypoint.centerZ() - z;
+            double distance = dx * dx + dy * dy + dz * dz;
+            if (best[0] < 0 ? distance <= bestDistance[0] : distance < bestDistance[0]) {
+                best[0] = i;
+                bestDistance[0] = distance;
+            }
+            return true;
+        });
+        return best[0];
     }
 }

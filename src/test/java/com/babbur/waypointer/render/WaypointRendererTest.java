@@ -362,6 +362,26 @@ class WaypointRendererTest {
     }
 
     @Test
+    void anImportedStepPathIsDrawnInsteadOfTheStraightConnector() {
+        int action = Waypoint.FLAG_SKIP_ON_INTERACT;
+        int guide = Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT;
+        WaypointGroup group = groupWith(
+                waypointAt(0, 64, 0, action),
+                waypointAt(1, 64, 0, action | Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(2, 64, 0, guide),
+                waypointAt(3, 64, 0, guide | Waypoint.FLAG_DISABLED),
+                waypointAt(4, 64, 0, guide),
+                waypointAt(5, 64, 0, guide),
+                waypointAt(9, 64, 0, action));
+        assertEquals(List.of("2-4", "4-5"), focusedDungeonRouteLineSegments(group, false));
+        group.advancePast(0);
+        assertEquals(List.of("2-4", "4-5"), focusedDungeonRouteLineSegments(group, false));
+        group.advancePast(1);
+        assertEquals(List.of("1-6"), focusedDungeonRouteLineSegments(group, false),
+                "a step without a path keeps the plain connector");
+    }
+
+    @Test
     void dungeonLabelsOnlySurfaceTheFocusedPairAndNeverInventNumericNames() {
         WaypointGroup group = groupWith(waypoint(0), waypoint(0), waypoint(0));
 

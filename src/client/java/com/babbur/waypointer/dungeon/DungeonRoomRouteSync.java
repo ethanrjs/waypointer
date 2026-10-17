@@ -139,10 +139,12 @@ public final class DungeonRoomRouteSync {
     static void carryOverProgress(WaypointGroup previous, WaypointGroup next) {
         if (previous == null || next == null) return;
         if (next.activeSubwaypointParentIndex() >= 0 || next.isComplete()) return;
-        if (previous.isComplete() && sameWaypointSequence(previous, next)) {
+        boolean sameSequence = sameWaypointSequence(previous, next);
+        if (previous.isComplete() && sameSequence) {
             next.setCurrentTargetIndex(next.size());
             return;
         }
+        if (sameSequence) next.restoreStepDone(previous.stepDoneSnapshot());
 
         int previousActiveParent = previous.activeSubwaypointParentIndex();
         if (previousActiveParent >= 0) {
