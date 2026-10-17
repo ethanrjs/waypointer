@@ -6,9 +6,7 @@ import com.babbur.waypointer.render.RenderHelpers;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,9 +23,6 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
  */
 final class CatalogRoutePreview {
 
-    private static final Identifier DOT = Identifier.fromNamespaceAndPath(
-            com.babbur.waypointer.Waypointer.MOD_ID, "textures/gui/map_dot.png");
-    private static final int DOT_SIZE = 32;
     /** Path width in GUI pixels. */
     private static final double LINE_WIDTH = 1.25;
 
@@ -179,12 +174,12 @@ final class CatalogRoutePreview {
                     hoveredX = sx;
                     hoveredY = sy;
                 }
-                dot(g, sx, sy, point, i == 0);
+                dot(g, sx, sy, point, i == 0, guiScale);
             }
         }
         if (hovered != null) {
-            disc(g, hoveredX, hoveredY, 4.0, TEXT);
-            disc(g, hoveredX, hoveredY, 3.0, hovered.color());
+            square(g, hoveredX, hoveredY, 7, TEXT, guiScale);
+            square(g, hoveredX, hoveredY, 5, hovered.color(), guiScale);
         }
         g.disableScissor();
 
@@ -200,23 +195,27 @@ final class CatalogRoutePreview {
         return hovered;
     }
 
-    /** A waypoint: a colored disc in a dark ring, a white ring for the start, smaller for subwaypoints. */
-    private static void dot(GuiGraphicsExtractor g, double x, double y, Point point, boolean first) {
+    /** A waypoint: a colored square in a dark frame, a white frame for the start, smaller for subwaypoints. */
+    private static void dot(GuiGraphicsExtractor g, double x, double y, Point point, boolean first, double guiScale) {
         if (point.subwaypoint()) {
-            disc(g, x, y, 1.9, 0xE0101216);
-            disc(g, x, y, 1.2, point.color());
+            square(g, x, y, 3, 0xE0101216, guiScale);
+            square(g, x, y, 1.5, point.color(), guiScale);
             return;
         }
-        disc(g, x, y, 3.0, first ? TEXT : 0xE0101216);
-        disc(g, x, y, 2.1, point.color());
+        square(g, x, y, 5, first ? TEXT : 0xE0101216, guiScale);
+        square(g, x, y, 3, point.color(), guiScale);
     }
 
-    private static void disc(GuiGraphicsExtractor g, double x, double y, double radius, int argb) {
+    /** A square of {@code side} GUI pixels centred on (x, y), snapped to whole screen pixels so it stays crisp. */
+    private static void square(GuiGraphicsExtractor g, double x, double y, double side, int argb, double guiScale) {
+        int pixels = Math.max(1, (int) Math.round(side * guiScale));
+        double left = Math.round(x * guiScale - pixels / 2.0) / guiScale;
+        double top = Math.round(y * guiScale - pixels / 2.0) / guiScale;
         var pose = g.pose();
         pose.pushMatrix();
-        pose.translate((float) (x - radius), (float) (y - radius));
-        pose.scale((float) (radius * 2 / DOT_SIZE), (float) (radius * 2 / DOT_SIZE));
-        g.blit(RenderPipelines.GUI_TEXTURED, DOT, 0, 0, 0f, 0f, DOT_SIZE, DOT_SIZE, DOT_SIZE, DOT_SIZE, argb);
+        pose.translate((float) left, (float) top);
+        pose.scale((float) (1 / guiScale), (float) (1 / guiScale));
+        g.fill(0, 0, pixels, pixels, argb);
         pose.popMatrix();
     }
 

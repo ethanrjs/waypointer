@@ -95,6 +95,11 @@ public final class ScreenGallery {
         context.waitTicks(2);
         context.takeScreenshot("gallery-hub-route-menu-open-s" + scale);
         shoot(context, "minimap-editor", scale, () -> new CrystalHollowsMinimapEditorScreen(null, config));
+        context.runOnClient(client -> com.babbur.waypointer.crystal.CrystalHollowsTerrainScanner.get()
+                .previewOnly(sampleScan()));
+        shoot(context, "minimap-scan", scale, () -> new CrystalHollowsMinimapEditorScreen(null, config));
+        context.runOnClient(client -> com.babbur.waypointer.crystal.CrystalHollowsTerrainScanner.get()
+                .setEnabled(false));
         shoot(context, "debug", scale, () -> new DebugInspectScreen(null));
         // Menus and states inside the everyday screens.
         shoot(context, "hub-new-menu", scale, () -> new WaypointerScreen(manager, config));
@@ -177,6 +182,51 @@ public final class ScreenGallery {
             of.setAccessible(true);
             return of.invoke(null, List.of(route));
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+
+    /**
+     * A made-up partial scan for the map overlay: the north-west two thirds seen, solid rock with
+     * winding tunnels and a few caverns around Y 100.
+     */
+    private static com.babbur.waypointer.crystal.CrystalHollowsTerrain sampleScan() {
+        var terrain = new com.babbur.waypointer.crystal.CrystalHollowsTerrain();
+        int min = com.babbur.waypointer.crystal.CrystalHollowsTerrain.MIN_X;
+        int max = min + com.babbur.waypointer.crystal.CrystalHollowsTerrain.SIZE_XZ - 1;
+        for (int cz = com.babbur.waypointer.crystal.CrystalHollowsTerrain.MIN_CHUNK;
+             cz <= com.babbur.waypointer.crystal.CrystalHollowsTerrain.MAX_CHUNK; cz++) {
+            for (int cx = com.babbur.waypointer.crystal.CrystalHollowsTerrain.MIN_CHUNK;
+                 cx <= com.babbur.waypointer.crystal.CrystalHollowsTerrain.MAX_CHUNK; cx++) {
+                if (Math.hypot(cx * 16 - 300, cz * 16 - 300) > 380) continue;
+                for (int y = 90; y <= 112; y++) {
+                    for (int z = Math.max(min, cz * 16); z <= Math.min(max, cz * 16 + 15); z++) {
+                        for (int x = Math.max(min, cx * 16); x <= Math.min(max, cx * 16 + 15); x++) {
+                            terrain.setSolid(x, y, z, true);
+                        }
+                    }
+                }
+                terrain.markChunkSeen(cx, cz);
+            }
+        }
+        java.util.Random random = new java.util.Random(7);
+        for (int walk = 0; walk < 14; walk++) {
+            double x = 300 + random.nextInt(320), z = 300 + random.nextInt(320), angle = random.nextDouble() * Math.PI * 2;
+            for (int step = 0; step < 260; step++) {
+                angle += (random.nextDouble() - 0.5) * 0.5;
+                x = Math.clamp(x + Math.cos(angle) * 2, min + 4, max - 4);
+                z = Math.clamp(z + Math.sin(angle) * 2, min + 4, max - 4);
+                carve(terrain, x, z, step % 40 == 0 ? 9 : 2);
+            }
+        }
+        return terrain;
+    }
+
+    private static void carve(com.babbur.waypointer.crystal.CrystalHollowsTerrain terrain, double cx, double cz, int radius) {
+        for (int dz = -radius; dz <= radius; dz++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                if (dx * dx + dz * dz > radius * radius) continue;
+                for (int y = 99; y <= 103; y++) terrain.setSolid((int) cx + dx, y, (int) cz + dz, false);
+            }
+        }
     }
 
     /** A tungsten loop through the Glacite Tunnels, for the preview map. */

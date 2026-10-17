@@ -4,6 +4,8 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.crystal.CrystalHollowsLobbyState;
 import com.babbur.waypointer.crystal.CrystalHollowsSightingSelector;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.CrystalHollowsTerrain;
+import com.babbur.waypointer.crystal.CrystalHollowsTerrainScanner;
 import com.babbur.waypointer.crystal.CrystalHollowsShare;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.crystal.SightingConfidence;
@@ -40,6 +42,10 @@ public final class CrystalHollowsCommands {
     LiteralCommandNode<FabricClientCommandSource> register(
             CommandDispatcher<FabricClientCommandSource> dispatcher) {
         LiteralArgumentBuilder<FabricClientCommandSource> command = literal("wpch")
+                .then(literal("scan")
+                        .executes(context -> runScanStatus(context.getSource()))
+                        .then(literal("on").executes(context -> runScan(context.getSource(), true)))
+                        .then(literal("off").executes(context -> runScan(context.getSource(), false))))
                 .then(literal("sendcoords")
                         .then(argument("structure", StringArgumentType.word())
                                 .then(argument("x", IntegerArgumentType.integer())
@@ -78,6 +84,30 @@ public final class CrystalHollowsCommands {
                 "manual:player", System.currentTimeMillis()), false);
         success(source, Component.translatable("waypointer.crystal.command.added",
                 displayName(structure), x, y, z));
+        return 1;
+    }
+
+    private int runScan(FabricClientCommandSource source, boolean on) {
+        CrystalHollowsTerrainScanner scanner = CrystalHollowsTerrainScanner.get();
+        if (scanner == null) return 0;
+        scanner.setEnabled(on);
+        success(source, Component.translatable(on
+                ? "waypointer.crystal.scan.on" : "waypointer.crystal.scan.off",
+                scanner.directory().toString()));
+        return 1;
+    }
+
+    private int runScanStatus(FabricClientCommandSource source) {
+        CrystalHollowsTerrainScanner scanner = CrystalHollowsTerrainScanner.get();
+        if (scanner == null) return 0;
+        if (!scanner.enabled()) {
+            success(source, Component.translatable("waypointer.crystal.scan.status.off"));
+            return 1;
+        }
+        int total = CrystalHollowsTerrain.totalChunks();
+        int covered = scanner.coveredChunks();
+        success(source, Component.translatable("waypointer.crystal.scan.status",
+                covered * 100 / total, covered, total, scanner.sessionChunks(), scanner.earlierScanCount()));
         return 1;
     }
 

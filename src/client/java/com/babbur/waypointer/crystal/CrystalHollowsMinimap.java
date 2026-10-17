@@ -102,6 +102,8 @@ public final class CrystalHollowsMinimap implements HudElement {
                 g.fill(x + offset, y + offsetZ, x + offset + 1, y + offsetZ + 1, 0x248CA3AB);
             }
         }
+        CrystalHollowsTerrainScanner scanner = CrystalHollowsTerrainScanner.get();
+        if (scanner != null) scanner.drawOverlay(g, x, y, size, playerY);
         List<StructureSighting> visible = sightings.stream().filter(sighting ->
                 CrystalHollowsMinimapLayout.contains(sighting.x(), sighting.z())
                         && (showRough || sighting.confidence() != SightingConfidence.ROUGH_AREA)
