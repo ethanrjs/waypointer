@@ -1175,13 +1175,6 @@ public final class WaypointerScreen extends Screen {
                 PAD_OUTER, PAD_OUTER, width - PAD_OUTER);
     }
 
-    /** Only a shown, saved route in the player's zone can be pinned as the target route. */
-    private boolean canPinTarget(WaypointGroup group) {
-        var zone = manager.currentZone();
-        return zone != null && group.enabled() && !group.temp() && !group.runtimeOnly()
-                && zone.id().equals(group.zoneId());
-    }
-
     void openRouteRowMenu(WaypointGroup group, double anchorX, double anchorY) {
         if (group == null) return;
         closeIslandDropdown();
@@ -1206,14 +1199,6 @@ public final class WaypointerScreen extends Screen {
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.menu.edit"),
                 ContextMenuOverlay.hint("double_click"), () -> openGroupEditor(group)));
-        if (canPinTarget(group)) {
-            boolean pinned = manager.recordingTarget() == group;
-            items.add(ContextMenuOverlay.Item.of(
-                    Component.translatable(pinned
-                            ? "waypointer.screen.main.menu.unpin_target"
-                            : "waypointer.screen.main.menu.pin_target"),
-                    null, () -> manager.setRecordingTarget(pinned ? null : group)));
-        }
         AppearanceTarget look = AppearanceTarget.route(manager, config, group, manager::fireDataChanged);
         if (look != null) {
             int lookCount = look.scope().count();
@@ -1301,8 +1286,6 @@ public final class WaypointerScreen extends Screen {
 
     private static final Map<String, Icons.Icon> ROUTE_MENU_ICONS = Map.ofEntries(
             Map.entry("waypointer.screen.main.menu.edit", Icons.Icon.PENCIL),
-            Map.entry("waypointer.screen.main.menu.pin_target", Icons.Icon.PIN),
-            Map.entry("waypointer.screen.main.menu.unpin_target", Icons.Icon.PIN),
             Map.entry("waypointer.screen.main.menu.appearance", Icons.Icon.BRUSH),
             Map.entry("waypointer.screen.main.menu.hide", Icons.Icon.EYE_OFF),
             Map.entry("waypointer.screen.main.menu.show", Icons.Icon.EYE),
