@@ -1369,7 +1369,7 @@
   "waypointer.command.help.section.waypoints": "Waypoints",
   "waypointer.command.help.section.progress": "Progress",
   "waypointer.command.help.list_routes": "List this zone's routes. Click one to make it the target route.",
-  "waypointer.command.help.target": "Show or pick the target route: the route route and waypoint commands, the add keybind and new waypoints use. Without a pin it is the route you last edited here.",
+  "waypointer.command.help.target": "Show or pick the target route: the one that route and waypoint commands, the add keybind and new waypoints use. Without a pin it is the route you last edited here.",
   "waypointer.command.help.waypoints": "List the target route's waypoints with the numbers the editor shows.",
   "waypointer.command.help.settings": "Open Waypointer settings.",
   "waypointer.command.help.community": "Browse community routes.",

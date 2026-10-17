@@ -48,5 +48,5 @@ share
 mail
 close
 dot
-badge_discord
+badge_gem
 badge_check

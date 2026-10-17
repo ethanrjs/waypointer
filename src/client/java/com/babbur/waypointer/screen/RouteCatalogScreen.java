@@ -296,7 +296,7 @@ public final class RouteCatalogScreen extends Screen {
             boolean on = CatalogRouteSummary.TAG_MINING_CULT.equals(browser.tagFilter());
             miningCultChip = new CatalogFilterChip(contentX + hideInstalledChip.getWidth() + GAP_TIGHT, chipsY,
                     Component.translatable("waypointer.screen.route_catalog.tag.mining_cult"),
-                    on, CatalogRouteRowButton.MINING_CULT, Icons.Icon.BADGE_DISCORD, () -> {
+                    on, CatalogRouteRowButton.MINING_CULT, Icons.Icon.BADGE_GEM, () -> {
                         browser.setTagFilter(on ? null : CatalogRouteSummary.TAG_MINING_CULT);
                         applyFilters();
                     });
