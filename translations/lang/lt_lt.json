@@ -124,7 +124,6 @@
   "waypointer.command.export.empty": "Nėra ko eksportuoti.",
   "waypointer.command.import.file_usage": "Naudojimas: /wp importfile <path>",
   "waypointer.command.route.list_empty": "Nėra apibrėžtų maršrutų.",
-  "waypointer.common.none": "(Nėra)",
   "waypointer.common.on": "Įjungta",
   "waypointer.common.off": "Išjungta",
   "waypointer.common.confirm": "Patvirtinti?",

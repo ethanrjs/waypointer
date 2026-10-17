@@ -65,7 +65,6 @@
   "waypointer.command.skip.success.many": "Skipped teh current waypoint in %1$s active routes.",
   "waypointer.command.error.no_active_route": "No active route in teh current area.",
   "waypointer.command.reset.success": "Reset \"%1$s\" to teh first waypoint",
-  "waypointer.command.record_link.removed": "Removed teh best time for \"%1$s\".",
   "waypointer.command.waypoint.first_not_subwaypoint": "teh first waypoint cannot be a subwaypoint.",
   "waypointer.command.error.convert_first": "Convert teh downloaded dungeon secrets to an editable route first.",
   "waypointer.command.error.no_current_waypoint": "No current waypoint in teh active route.",

@@ -87,7 +87,6 @@
   "waypointer.command.export.empty": "Ekkert til að flytja út.",
   "waypointer.command.import.file_usage": "Notkun: /wp importfile <path>",
   "waypointer.command.route.list_empty": "Það eru engar leiðir.",
-  "waypointer.common.none": "(Ekkert)",
   "waypointer.common.on": "Kveikt",
   "waypointer.common.off": "Slökkt",
   "waypointer.common.confirm": "Staðfesta?",

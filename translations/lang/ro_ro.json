@@ -81,8 +81,6 @@
   "waypointer.command.list.route": "Ruta: %1$s (%2$s puncte, indicele curent %3$s)",
   "waypointer.command.list.route_numbered": "Ruta: %1$s (%2$s puncte, punctul de reper actual %3$s)",
   "waypointer.command.error.no_active_route": "Nu există nicio rută activă în zona actuală.",
-  "waypointer.command.record_link.invalid": "Acest link de înregistrare este invalid.",
-  "waypointer.command.record_link.stale": "Această înregistrare a rutei s-a modificat deja sau a fost eliminată.",
   "waypointer.command.waypoint.renamed": "Punctul de reper %1$s a fost redenumit",
   "waypointer.command.error.color_hex": "Culoarea trebuie să fie hexazecimală, cu 6 cifre, ca 58C878.",
   "waypointer.command.error.route_zone_usage": "Utilizare: /wp route zone <route> <zone|current>",
