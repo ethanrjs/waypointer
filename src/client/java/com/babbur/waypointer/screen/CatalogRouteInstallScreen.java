@@ -51,6 +51,7 @@ public final class CatalogRouteInstallScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
     private static final int LINE_H = 11;
     private static final int SIDE_BY_SIDE_W = 420;
+    private static final int HEADER_ICON = 36;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
     private static final int MAX_REFERENCE_PROBE_CHARS = 256;
@@ -335,29 +336,33 @@ public final class CatalogRouteInstallScreen extends Screen {
         }
     }
 
-    /** Title and Mining Cult badge, zone and publisher, size and age, then the install state. */
+    /** The route's icon, then beside it the title and Mining Cult badge, zone and publisher, size and age. */
     private int renderHeader(GuiGraphicsExtractor graphics, CatalogRouteSummary summary, int y,
                              int mouseX, int mouseY) {
         int right = contentX + contentW;
+        int iconTop = y - 1;
+        RouteIcons.slotted(graphics, summary.displayIcon(), contentX, iconTop, HEADER_ICON, 32);
+        int x = contentX + HEADER_ICON + GAP;
+        int available = Math.max(20, right - x);
         boolean miningCult = summary.hasTag(CatalogRouteSummary.TAG_MINING_CULT);
         int badgeW = miningCult ? CatalogRouteRowButton.miningCultWidth(font) + GAP : 0;
-        Component title = Component.literal(GuiTokens.ellipsize(font, summary.title(), contentW - badgeW))
+        Component title = Component.literal(GuiTokens.ellipsize(font, summary.title(), available - badgeW))
                 .withStyle(ChatFormatting.BOLD);
-        graphics.text(font, title, contentX, y, TEXT, false);
+        graphics.text(font, title, x, y, TEXT, false);
         if (miningCult) {
             int pillX = right - badgeW + GAP;
             CatalogRouteRowButton.drawMiningCult(graphics, font, pillX, y);
             CatalogRouteRowButton.miningCultTooltip(graphics, font, pillX, y, mouseX, mouseY);
         }
         y += LINE_H + 3;
-        CatalogRouteRowButton.drawZoneAndPublisher(graphics, font, summary, contentX, y, contentW);
+        CatalogRouteRowButton.drawZoneAndPublisher(graphics, font, summary, x, y, available);
         y += LINE_H + 1;
         String facts = RouteCatalogScreen.detailFacts(summary);
-        String shownFacts = GuiTokens.ellipsize(font, facts, contentW);
-        graphics.text(font, shownFacts, contentX, y, TEXT_MUTED, false);
+        String shownFacts = GuiTokens.ellipsize(font, facts, available);
+        graphics.text(font, shownFacts, x, y, TEXT_MUTED, false);
         RouteCatalogScreen.dateTooltip(graphics, font, summary,
-                facts.equals(shownFacts) ? contentX + font.width(facts) : -1, y, mouseX, mouseY);
-        y += LINE_H;
+                facts.equals(shownFacts) ? x + font.width(facts) : -1, y, mouseX, mouseY);
+        y = Math.max(y + LINE_H, iconTop + HEADER_ICON);
         Component stateLine = installState == null ? null
                 : RouteCatalogScreen.installStateLine(installState, summary);
         if (stateLine != null) {
