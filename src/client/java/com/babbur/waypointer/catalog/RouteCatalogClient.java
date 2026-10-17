@@ -72,12 +72,41 @@ public final class RouteCatalogClient {
 
     public CompletableFuture<CatalogPage> listRoutes(
             String query, String zone, String cursor) {
+        return listRoutes(query, zone, null, null, cursor);
+    }
+
+    /**
+     * One page of public routes. {@code tag} keeps only routes with that server tag;
+     * {@code sort} is one of {@link #SORTS} (the catalog's own order when null or
+     * {@code recommended}). A cursor only continues the query it came from.
+     */
+    public CompletableFuture<CatalogPage> listRoutes(
+            String query, String zone, String tag, String sort, String cursor) {
         StringBuilder relative = new StringBuilder("routes?limit=50");
         appendQuery(relative, "q", normalizeSearch(query));
         appendQuery(relative, "zone", normalizeZone(zone));
+        appendQuery(relative, "tag", normalizeTag(tag));
+        appendQuery(relative, "sort", normalizeSort(sort));
         appendQuery(relative, "cursor", normalizeCursor(cursor));
         HttpRequest request = request(relative.toString()).GET().build();
         return sendJson(request, MAX_LIST_BYTES, 200).thenApply(CatalogJson::parsePage);
+    }
+
+    /** Sort orders the catalog understands; servers ignore ones they do not know. */
+    public static final java.util.List<String> SORTS =
+            java.util.List.of("recommended", "popular", "newest", "updated", "waypoints", "name");
+
+    /**
+     * A light, thinned list of a route's waypoint positions for drawing its map. Older
+     * catalogs lack this endpoint; callers fall back to {@link #getRoute}.
+     */
+    public CompletableFuture<CatalogRoutePreviewData> getRoutePreview(String routeId) {
+        if (!isValidRouteId(routeId)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Invalid catalog route ID"));
+        }
+        HttpRequest request = request("routes/" + routeId + "/preview").GET().build();
+        return sendJson(request, MAX_LIST_BYTES, 200).thenApply(CatalogJson::parsePreview);
     }
 
     public CompletableFuture<CatalogRouteDetails> getRoute(String routeId) {
@@ -317,6 +346,22 @@ public final class RouteCatalogClient {
             throw new IllegalArgumentException("Invalid catalog zone ID");
         }
         return trimmed;
+    }
+
+    private static String normalizeTag(String value) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!trimmed.matches("[a-z0-9][a-z0-9-]{0,31}")) {
+            throw new IllegalArgumentException("Invalid catalog tag");
+        }
+        return trimmed;
+    }
+
+    /** Omits the default order so a plain listing keeps its old URL. */
+    private static String normalizeSort(String value) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return SORTS.contains(trimmed) && !trimmed.equals("recommended") ? trimmed : null;
     }
 
     private static String normalizeCursor(String value) {

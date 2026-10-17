@@ -70,6 +70,56 @@ final class CatalogJson {
         return new CatalogRouteDetails(summary, payload);
     }
 
+    private static final int MAX_PREVIEW_GROUPS = 256;
+    private static final int MAX_PREVIEW_POINTS = 5_000;
+    private static final int MAX_COORDINATE = 30_000_000;
+
+    /** {"version", "totalPoints", "truncated", "groups": [{"kind", "points": [[x, y, z, rgb, isSub]]}]}. */
+    static CatalogRoutePreviewData parsePreview(String json) {
+        JsonObject root = object(JsonParser.parseString(json), "preview response");
+        JsonArray groupValues = array(root.get("groups"), "groups");
+        if (groupValues.size() > MAX_PREVIEW_GROUPS) {
+            throw new IllegalArgumentException("Preview has too many groups");
+        }
+        List<CatalogRoutePreviewData.Group> groups = new ArrayList<>();
+        int points = 0;
+        for (JsonElement groupValue : groupValues) {
+            JsonObject group = object(groupValue, "group");
+            boolean dungeon = "dungeon".equals(optionalString(group, "kind", 16, "regular"));
+            JsonArray pointValues = array(group.get("points"), "points");
+            List<CatalogRoutePreviewData.Point> parsed = new ArrayList<>(pointValues.size());
+            for (JsonElement pointValue : pointValues) {
+                if (++points > MAX_PREVIEW_POINTS) {
+                    throw new IllegalArgumentException("Preview has too many points");
+                }
+                JsonArray point = array(pointValue, "point");
+                if (point.size() != 5) throw new IllegalArgumentException("Preview point needs 5 numbers");
+                parsed.add(new CatalogRoutePreviewData.Point(
+                        boundedInt(point.get(0), MAX_COORDINATE), boundedInt(point.get(1), 4096),
+                        boundedInt(point.get(2), MAX_COORDINATE),
+                        boundedInt(point.get(3), Integer.MAX_VALUE) & 0xFFFFFF,
+                        boundedInt(point.get(4), 1) == 1));
+            }
+            groups.add(new CatalogRoutePreviewData.Group(dungeon, parsed));
+        }
+        return new CatalogRoutePreviewData(
+                optionalPositiveInt(root, "version", 1),
+                Math.max(points, optionalPositiveInt(root, "totalPoints", Math.max(1, points))),
+                optionalBoolean(root, "truncated", false),
+                groups);
+    }
+
+    private static int boundedInt(JsonElement value, int limit) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("Preview point must be numbers");
+        }
+        double number = value.getAsDouble();
+        if (number != Math.rint(number) || Math.abs(number) > limit) {
+            throw new IllegalArgumentException("Preview point is out of range");
+        }
+        return (int) number;
+    }
+
     static CatalogPublishResult parsePublishResult(String json) {
         JsonObject root = object(JsonParser.parseString(json), "publish response");
         CatalogRouteSummary route = parseSummary(object(root.get("route"), "route"));

@@ -100,6 +100,40 @@ class RouteCatalogClientTest {
     }
 
     @Test
+    void listSendsTagAndSortButKeepsTheDefaultOrderUrlUnchanged() {
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", "{\"routes\":[]}".getBytes(StandardCharsets.UTF_8)));
+        RouteCatalogClient client = client(transport);
+
+        client.listRoutes("gems", null, "Mining-Cult", "popular", null).join();
+        assertEquals("https://catalog.example/api/routes?limit=50&q=gems&tag=mining-cult&sort=popular",
+                transport.request.uri().toString());
+        client.listRoutes(null, "hub", null, "recommended", null).join();
+        assertEquals("https://catalog.example/api/routes?limit=50&zone=hub", transport.request.uri().toString());
+        client.listRoutes(null, null, null, "sideways", null).join();
+        assertEquals("https://catalog.example/api/routes?limit=50", transport.request.uri().toString());
+        assertThrows(IllegalArgumentException.class,
+                () -> client.listRoutes(null, null, "Not A Tag", null, null));
+    }
+
+    @Test
+    void previewReadsTheLightEndpoint() {
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", ("{\"version\":3,\"totalPoints\":2,\"truncated\":false,"
+                + "\"groups\":[{\"kind\":\"regular\",\"points\":[[1,70,-2,16711680,0],[5,71,3,255,1]]}]}")
+                .getBytes(StandardCharsets.UTF_8)));
+
+        CatalogRoutePreviewData preview = client(transport).getRoutePreview("Abcdefghijklmnopqrstuv").join();
+
+        assertEquals("https://catalog.example/api/routes/Abcdefghijklmnopqrstuv/preview",
+                transport.request.uri().toString());
+        assertEquals(3, preview.version());
+        assertEquals(1, preview.groups().size());
+        assertEquals(new CatalogRoutePreviewData.Point(5, 71, 3, 0x0000FF, true),
+                preview.groups().getFirst().points().get(1));
+    }
+
+    @Test
     void listRejectsInvalidFiltersBeforeNetworkAccess() {
         RecordingTransport transport = new RecordingTransport(null);
         RouteCatalogClient client = client(transport);

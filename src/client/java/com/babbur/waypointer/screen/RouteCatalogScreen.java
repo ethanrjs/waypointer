@@ -298,7 +298,7 @@ public final class RouteCatalogScreen extends Screen {
                     Component.translatable("waypointer.screen.route_catalog.tag.mining_cult"),
                     on, CatalogRouteRowButton.MINING_CULT, Icons.Icon.BADGE_GEM, () -> {
                         browser.setTagFilter(on ? null : CatalogRouteSummary.TAG_MINING_CULT);
-                        applyFilters();
+                        refetchForServerFilters();
                     });
             miningCultChip.setTooltip(Tooltip.create(Component.translatable(
                     "waypointer.screen.route_catalog.tag.mining_cult.tooltip")));
@@ -472,6 +472,13 @@ public final class RouteCatalogScreen extends Screen {
         return (zone == null ? "" : zone) + '\n' + (query == null ? "" : query);
     }
 
+    /** Server-sorted or tag-filtered pages are cached apart from the plain listing. */
+    static String searchCacheKey(String zone, String query, String tag, CatalogBrowserModel.Sort sort) {
+        String key = searchCacheKey(zone, query);
+        boolean plain = tag == null && (sort == null || sort == CatalogBrowserModel.Sort.RECOMMENDED);
+        return plain ? key : key + '\n' + (tag == null ? "" : tag) + '\n' + sort.id;
+    }
+
     private void handleSearchEdit(String value) {
         if (initializing) return;
         applySearchEdit(browser, value, () -> {
@@ -561,8 +568,8 @@ public final class RouteCatalogScreen extends Screen {
     private void runPendingSearch() {
         searchDebounceTicks = 0;
         browser.submitPendingSearch();
-        CatalogPage cached = cachedSearchPage(searchCache,
-                browser.zoneFilter(), browser.normalizedQuery());
+        CatalogPage cached = cachedSearchPage(searchCache, browser.zoneFilter(),
+                browser.normalizedQuery(), browser.tagFilter(), browser.sort());
         if (cached != null) {
             showCachedPage(cached);
             return;
@@ -571,7 +578,16 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     static CatalogPage cachedSearchPage(Map<String, CatalogPage> cache, String zone, String query) {
-        CatalogPage exact = cache.get(searchCacheKey(zone, query));
+        return cachedSearchPage(cache, zone, query, null, CatalogBrowserModel.Sort.RECOMMENDED);
+    }
+
+    /**
+     * An exact cached page, or one cut from a complete cached listing. Sorting and tag
+     * filtering of a complete listing happen in the browser model, so any order can reuse it.
+     */
+    static CatalogPage cachedSearchPage(Map<String, CatalogPage> cache, String zone, String query,
+                                        String tag, CatalogBrowserModel.Sort sort) {
+        CatalogPage exact = cache.get(searchCacheKey(zone, query, tag, sort));
         if (exact != null) return exact;
         CatalogPage complete = cache.get(searchCacheKey(zone, ""));
         if (complete == null || complete.hasMore()) {
@@ -580,6 +596,7 @@ public final class RouteCatalogScreen extends Screen {
         if (complete == null || complete.hasMore()) return null;
         return new CatalogPage(complete.routes().stream()
                 .filter(route -> zone == null || zone.equals(route.zoneId()))
+                .filter(route -> tag == null || route.hasTag(tag))
                 .filter(route -> route.matches(query)).toList(), false, null);
     }
 
@@ -691,7 +708,18 @@ public final class RouteCatalogScreen extends Screen {
     private void chooseSort(CatalogBrowserModel.Sort sort) {
         sortMenu.close();
         if (!browser.setSort(sort)) return;
-        applyFilters();
+        refetchForServerFilters();
+    }
+
+    /** Sort and tag apply on the server, so a partial listing has to start over. */
+    private void refetchForServerFilters() {
+        requests.invalidateForSearch();
+        listLoading = false;
+        appending = false;
+        detailLoading = false;
+        lastLoadFailed = false;
+        descriptionScroll = 0;
+        runPendingSearch();
     }
 
     private int widestZoneOptionWidth() {
@@ -917,7 +945,9 @@ public final class RouteCatalogScreen extends Screen {
 
         String query = browser.normalizedQuery();
         String zone = browser.zoneFilter();
-        catalogClient.listRoutes(query, zone, cursor)
+        String tag = browser.tagFilter();
+        CatalogBrowserModel.Sort sort = browser.sort();
+        catalogClient.listRoutes(query, zone, tag, sort.id, cursor)
                 .whenComplete((page, failure) -> runOnClient(() -> {
             if (!requests.acceptsList(ticket)) return;
             listLoading = false;
@@ -929,7 +959,7 @@ public final class RouteCatalogScreen extends Screen {
                 browser.markLoadFailed(append);
             } else {
                 lastLoadFailed = false;
-                if (!append) searchCache.put(searchCacheKey(zone, query), page);
+                if (!append) searchCache.put(searchCacheKey(zone, query, tag, sort), page);
                 applyPage(page, append);
             }
             rebuildWidgets();
@@ -979,9 +1009,13 @@ public final class RouteCatalogScreen extends Screen {
         String id = route.id();
         int ticket = ++previewTicket;
         previewLoadingId = id;
-        catalogClient.getRoute(id)
-                .thenApply(details -> validateDetails(route, details))
-                .thenApplyAsync(details -> CatalogRoutePreview.of(CatalogRouteInstaller.decodeForPreview(details)))
+        catalogClient.getRoutePreview(id)
+                .thenApply(CatalogRoutePreview::of)
+                // Catalogs without the preview endpoint still have the full route.
+                .exceptionallyCompose(missing -> catalogClient.getRoute(id)
+                        .thenApply(details -> validateDetails(route, details))
+                        .thenApplyAsync(details -> CatalogRoutePreview.of(
+                                CatalogRouteInstaller.decodeForPreview(details))))
                 .whenComplete((preview, failure) -> runOnClient(() -> {
                     if (ticket != previewTicket) return;
                     previewLoadingId = null;
@@ -1575,7 +1609,8 @@ public final class RouteCatalogScreen extends Screen {
         super.tick();
         if (searchViewDirty) {
             searchViewDirty = false;
-            if (cachedSearchPage(searchCache, browser.zoneFilter(), browser.normalizedQuery()) != null) {
+            if (cachedSearchPage(searchCache, browser.zoneFilter(), browser.normalizedQuery(),
+                    browser.tagFilter(), browser.sort()) != null) {
                 runPendingSearch();
             } else {
                 rebuildWidgets();

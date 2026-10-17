@@ -259,4 +259,25 @@ class RouteCatalogScreenSearchTest {
                 "unlisted", "hub", "Hub", 1, 1, 9, 1,
                 0, "", "", "/r/AAAAAAAAAAAAAAAAAAAAAA");
     }
+
+    @Test
+    void sortedAndTaggedPagesCacheApartButCanReuseACompleteListing() {
+        var plain = RouteCatalogScreen.searchCacheKey("hub", "gems");
+        assertEquals(plain, RouteCatalogScreen.searchCacheKey("hub", "gems", null, CatalogBrowserModel.Sort.RECOMMENDED));
+        assertTrue(!plain.equals(RouteCatalogScreen.searchCacheKey("hub", "gems", null, CatalogBrowserModel.Sort.POPULAR)));
+        assertTrue(!plain.equals(RouteCatalogScreen.searchCacheKey("hub", "gems", "mining-cult",
+                CatalogBrowserModel.Sort.RECOMMENDED)));
+
+        var tagged = new com.babbur.waypointer.catalog.CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Gems", "",
+                "A", "", false, "public", "hub", "Hub", 3, 1, 9, 1, 0, "", "", "/r/a",
+                java.util.List.of("mining-cult"));
+        var untagged = new com.babbur.waypointer.catalog.CatalogRouteSummary("BBBBBBBBBBBBBBBBBBBBBB", "Gems too", "",
+                "B", "", false, "public", "hub", "Hub", 3, 1, 9, 1, 0, "", "", "/r/b");
+        java.util.Map<String, com.babbur.waypointer.catalog.CatalogPage> cache = new java.util.HashMap<>();
+        cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
+                new com.babbur.waypointer.catalog.CatalogPage(java.util.List.of(tagged, untagged), false, null));
+
+        var cut = RouteCatalogScreen.cachedSearchPage(cache, null, "", "mining-cult", CatalogBrowserModel.Sort.POPULAR);
+        assertEquals(java.util.List.of(tagged), cut.routes());
+    }
 }

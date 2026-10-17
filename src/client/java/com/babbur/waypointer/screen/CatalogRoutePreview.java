@@ -73,6 +73,33 @@ final class CatalogRoutePreview {
         return new CatalogRoutePreview(List.copyOf(paths), roomPack && groups.size() > 1, groups.size());
     }
 
+    /**
+     * From the catalog's light preview. When the server thinned the points, editor numbers can't
+     * be rebuilt, so hovering shows only positions.
+     */
+    static CatalogRoutePreview of(com.babbur.waypointer.catalog.CatalogRoutePreviewData data) {
+        List<List<Point>> paths = new ArrayList<>();
+        boolean roomPack = false;
+        for (var group : data.groups()) {
+            roomPack |= group.dungeon();
+            List<Point> path = new ArrayList<>(group.points().size());
+            int main = 0;
+            int child = 0;
+            for (var point : group.points()) {
+                if (point.subwaypoint() && main > 0) child++;
+                else {
+                    main++;
+                    child = 0;
+                }
+                String label = data.truncated() ? "" : "#" + main + (child > 0 ? "." + child : "");
+                path.add(new Point(point.x(), point.y(), point.z(), 0xFF000000 | point.rgb(),
+                        point.subwaypoint(), label, ""));
+            }
+            if (!path.isEmpty()) paths.add(List.copyOf(path));
+        }
+        return new CatalogRoutePreview(List.copyOf(paths), roomPack && data.groups().size() > 1, data.groups().size());
+    }
+
     boolean isEmpty() {
         return waypointCount == 0;
     }
@@ -191,10 +218,10 @@ final class CatalogRoutePreview {
     /** Tooltip lines for a waypoint on the map. */
     static List<Component> tooltip(Point point) {
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal(point.name() == null || point.name().isBlank()
-                ? point.label() : point.label() + "  " + point.name()));
+        String heading = (point.label() + "  " + (point.name() == null ? "" : point.name())).trim();
+        if (!heading.isEmpty()) lines.add(Component.literal(heading));
         lines.add(Component.literal(point.x() + ", " + point.y() + ", " + point.z()).withStyle(
-                net.minecraft.ChatFormatting.GRAY));
+                heading.isEmpty() ? net.minecraft.ChatFormatting.WHITE : net.minecraft.ChatFormatting.GRAY));
         return lines;
     }
 }

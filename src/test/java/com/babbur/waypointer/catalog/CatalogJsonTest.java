@@ -46,6 +46,22 @@ class CatalogJsonTest {
     private static final String EMOJI = "\uD83D\uDE00";
 
     @Test
+    void previewRejectsMalformedPoints() {
+        for (String bad : java.util.List.of(
+                "{\"groups\":[{\"points\":[[1,2,3,4]]}]}",
+                "{\"groups\":[{\"points\":[[1,2,3,4,\"x\"]]}]}",
+                "{\"groups\":[{\"points\":[[1.5,2,3,4,0]]}]}",
+                "{\"groups\":[{\"points\":[[99999999,2,3,4,0]]}]}",
+                "{\"groups\":{}}")) {
+            assertThrows(IllegalArgumentException.class, () -> CatalogJson.parsePreview(bad), bad);
+        }
+        var dungeon = CatalogJson.parsePreview(
+                "{\"truncated\":true,\"groups\":[{\"kind\":\"dungeon\",\"points\":[[0,-60,0,0,0]]}]}");
+        assertTrue(dungeon.truncated());
+        assertTrue(dungeon.groups().getFirst().dungeon());
+    }
+
+    @Test
     void readsServerTagsAndIgnoresMalformedOnes() {
         CatalogPage page = CatalogJson.parsePage("""
                 {"routes":[{
