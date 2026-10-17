@@ -98,6 +98,20 @@ final class ContextMenuOverlay {
         fitWidth(minX, maxRight);
     }
 
+    /** Opens under a dropdown button, at least as wide as the button and aligned with it. */
+    void openUnder(Font font, List<Item> menuItems, int anchorX, int anchorBottomY, int anchorWidth,
+                   int minX, int minY, int maxRight, int maxBottom) {
+        openAt(font, menuItems, anchorX, anchorBottomY, minX, minY, maxRight, maxBottom);
+        if (!open) return;
+        width = Math.min(Math.max(width, anchorWidth), maxRight - minX);
+        x = clampedX(anchorX, minX, maxRight, width);
+    }
+
+    /** The width these items need, hints included. */
+    static int naturalWidth(Font font, List<Item> menuItems) {
+        return menuWidth(measureWidest(font, menuItems, true));
+    }
+
     /** Narrow spaces drop the shortcut hints before the labels get cut. */
     private int fittedWidest(Font font, List<Item> menuItems, int room) {
         int widest = measureWidest(font, menuItems, true);

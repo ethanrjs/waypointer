@@ -355,14 +355,17 @@ public final class SettingsScreen extends Screen {
         Component label = Component.translatable("waypointer.screen.appearance.editing",
                 zoneScope ? target.name()
                         : Component.translatable("waypointer.screen.appearance.everywhere"));
-        int w = Math.min(font.width(label) + BUTTON_TEXT_PADDING + 8, (layout.mainRight() - layout.mainLeft()) / 2);
+        // As wide as its menu, so the list drops straight down from the button.
+        int w = Math.max(font.width(label) + BUTTON_TEXT_PADDING + 8,
+                ContextMenuOverlay.naturalWidth(font, scopeMenuItems()));
+        w = Math.min(w, (layout.mainRight() - layout.mainLeft()) / 2);
         scopeSwitcher = styledButton(layout.mainRight() - GAP - w, layout.top() + 4, w, BTN_H,
                 Component.literal(font.plainSubstrByWidth(label.getString(), w - BUTTON_TEXT_PADDING) + " \u25be"),
                 b -> openScopeMenu(b), null);
         addRenderableWidget(scopeSwitcher);
     }
 
-    private void openScopeMenu(Button anchor) {
+    private List<ContextMenuOverlay.Item> scopeMenuItems() {
         List<ContextMenuOverlay.Item> items = new ArrayList<>();
         boolean zoneScope = target != null;
         items.add(ContextMenuOverlay.Item.of(
@@ -385,9 +388,13 @@ public final class SettingsScreen extends Screen {
                         AppearanceTarget.zone(globalConfig, key)));
             }));
         }
+        return items;
+    }
+
+    private void openScopeMenu(Button anchor) {
         Layout layout = layout();
-        contextMenu.openAt(font, items, anchor.getX(), anchor.getY() + anchor.getHeight(),
-                layout.mainLeft(), layout.top(), layout.mainRight(), height - FOOTER_H);
+        contextMenu.openUnder(font, scopeMenuItems(), anchor.getX(), anchor.getY() + anchor.getHeight(),
+                anchor.getWidth(), layout.mainLeft(), layout.top(), layout.mainRight(), height - FOOTER_H);
     }
 
     @Override
@@ -1439,9 +1446,14 @@ public final class SettingsScreen extends Screen {
             g.fill(0, 0, width, layout.top(), GuiTokens.panel(SCOPED_PANEL));
             g.fill(0, layout.bottom(), width, height, GuiTokens.panel(SCOPED_PANEL));
         }
-        var title = font.substrByWidth(getTitle(), Math.max(0, width / 2 - PAD_OUTER));
-        int titleW = font.width(title);
-        g.text(font, Language.getInstance().getVisualOrder(title), PAD_OUTER, PAD_OUTER, TEXT, false);
+        int titleW;
+        if (target == null) {
+            var title = font.substrByWidth(getTitle(), Math.max(0, width / 2 - PAD_OUTER));
+            titleW = font.width(title);
+            g.text(font, Language.getInstance().getVisualOrder(title), PAD_OUTER, PAD_OUTER, TEXT, false);
+        } else {
+            titleW = drawScopedTitle(g, Math.max(0, width / 2 - PAD_OUTER));
+        }
         Component hint = target == null ? Component.empty() : breadcrumb();
         var hintText = font.substrByWidth(hint, Math.max(0, width - PAD_OUTER * 2 - titleW - GAP_SECTION));
         g.text(font, Language.getInstance().getVisualOrder(hintText),
@@ -1473,6 +1485,39 @@ public final class SettingsScreen extends Screen {
         } else if (headerTooltip != null) {
             g.setTooltipForNextFrame(font, font.split(headerTooltip, Math.max(120, width / 3)), mouseX, mouseY);
         }
+    }
+
+    /**
+     * "Appearance" and then what is being edited as a tag in its own color, with an icon for a
+     * zone, a route or a waypoint, so a look opened on the wrong one is obvious at a glance.
+     * Returns the width used.
+     */
+    private int drawScopedTitle(GuiGraphicsExtractor g, int maxWidth) {
+        Component heading = Component.translatable("waypointer.settings.category.appearance");
+        g.text(font, heading, PAD_OUTER, PAD_OUTER, TEXT, false);
+        int x = PAD_OUTER + font.width(heading) + GAP;
+        int color = 0xFF000000 | (target.color() == AppearanceTarget.NO_COLOR
+                ? ACCENT & 0xFFFFFF : AppearanceTarget.readable(target.color()));
+        Icons.Icon icon = switch (target.scope().level()) {
+            case ZONE -> Icons.Icon.GLOBE;
+            case WAYPOINT -> Icons.Icon.MARKER;
+            default -> Icons.Icon.ROUTE;
+        };
+        int textX = x + 4 + Icons.SIZE;
+        // Color codes in the name would fight the tag's own color.
+        String plain = net.minecraft.ChatFormatting.stripFormatting(target.name().getString());
+        String name = font.plainSubstrByWidth(plain == null ? "" : plain,
+                Math.max(20, PAD_OUTER + maxWidth - textX - 6));
+        int right = textX + font.width(name) + 5;
+        int top = PAD_OUTER - 4, bottom = PAD_OUTER + 12;
+        g.fill(x, top, right, bottom, (color & 0xFFFFFF) | 0x2E000000);
+        g.fill(x, top, right, top + 1, (color & 0xFFFFFF) | 0xA0000000);
+        g.fill(x, bottom - 1, right, bottom, (color & 0xFFFFFF) | 0xA0000000);
+        g.fill(x, top + 1, x + 1, bottom - 1, (color & 0xFFFFFF) | 0xA0000000);
+        g.fill(right - 1, top + 1, right, bottom - 1, (color & 0xFFFFFF) | 0xA0000000);
+        Icons.draw(g, icon, x + 2, top, color);
+        g.text(font, name, textX, PAD_OUTER, color, false);
+        return right - PAD_OUTER;
     }
 
     private Component breadcrumb() {
