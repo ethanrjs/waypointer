@@ -578,8 +578,11 @@ The writer omits a field when it equals its normalized default.
 | 112 | `editModePlacementReach` | D | `5.0` |
 | 113 | `showChatCoordBlockButton` | B | `false` |
 | 114 | `coordinateShareHelper` | B | `true` |
+| 115 | `lineOfSightOnly` | B | `false` |
+| 116 | `showLabels` | B | `true` |
+| 117 | `labelMaxDistance` | D | `0.0` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, 66, and 108. Tag 108 is permanently reserved: the WPC decoder consumes its historical boolean without applying it; the v10 decoder skips it as a bounded unknown field. New writers never emit it. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-107 and 109-114 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 115-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, 66, and 108. Tag 108 is permanently reserved: the WPC decoder consumes its historical boolean without applying it; the v10 decoder skips it as a bounded unknown field. New writers never emit it. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-107 and 109-117 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 118-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
 
 Tag 109 controls structure and metal detector tracers. Tag 111 independently controls compass target tracers, including focused targets. Tag 110 controls automatic compass focus. All three default to true. Old codes that omit tag 111 use its true default.
 
