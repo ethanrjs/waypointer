@@ -170,6 +170,46 @@ public final class ScreenGallery {
         context.waitTicks(2);
         context.takeScreenshot("gallery-catalog-detail-s" + scale);
         shootMyRoutes(context, scale);
+        shootRouteView(context, scale);
+    }
+
+    /** A route opened from a link or code: details, map and a description longer than the pane. */
+    private static void shootRouteView(ClientGameTestContext context, int scale) {
+        context.runOnClient(client -> {
+            var base = catalogRoutes().getFirst();
+            var summary = new com.babbur.waypointer.catalog.CatalogRouteSummary(base.id(), "4 Vein Diamond Route",
+                    "[important]\n-All the waypoints called \"TP(Xend)\" are NOT something you need to worry about "
+                            + "too much, they just give an idea of where you should end.\n-Some of the block waypoints "
+                            + "will sometimes be bedrock if you have max (or close to) mining spread, but it still "
+                            + "works very well.\n\nStart at the Dwarven Base Camp and follow the numbers. Each vein "
+                            + "respawns before you loop back, so you can keep going without waiting.",
+                    "RokiYT2030", "", false, "public", "dwarven_mines", "Dwarven Mines", 16, 1,
+                    com.babbur.waypointer.catalog.CatalogProtocol.currentCodecVersion(), 2, 184,
+                    base.createdAt(), base.updatedAt(), base.sharePath(),
+                    List.of(com.babbur.waypointer.catalog.CatalogRouteSummary.TAG_MINING_CULT));
+            var details = new com.babbur.waypointer.catalog.CatalogRouteDetails(summary,
+                    com.babbur.waypointer.codec.WaypointCodec.encodeCatalog(List.of(sampleRoute())));
+            var screen = new CatalogRouteInstallScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production(),
+                    com.babbur.waypointer.WaypointerClient.manager(), summary.id());
+            setField(screen, "requested", true);
+            MinecraftCompat.setScreen(client, screen);
+            setField(screen, "prepared", com.babbur.waypointer.catalog.CatalogRouteInstaller.prepare(details));
+            setField(screen, "preview", previewOf(sampleRoute()));
+            setField(screen, "phase", enumValue(screen, "phase", "READY"));
+            invoke(screen, "refreshInstallState", new Class<?>[0]);
+            invoke(screen, "refreshInstallButton", new Class<?>[0]);
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-route-view-s" + scale);
+        context.runOnClient(client -> MinecraftCompat.setScreen(client, null));
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object enumValue(Object owner, String fieldName, String constant) {
+        try {
+            Class type = owner.getClass().getDeclaredField(fieldName).getType();
+            return Enum.valueOf(type, constant);
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
     /** My routes with three sample publications; the first changed since it was published. */

@@ -1428,7 +1428,7 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     /** "16 waypoints · 2 installs · updated 3 days ago". */
-    private String detailFacts(CatalogRouteSummary route) {
+    static String detailFacts(CatalogRouteSummary route) {
         List<String> parts = new ArrayList<>();
         parts.add(waypointCount(route.waypointCount()).getString());
         if (route.groupCount() > 1) parts.add(groupCount(route.groupCount()).getString());
@@ -1441,6 +1441,11 @@ public final class RouteCatalogScreen extends Screen {
     /** Hovering the age at the end of the facts line shows the exact update and publish times. */
     private void dateTooltip(GuiGraphicsExtractor graphics, CatalogRouteSummary route, int factsRight,
                              int y, int mouseX, int mouseY) {
+        dateTooltip(graphics, font, route, factsRight, y, mouseX, mouseY);
+    }
+
+    static void dateTooltip(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font,
+                            CatalogRouteSummary route, int factsRight, int y, int mouseX, int mouseY) {
         if (factsRight < 0) return;
         Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
         if (age == null) return;
@@ -1472,7 +1477,7 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
-    private static Component installStateLine(CatalogInstallState state, CatalogRouteSummary route) {
+    static Component installStateLine(CatalogInstallState state, CatalogRouteSummary route) {
         return switch (state.action()) {
             case INSTALLED -> Component.translatable("waypointer.screen.route_catalog.state.installed_line");
             case LOCAL_NEWER -> Component.translatable("waypointer.screen.route_catalog.state.local_newer_line");
@@ -1831,7 +1836,7 @@ public final class RouteCatalogScreen extends Screen {
                 "waypointer.screen.route_catalog.count.many", value);
     }
 
-    private static Component groupCount(long value) {
+    static Component groupCount(long value) {
         return pluralCount(
                 "waypointer.screen.route_catalog.group_count.one",
                 "waypointer.screen.route_catalog.group_count.many", value);

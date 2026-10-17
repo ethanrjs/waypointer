@@ -14,7 +14,6 @@ import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.core.Zone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -22,14 +21,13 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.ChatFormatting;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
-import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
@@ -41,14 +39,18 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
-/** Previews catalog codes and links, including unlisted routes. Install requires confirmation. */
+/**
+ * A catalog route opened from a link or code, unlisted ones included: the same details the
+ * community browser shows (map, publisher, installs, age, install state), with Install, Copy code
+ * and Copy link.
+ */
 public final class CatalogRouteInstallScreen extends Screen {
 
-    private static final int PANEL_W = 400;
-    private static final int PANEL_H = 236;
+    private static final int PANEL_W = 560;
+    private static final int PANEL_H = 320;
     private static final int PANEL_MARGIN = 12;
-    private static final int LINE_H = 10;
-    private static final int DESCRIPTION_LINES = 5;
+    private static final int LINE_H = 11;
+    private static final int SIDE_BY_SIDE_W = 420;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
     private static final int MAX_REFERENCE_PROBE_CHARS = 256;
@@ -65,9 +67,9 @@ public final class CatalogRouteInstallScreen extends Screen {
     private boolean screenActive;
     private long fetchGeneration;
     private CatalogRouteInstaller.PreparedRoute prepared;
-    private String destinationZones = "";
-    private boolean alreadyInstalled;
-    private Component status = Component.translatable("waypointer.screen.catalog_install.loading");
+    private CatalogRoutePreview preview;
+    private CatalogInstallState installState;
+    private Component status = Component.empty();
     private int statusColor = TEXT_DIM;
 
     private Button installButton;
@@ -77,8 +79,11 @@ public final class CatalogRouteInstallScreen extends Screen {
     private int panelH;
     private int contentX;
     private int contentW;
-    private int bodyY;
     private int statusY;
+    private int footerY;
+    private int descriptionScroll;
+    private int descriptionMaxScroll;
+    private int descriptionX1, descriptionY1, descriptionX2, descriptionY2;
 
     CatalogRouteInstallScreen(Screen parent, RouteCatalogClient catalogClient,
                               ActiveGroupManager manager, String routeId) {
@@ -146,8 +151,7 @@ public final class CatalogRouteInstallScreen extends Screen {
         panelY = Math.max(0, (height - panelH) / 2);
         contentX = panelX + PAD_OUTER;
         contentW = Math.max(1, panelW - PAD_OUTER * 2);
-        bodyY = panelY + PAD_OUTER + LINE_H + GAP;
-        int footerY = panelY + panelH - PAD_OUTER - BTN_H;
+        footerY = panelY + panelH - PAD_OUTER - BTN_H;
         statusY = footerY - LINE_H - GAP_TIGHT;
 
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
@@ -180,7 +184,10 @@ public final class CatalogRouteInstallScreen extends Screen {
         long generation = ++fetchGeneration;
         try {
             CompletableFuture<CatalogRouteDetails> route = catalogClient.getRoute(routeId);
-            route.thenApplyAsync(CatalogRouteInstaller::prepare)
+            route.thenApplyAsync(details -> {
+                        CatalogRouteInstaller.PreparedRoute ready = CatalogRouteInstaller.prepare(details);
+                        return new Loaded(ready, CatalogRoutePreview.of(ready.previewGroups()));
+                    })
                     .whenComplete((result, failure) -> runOnClient(() -> onLoaded(
                             generation, result, failure)));
         } catch (RuntimeException failure) {
@@ -189,8 +196,9 @@ public final class CatalogRouteInstallScreen extends Screen {
         }
     }
 
-    private void onLoaded(long generation,
-                          CatalogRouteInstaller.PreparedRoute result, Throwable failure) {
+    private record Loaded(CatalogRouteInstaller.PreparedRoute route, CatalogRoutePreview preview) {}
+
+    private void onLoaded(long generation, Loaded result, Throwable failure) {
         if (!screenActive || generation != fetchGeneration) return;
         if (failure != null || result == null) {
             phase = Phase.FAILED;
@@ -198,25 +206,21 @@ public final class CatalogRouteInstallScreen extends Screen {
                 status = Component.translatable(
                         "waypointer.screen.catalog_install.error.unsupported_reference");
             } else {
+                if (failure != null) {
+                    com.babbur.waypointer.Waypointer.LOGGER.warn(
+                            "Could not open catalog route {}", routeId, failure);
+                }
                 status = failure == null
                         ? Component.translatable("waypointer.screen.route_catalog.error.request_failed")
                         : RouteCatalogScreen.friendlyFailure(failure);
             }
             statusColor = STATUS_ERROR;
         } else {
-            prepared = result;
-            destinationZones = result.previewGroups().stream().map(WaypointGroup::zoneId)
-                    .distinct().map(id -> Zone.fromId(id).displayName())
-                    .collect(Collectors.joining(", "));
-            CatalogInstallState installState = CatalogInstallState.inspect(
-                    catalogClient.apiRoot(), result.summary(), manager.allGroups());
-            alreadyInstalled = !installState.canInstall();
+            prepared = result.route();
+            preview = result.preview();
             phase = Phase.READY;
-            if (alreadyInstalled) {
-                status = Component.translatable(
-                        "waypointer.screen.catalog_install.status.already_installed");
-                statusColor = TEXT_DIM;
-            } else if ("unlisted".equals(result.summary().visibility())) {
+            refreshInstallState();
+            if ("unlisted".equals(prepared.summary().visibility())) {
                 status = Component.translatable("waypointer.screen.catalog_install.unlisted");
                 statusColor = TEXT_MUTED;
             } else {
@@ -226,25 +230,33 @@ public final class CatalogRouteInstallScreen extends Screen {
         refreshInstallButton();
     }
 
+    private void refreshInstallState() {
+        installState = prepared == null ? null : CatalogInstallState.inspect(
+                catalogClient.apiRoot(), prepared.summary(), manager.allGroups());
+    }
+
+    private boolean canInstall() {
+        return phase == Phase.READY && installState != null && installState.canInstall();
+    }
+
     private void install() {
-        if (phase != Phase.READY || prepared == null || alreadyInstalled) return;
+        if (!canInstall()) return;
         phase = Phase.INSTALLING;
         refreshInstallButton();
         ImportSummary summary;
         try {
             summary = CatalogRouteInstaller.install(manager, catalogClient.apiRoot(), prepared);
         } catch (RuntimeException failure) {
+            com.babbur.waypointer.Waypointer.LOGGER.warn("Could not install catalog route {}", routeId, failure);
             phase = Phase.READY;
-            alreadyInstalled = failure instanceof IllegalStateException;
-            status = alreadyInstalled
-                    ? Component.translatable(
-                            "waypointer.screen.catalog_install.status.already_installed")
-                    : RouteCatalogScreen.friendlyFailure(failure);
-            statusColor = alreadyInstalled ? TEXT_DIM : STATUS_ERROR;
+            refreshInstallState();
+            status = RouteCatalogScreen.friendlyFailure(failure);
+            statusColor = STATUS_ERROR;
             refreshInstallButton();
             return;
         }
         phase = Phase.INSTALLED;
+        refreshInstallState();
         status = Component.translatable("waypointer.screen.catalog_install.status.installed",
                 prepared.summary().title());
         statusColor = STATUS_OK;
@@ -264,15 +276,23 @@ public final class CatalogRouteInstallScreen extends Screen {
     }
 
     private Component installLabel() {
-        return Component.translatable(phase == Phase.INSTALLING
-                ? "waypointer.screen.catalog_install.action.installing"
-                : "waypointer.screen.catalog_install.action.install");
+        if (phase == Phase.INSTALLING) {
+            return Component.translatable("waypointer.screen.catalog_install.action.installing");
+        }
+        CatalogInstallState.Action action = installState == null
+                ? CatalogInstallState.Action.INSTALL : installState.action();
+        return Component.translatable(switch (action) {
+            case INSTALLED, LOCAL_NEWER -> "waypointer.screen.route_catalog.installed";
+            case UPDATE -> "waypointer.screen.route_catalog.update";
+            case REPAIR -> "waypointer.screen.route_catalog.repair";
+            default -> "waypointer.screen.catalog_install.action.install";
+        });
     }
 
     private void refreshInstallButton() {
         if (installButton == null) return;
         installButton.setMessage(installLabel());
-        installButton.active = phase == Phase.READY && !alreadyInstalled;
+        installButton.active = canInstall();
     }
 
     @Override
@@ -281,69 +301,143 @@ public final class CatalogRouteInstallScreen extends Screen {
         graphics.fill(0, 0, width, height, 0x80000000);
         graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
         graphics.fill(panelX, panelY, panelX + panelW, panelY + 1, BORDER);
-        graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), contentW),
-                contentX, panelY + PAD_OUTER, TEXT, false);
 
-        int y = bodyY;
+        CatalogRoutePreview.Point hovered = null;
         CatalogRouteSummary summary = prepared == null ? null : prepared.summary();
+        int top = panelY + PAD_OUTER;
+        // The status row is only kept free while there is a status to show.
+        boolean statusShown = !status.getString().isBlank();
+        int bottom = statusShown ? statusY - GAP : footerY - GAP;
+        descriptionMaxScroll = 0;
         if (summary == null) {
             if (phase == Phase.LOADING) {
-                graphics.text(font, Component.translatable(
-                                "waypointer.screen.catalog_install.loading").getString(),
-                        contentX, y, TEXT_DIM, false);
+                drawCentered(graphics, Component.translatable("waypointer.screen.catalog_install.loading"),
+                        top, bottom, TEXT_DIM);
             }
         } else {
-            graphics.text(font, font.plainSubstrByWidth(summary.title(), contentW),
-                    contentX, y, ACCENT, false);
-            y += LINE_H + GAP_TIGHT;
-            String author = summary.authorName() == null ? "" : summary.authorName();
-            if (!author.isBlank()) {
-                graphics.text(font, font.plainSubstrByWidth(Component.translatable(
-                        summary.publisherVerified()
-                                ? "waypointer.screen.catalog_install.by_verified"
-                                : "waypointer.screen.catalog_install.by",
-                        author).getString(), contentW), contentX, y, TEXT_DIM, false);
-                y += LINE_H;
-            }
-            graphics.text(font, font.plainSubstrByWidth(Component.translatable(
-                    "waypointer.screen.catalog_install.summary",
-                    RouteCatalogScreen.waypointCount(summary.waypointCount()),
-                    groupCount(summary.groupCount()),
-                    summary.zoneLabel()).getString(), contentW), contentX, y, TEXT_MUTED, false);
-            y += LINE_H + GAP;
-            if ("multiple".equals(summary.zoneId())) {
-                List<FormattedCharSequence> zones = font.split(
-                        Component.literal(destinationZones), contentW);
-                for (int index = 0; index < Math.min(2, zones.size()); index++) {
-                    graphics.text(font, zones.get(index), contentX, y, ACCENT, false);
-                    y += LINE_H;
-                }
-                y += GAP_TIGHT;
-            }
-            String description = summary.description() == null ? "" : summary.description().trim();
-            Component body = description.isEmpty()
-                    ? Component.translatable("waypointer.screen.catalog_install.no_description")
-                    : Component.literal(description);
-            int maxLines = Math.max(1, Math.min(DESCRIPTION_LINES, (statusY - GAP - y) / LINE_H));
-            List<FormattedCharSequence> lines = font.split(body, contentW);
-            for (int index = 0; index < Math.min(lines.size(), maxLines); index++) {
-                graphics.text(font, lines.get(index), contentX, y,
-                        description.isEmpty() ? TEXT_MUTED : TEXT, false);
-                y += LINE_H;
-            }
+            int y = renderHeader(graphics, summary, top, mouseX, mouseY);
+            hovered = renderBody(graphics, summary, y, bottom, mouseX, mouseY);
         }
 
-        if (!status.getString().isBlank()) {
-            graphics.text(font, font.plainSubstrByWidth(status.getString(), contentW),
-                    contentX, statusY, statusColor, false);
+        if (statusShown) {
+            boolean centered = phase == Phase.FAILED && summary == null;
+            String shown = GuiTokens.ellipsize(font, status.getString(), contentW);
+            if (centered) {
+                drawCentered(graphics, Component.literal(shown), top, bottom, statusColor);
+            } else {
+                graphics.text(font, shown, contentX, statusY, statusColor, false);
+            }
         }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        if (hovered != null) {
+            graphics.setTooltipForNextFrame(font, CatalogRoutePreview.tooltip(hovered).stream()
+                    .map(Component::getVisualOrderText).toList(), mouseX, mouseY);
+        }
     }
 
-    private static Component groupCount(long value) {
-        return Component.translatable(value == 1
-                ? "waypointer.screen.route_catalog.group_count.one"
-                : "waypointer.screen.route_catalog.group_count.many", value);
+    /** Title and Mining Cult badge, zone and publisher, size and age, then the install state. */
+    private int renderHeader(GuiGraphicsExtractor graphics, CatalogRouteSummary summary, int y,
+                             int mouseX, int mouseY) {
+        int right = contentX + contentW;
+        boolean miningCult = summary.hasTag(CatalogRouteSummary.TAG_MINING_CULT);
+        int badgeW = miningCult ? CatalogRouteRowButton.miningCultWidth(font) + GAP : 0;
+        Component title = Component.literal(GuiTokens.ellipsize(font, summary.title(), contentW - badgeW))
+                .withStyle(ChatFormatting.BOLD);
+        graphics.text(font, title, contentX, y, TEXT, false);
+        if (miningCult) {
+            int pillX = right - badgeW + GAP;
+            CatalogRouteRowButton.drawMiningCult(graphics, font, pillX, y);
+            CatalogRouteRowButton.miningCultTooltip(graphics, font, pillX, y, mouseX, mouseY);
+        }
+        y += LINE_H + 3;
+        CatalogRouteRowButton.drawZoneAndPublisher(graphics, font, summary, contentX, y, contentW);
+        y += LINE_H + 1;
+        String facts = RouteCatalogScreen.detailFacts(summary);
+        String shownFacts = GuiTokens.ellipsize(font, facts, contentW);
+        graphics.text(font, shownFacts, contentX, y, TEXT_MUTED, false);
+        RouteCatalogScreen.dateTooltip(graphics, font, summary,
+                facts.equals(shownFacts) ? contentX + font.width(facts) : -1, y, mouseX, mouseY);
+        y += LINE_H;
+        Component stateLine = installState == null ? null
+                : RouteCatalogScreen.installStateLine(installState, summary);
+        if (stateLine != null) {
+            y += GAP_TIGHT;
+            boolean attention = installState.action() == CatalogInstallState.Action.UPDATE
+                    || installState.action() == CatalogInstallState.Action.REPAIR;
+            graphics.text(font, GuiTokens.ellipsize(font, stateLine.getString(), contentW), contentX, y,
+                    attention ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
+            y += LINE_H;
+        }
+        return y + GAP;
+    }
+
+    /** The map beside the description on wide panels, above it on narrow ones. */
+    private CatalogRoutePreview.Point renderBody(GuiGraphicsExtractor graphics, CatalogRouteSummary summary,
+                                                 int top, int bottom, int mouseX, int mouseY) {
+        int right = contentX + contentW;
+        CatalogRoutePreview.Point hovered = null;
+        if (bottom - top < LINE_H) return null;
+        if (contentW >= SIDE_BY_SIDE_W) {
+            int mapRight = contentX + contentW * 11 / 20;
+            if (preview != null && bottom - top >= 40) {
+                hovered = preview.render(graphics, font, contentX, top, mapRight, bottom, mouseX, mouseY);
+            }
+            drawDescription(graphics, summary, mapRight + GAP + 2, top, right, bottom);
+        } else {
+            int mapH = Math.min(160, (bottom - top) * 55 / 100);
+            if (preview != null && mapH >= 40) {
+                hovered = preview.render(graphics, font, contentX, top, right, top + mapH, mouseX, mouseY);
+                top += mapH + GAP;
+            }
+            drawDescription(graphics, summary, contentX, top, right, bottom);
+        }
+        return hovered;
+    }
+
+    private void drawDescription(GuiGraphicsExtractor graphics, CatalogRouteSummary summary,
+                                 int x1, int y1, int x2, int y2) {
+        int height = (y2 - y1) / LINE_H * LINE_H;
+        descriptionX1 = x1;
+        descriptionY1 = y1;
+        descriptionX2 = x2;
+        descriptionY2 = y1 + height;
+        if (height < LINE_H) return;
+        String description = summary.description() == null ? "" : summary.description().strip();
+        Component body = description.isEmpty()
+                ? Component.translatable("waypointer.screen.route_catalog.description.empty")
+                : Component.literal(description);
+        List<FormattedCharSequence> lines = font.split(body, Math.max(1, x2 - x1 - GAP));
+        int contentHeight = lines.size() * LINE_H;
+        descriptionMaxScroll = Math.max(0, contentHeight - height);
+        descriptionScroll = Math.min(descriptionScroll, descriptionMaxScroll);
+        graphics.enableScissor(x1, y1, x2, y1 + height);
+        for (int i = descriptionScroll / LINE_H; i < lines.size(); i++) {
+            int lineY = y1 + i * LINE_H - descriptionScroll;
+            if (lineY >= y1 + height) break;
+            graphics.text(font, lines.get(i), x1, lineY, description.isEmpty() ? TEXT_MUTED : TEXT_DIM, false);
+        }
+        graphics.disableScissor();
+        int[] thumb = RouteCatalogScreen.dropdownThumb(height, contentHeight, descriptionScroll, descriptionMaxScroll);
+        if (thumb != null) {
+            graphics.fill(x2 - 2, y1 + thumb[0], x2, y1 + thumb[0] + thumb[1], TEXT_MUTED);
+        }
+    }
+
+    private void drawCentered(GuiGraphicsExtractor graphics, Component text, int top, int bottom, int color) {
+        String shown = GuiTokens.ellipsize(font, text.getString(), contentW);
+        graphics.text(font, shown, contentX + (contentW - font.width(shown)) / 2,
+                top + (bottom - top - 8) / 2, color, false);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (descriptionMaxScroll > 0 && mouseX >= descriptionX1 && mouseX < descriptionX2
+                && mouseY >= descriptionY1 && mouseY < descriptionY2) {
+            descriptionScroll = Math.clamp(descriptionScroll - (int) Math.round(scrollY * LINE_H * 2),
+                    0, descriptionMaxScroll);
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     private void runOnClient(Runnable action) {
