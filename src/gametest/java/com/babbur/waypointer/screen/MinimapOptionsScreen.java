@@ -53,10 +53,7 @@ final class MinimapOptionsScreen extends Screen {
         String[] captions = {"Current", "A  Panel", "B  Grid", "C  Grid with tunnels"};
         for (int i = 0; i < 4; i++) {
             int x = gap + i * (panelW + gap);
-            // Only option C shows a scan.
-            var scanner = CrystalHollowsTerrainScanner.get();
-            if (i == 3) scanner.previewOnly(scan);
-            else scanner.setEnabled(false);
+            CrystalHollowsTerrainScanner.get().setEnabled(false);
             switch (i) {
                 case 0 -> CrystalHollowsMinimap.draw(g, new CrystalHollowsMinimapLayout(x, top, size),
                         PLAYER_X, PLAYER_Y, PLAYER_Z, YAW, SIGHTINGS, null, true, true);
@@ -97,9 +94,8 @@ final class MinimapOptionsScreen extends Screen {
         header(g, x, y, w);
         int mx = x + PAD, my = y + HEADER + 3;
         g.fill(mx, my, mx + size, my + size, 0x40000000);
-        if (withTunnels) {
-            // Open ground near the player's height, as a quiet light tone under the grid.
-            CrystalHollowsTerrainScanner.get().drawOverlay(g, mx, my, size, PLAYER_Y, 0x48FFFFFF);
+        if (withTunnels && com.babbur.waypointer.crystal.CrystalHollowsTunnelMap.get() != null) {
+            com.babbur.waypointer.crystal.CrystalHollowsTunnelMap.get().draw(g, mx, my, size, PLAYER_Y);
         }
         int step = Math.max(4, Math.round(size * 32f / (CrystalHollowsGeometry.MAX_XZ - CrystalHollowsGeometry.MIN_XZ)));
         for (int i = step; i < size; i += step) {
