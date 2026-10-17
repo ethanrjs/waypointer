@@ -1455,11 +1455,8 @@ public final class SettingsScreen extends Screen {
                     : "waypointer.screen.settings.matches.many", matches);
         } else if (target != null) {
             info = Component.empty();
-        } else if (RECENT_ID.equals(activeCategoryId)) {
-            info = Component.translatable("waypointer.screen.settings.recent");
         } else {
-            SettingsCatalog.Category category = categoryById(activeCategoryId);
-            info = category == null ? Component.empty() : SettingsText.category(category);
+            info = Component.empty();
         }
         int infoRight = (scopeSwitcher == null ? layout.mainRight() : scopeSwitcher.getX()) - GAP;
         int infoLeft = searchClearButton == null ? layout.mainLeft() + GAP

@@ -29,7 +29,7 @@ import static com.babbur.waypointer.screen.GuiTokens.*;
 public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
-    private static final int PANEL_H = 136;
+    private static final int PANEL_H = 98;
     private static final int OPTIONS_PANEL_H = 158;
     private static final int DUNGEON_OPTIONS_PANEL_H = 174;
     private static final int GLFW_KEY_ENTER = 257;
