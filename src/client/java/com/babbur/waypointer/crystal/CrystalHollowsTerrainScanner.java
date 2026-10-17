@@ -323,12 +323,17 @@ public final class CrystalHollowsTerrainScanner {
      * the open space a player could stand in within two blocks of their height.
      */
     public void drawOverlay(GuiGraphicsExtractor g, int x, int y, int size, double playerY) {
+        drawOverlay(g, x, y, size, playerY, 0xFFFFFFFF);
+    }
+
+    /** As above, with the overlay multiplied by {@code tint} (e.g. lower alpha for a quieter map). */
+    public void drawOverlay(GuiGraphicsExtractor g, int x, int y, int size, double playerY, int tint) {
         if (!enabled || size <= 0) return;
         int feetY = (int) Math.floor(playerY);
         refreshOverlay(feetY);
         if (overlayId == null) return;
         g.blit(RenderPipelines.GUI_TEXTURED, overlayId, x, y, 0f, 0f, size, size,
-                OVERLAY_SIZE, OVERLAY_SIZE, OVERLAY_SIZE, OVERLAY_SIZE);
+                OVERLAY_SIZE, OVERLAY_SIZE, OVERLAY_SIZE, OVERLAY_SIZE, tint);
     }
 
     private void refreshOverlay(int feetY) {
