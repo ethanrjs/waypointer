@@ -417,22 +417,6 @@ class ExportScreenTest {
     }
 
     @Test
-    void ownLookNoticeFollowsRouteAndWaypointLooks() {
-        var plain = com.babbur.waypointer.core.WaypointGroup.create("Plain", "hub");
-        plain.add(com.babbur.waypointer.core.Waypoint.at(1, 2, 3));
-        assertFalse(ExportScreen.hasOwnLook(List.of(plain)));
-
-        var routeLook = com.babbur.waypointer.core.WaypointGroup.create("Route look", "hub");
-        routeLook.setStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY.with("showTracer", true));
-        assertTrue(ExportScreen.hasOwnLook(List.of(plain, routeLook)));
-
-        var waypointLook = com.babbur.waypointer.core.WaypointGroup.create("Waypoint look", "hub");
-        waypointLook.add(com.babbur.waypointer.core.Waypoint.at(1, 2, 3));
-        waypointLook.setWaypointStyle(0, com.babbur.waypointer.core.WaypointStyle.EMPTY.with("labelScale", 1.5));
-        assertTrue(ExportScreen.hasOwnLook(List.of(waypointLook)));
-    }
-
-    @Test
     void toggleMarkerDistinguishesUnavailableFromOff() {
         assertEquals("[x]", ExportScreen.toggleMarker(true, true));
         assertEquals("[ ]", ExportScreen.toggleMarker(true, false));

@@ -1380,9 +1380,7 @@ public final class SettingsScreen extends Screen {
         }
         String title = font.plainSubstrByWidth(getTitle().getString(), Math.max(0, width / 2 - PAD_OUTER));
         g.text(font, title, PAD_OUTER, PAD_OUTER, TEXT, false);
-        Component hint = target == null
-                ? Component.translatable("waypointer.screen.settings.auto_save")
-                : breadcrumb();
+        Component hint = target == null ? Component.empty() : breadcrumb();
         String hintText = font.plainSubstrByWidth(hint.getString(),
                 Math.max(0, width - PAD_OUTER * 2 - font.width(title) - GAP_SECTION));
         g.text(font, hintText, width - PAD_OUTER - font.width(hintText), PAD_OUTER, TEXT_DIM, false);
@@ -1456,7 +1454,7 @@ public final class SettingsScreen extends Screen {
                     ? "waypointer.screen.settings.matches.one"
                     : "waypointer.screen.settings.matches.many", matches);
         } else if (target != null) {
-            info = target.explanation();
+            info = Component.empty();
         } else if (RECENT_ID.equals(activeCategoryId)) {
             info = Component.translatable("waypointer.screen.settings.recent");
         } else {

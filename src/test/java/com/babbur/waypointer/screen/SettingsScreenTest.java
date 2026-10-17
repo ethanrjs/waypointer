@@ -65,6 +65,19 @@ class SettingsScreenTest {
     }
 
     @Test
+    void appearanceTitlesShowColourCodesAsColourNotText() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup group = WaypointGroup.create("&bBlue route", "hub");
+        group.add(new Waypoint(1, 2, 3, "&aDrop down", 0xFFFFFF, 0, 0.0));
+        manager.add(group);
+        WaypointerConfig config = new WaypointerConfig();
+        assertEquals("Drop down", net.minecraft.ChatFormatting.stripFormatting(
+                AppearanceTarget.waypoint(manager, config, group, 0, () -> { }).name().getString()));
+        assertEquals("Blue route", net.minecraft.ChatFormatting.stripFormatting(
+                AppearanceTarget.route(manager, config, group, () -> { }).name().getString()));
+    }
+
+    @Test
     void unnamedDependentGroupsStayWithThePreviousNamedSection() {
         Setting first = SettingsCatalog.byId("showWaypointNames");
         Setting dependent = SettingsCatalog.byId("hideWaypointLabelsNearPlayer");

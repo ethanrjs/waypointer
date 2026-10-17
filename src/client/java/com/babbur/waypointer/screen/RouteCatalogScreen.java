@@ -817,8 +817,7 @@ public final class RouteCatalogScreen extends Screen {
         if (!browser.select(route)) return;
         descriptionScroll = 0;
         requests.selectionChanged();
-        statusText = Component.translatable(
-                "waypointer.screen.route_catalog.status.selection_help");
+        statusText = Component.empty();
         statusColor = TEXT_DIM;
         rebuildWidgets();
     }
@@ -1277,8 +1276,7 @@ public final class RouteCatalogScreen extends Screen {
         }
         if (detailLoading) {
             detailLoading = false;
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.selection_help");
+            statusText = Component.empty();
             statusColor = TEXT_DIM;
         }
         super.removed();

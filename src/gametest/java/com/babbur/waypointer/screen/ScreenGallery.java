@@ -65,6 +65,9 @@ public final class ScreenGallery {
             return SettingsScreen.forAppearance(null, config, WaypointerClient.dungeonConfig(),
                     AppearanceTarget.route(manager, config, route, manager::fireDataChanged));
         });
+        shoot(context, "appearance-waypoint", scale, () -> SettingsScreen.forAppearance(null, config,
+                WaypointerClient.dungeonConfig(), AppearanceTarget.waypoint(manager, config,
+                        manager.get(routeId), 5, manager::fireDataChanged)));
         shoot(context, "appearance-zone", scale, () -> SettingsScreen.forAppearance(null, config,
                 WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, "mineshaft")));
         shoot(context, "add-named", scale, () -> new AddNamedWaypointScreen(null, manager, config,
@@ -79,6 +82,18 @@ public final class ScreenGallery {
                 manager.get(routeId)));
         shoot(context, "feedback", scale, () -> new FeedbackScreen(null, config));
         shoot(context, "add-temp", scale, () -> new AddTempScreen(null, manager, config));
+        double opacity = config.menuOpacity();
+        context.runOnClient(client -> config.setMenuOpacity(0.45));
+        shoot(context, "editor-see-through", scale, () -> new GroupEditScreen(null, manager, config,
+                manager.get(routeId), 2));
+        context.runOnClient(client -> config.setMenuOpacity(opacity));
+        shoot(context, "hub-route-menu", scale, () -> new WaypointerScreen(manager, config));
+        context.runOnClient(client -> {
+            WaypointerScreen hub = (WaypointerScreen) MinecraftCompat.screen(client);
+            hub.openRouteRowMenu(manager.get(routeId), hub.width * 0.35, hub.height * 0.3);
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-hub-route-menu-open-s" + scale);
         shoot(context, "minimap-editor", scale, () -> new CrystalHollowsMinimapEditorScreen(null, config));
         shoot(context, "debug", scale, () -> new DebugInspectScreen(null));
         // Menus and states inside the everyday screens.
@@ -147,7 +162,7 @@ public final class ScreenGallery {
     /** A realistic library: folders, styled routes, subwaypoints, named stops, a temp waypoint. */
     private static String seed(ActiveGroupManager manager) {
         String zone = manager.currentZone() == null ? "private_world" : manager.currentZone().id();
-        WaypointGroup ruby = WaypointGroup.create("Ruby loop", zone);
+        WaypointGroup ruby = WaypointGroup.create("Ruby route", zone);
         String[] names = {"Start", "", "Ledge", "", "", "&aDrop down", "", "", "", "", "", "", "", "Finish"};
         for (int i = 0; i < names.length; i++) {
             ruby.add(new Waypoint(10 + i * 37, 70 + (i % 3), 20 - i * 13,
@@ -155,6 +170,7 @@ public final class ScreenGallery {
         }
         ruby.toggleSubwaypoint(2);
         ruby.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        ruby.setStyleOverride(WaypointStyle.EMPTY.with("labelScale", 1.5).with("showTracer", true));
         ruby.setWaypointStyle(5, WaypointStyle.EMPTY.with("waypointMarkerScale", 1.5));
         manager.add(ruby);
         WaypointGroup topaz = WaypointGroup.create("Topaz shortcut", zone);

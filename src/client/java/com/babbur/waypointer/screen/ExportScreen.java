@@ -66,7 +66,7 @@ public final class ExportScreen extends Screen {
 
     private static final int LINE_H = 12;
 
-    private static final int EXPORT_SETTINGS_HEADER_H = LINE_H * 2 + GAP_TIGHT;
+    private static final int EXPORT_SETTINGS_HEADER_H = LINE_H + GAP_TIGHT;
 
     private static final int BLOCK_GAP = GAP;
 
@@ -1227,10 +1227,6 @@ public final class ExportScreen extends Screen {
         if (optionsPageVisible()) {
             drawClipped(g, Component.translatable("waypointer.screen.export.settings").getString(),
                     includeHeadY, TEXT_DIM);
-            if (exportTarget == WaypointExportCodec.Target.WAYPOINTER) {
-                SettingsHelp help = settingsHelp();
-                drawClipped(g, help.text(), includeHeadY + LINE_H, help.color());
-            }
 
             if (isZoneExport()) renderRoutePicker(g, mouseX, mouseY);
             if (compactLayout) drawOptionsScrollbar(g);
@@ -1448,32 +1444,6 @@ public final class ExportScreen extends Screen {
         g.text(font, SUMMARY_SEPARATOR, separatorX, y, TEXT_MUTED, false);
         g.text(font, fitLine, fitX, y, fitColor, false);
         return fitX + font.width(fitLine);
-    }
-
-    private record SettingsHelp(String text, int color) {}
-
-    private SettingsHelp settingsHelp() {
-        if (!optsBuilder.includeZone()) {
-            return new SettingsHelp(Component.translatable(
-                    "waypointer.screen.export.settings_help.no_island").getString(), TEXT_DIM);
-        }
-        if (hasOwnLook(selectedGroupsForExport())) {
-            return new SettingsHelp(Component.translatable(
-                    "waypointer.screen.export.settings_help.own_look").getString(), TEXT_DIM);
-        }
-        return new SettingsHelp(Component.translatable(
-                "waypointer.screen.export.settings_help.shorter").getString(), TEXT_MUTED);
-    }
-
-    /** Share codes carry waypoints, not looks: say so when the selection has its own look. */
-    static boolean hasOwnLook(List<WaypointGroup> routes) {
-        for (WaypointGroup route : routes) {
-            if (!route.styleOverride().isEmpty() || !route.stylePresetId().isBlank()) return true;
-            for (var waypoint : route.waypoints()) {
-                if (!waypoint.styleOverride().isEmpty()) return true;
-            }
-        }
-        return false;
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {

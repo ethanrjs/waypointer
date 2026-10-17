@@ -174,7 +174,7 @@ public final class SettingsCatalog {
                                 .range(WaypointerConfig.MIN_EDIT_MODE_PLACEMENT_REACH,
                                         WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH)
                                 .aliases("mid-air", "midair", "air", "distance", "raycast"),
-                        Setting.number("maxStaticWaypointRenderDistance", MAIN, "Waypoint Render Distance (blocks, 0=unlimited)",
+                        Setting.number("maxStaticWaypointRenderDistance", MAIN, "Waypoint render distance (blocks, 0 = unlimited)",
                                 "Hide static-route waypoints farther away than this.",
                                 (c, d) -> c.maxStaticWaypointRenderDistance(),
                                 (c, d, v) -> c.setMaxStaticWaypointRenderDistance(dbl(v)))
@@ -605,12 +605,12 @@ public final class SettingsCatalog {
                                         (c, d, v) -> d.setShowDungeonTracers((Boolean) v))
                                         .impact(Setting.Impact.LOW)),
                         Group.parented((c, d) -> c.showDungeonEntryPathToFirstWaypoint(),
-                                Setting.bool("showDungeonEntryPathToFirstWaypoint", MAIN, "Pathfind to First Waypoint",
+                                Setting.bool("showDungeonEntryPathToFirstWaypoint", MAIN, "Pathfind to first waypoint",
                                         null,
                                         (c, d) -> c.showDungeonEntryPathToFirstWaypoint(),
                                         (c, d, v) -> c.setShowDungeonEntryPathToFirstWaypoint((Boolean) v))
                                         .impact(Setting.Impact.LOW),
-                                Setting.bool("showDungeonEntryPathToFollowingWaypoints", MAIN, "Pathfind to All Waypoints",
+                                Setting.bool("showDungeonEntryPathToFollowingWaypoints", MAIN, "Pathfind to all waypoints",
                                         null,
                                         (c, d) -> c.showDungeonEntryPathToFollowingWaypoints(),
                                         (c, d, v) -> c.setShowDungeonEntryPathToFollowingWaypoints((Boolean) v)),
@@ -632,12 +632,12 @@ public final class SettingsCatalog {
                                 .impact(Setting.Impact.LOW)
                                 .aliases("mining", "compass", "hollows", "divan", "temple"),
                         Setting.bool("crystalHollowsRemoteSharing", MAIN,
-                                "Share Structures",
+                                "Share structures",
                                 "Automatically send and receive structure locations in your Crystal Hollows lobby. Turning this off stops both.",
                                 (c, d) -> c.crystalHollowsRemoteSharing(),
                                 (c, d, v) -> c.setCrystalHollowsRemoteSharing((Boolean) v)),
                         Setting.bool("crystalHollowsSkyblockerSharing", MAIN,
-                                "Skyblocker Sharing",
+                                "Skyblocker sharing",
                                 "Share Crystal Hollows structures through the Skyblocker websocket. Skyblocker data can be inaccurate.\n\nAPI.AzureAaron.net receives your Minecraft UUID and profile key proof to authenticate.",
                                 (c, d) -> c.crystalHollowsSkyblockerSharing(),
                                 (c, d, v) -> c.setCrystalHollowsSkyblockerSharing((Boolean) v))
@@ -645,7 +645,7 @@ public final class SettingsCatalog {
                                 .enabledWhen((c, d) -> c.crystalHollowsEnabled() && c.crystalHollowsRemoteSharing())
                                 .aliases("skyblocker", "hysky", "websocket"),
                         Setting.bool("crystalHollowsMetalDetector", MAIN,
-                                "Metal Detector Waypoints",
+                                "Metal detector waypoints",
                                 "Show treasure waypoints while using a Metal Detector.",
                                 (c, d) -> c.crystalHollowsMetalDetector(),
                                 (c, d, v) -> c.setCrystalHollowsMetalDetector((Boolean) v)),
@@ -674,7 +674,7 @@ public final class SettingsCatalog {
                                 (c, d) -> c.crystalHollowsEntityDetection(),
                                 (c, d, v) -> c.setCrystalHollowsEntityDetection((Boolean) v)),
                         Setting.bool("coordinateShareHelper", MAIN,
-                                "Coordinate Share Helper",
+                                "Coordinate share helper",
                                 "Send known structure coordinates when a player asks for a Crystal Hollows location.",
                                 (c, d) -> c.coordinateShareHelper(),
                                 (c, d, v) -> c.setCoordinateShareHelper((Boolean) v)),
@@ -765,12 +765,12 @@ public final class SettingsCatalog {
                                 "Show a button beside detected coordinates to block the sender.",
                                 (c, d) -> c.showChatCoordBlockButton(),
                                 (c, d, v) -> c.setShowChatCoordBlockButton((Boolean) v)),
-                        Setting.bool("autoAddChatTempWaypoints", MAIN, "Create Waypoints from Chat Messages",
+                        Setting.bool("autoAddChatTempWaypoints", MAIN, "Create waypoints from chat messages",
                                 null,
                                 (c, d) -> c.autoAddChatTempWaypoints(),
                                 (c, d, v) -> c.setAutoAddChatTempWaypoints((Boolean) v))),
                 Group.plain(
-                        Setting.bool("showWaypointChatShareButtons", MAIN, "Chat Share Buttons",
+                        Setting.bool("showWaypointChatShareButtons", MAIN, "Chat share buttons",
                                 null,
                                 (c, d) -> c.showWaypointChatShareButtons(),
                                 (c, d, v) -> c.setShowWaypointChatShareButtons((Boolean) v)),

@@ -109,8 +109,7 @@ public final class CrystalHollowsMinimapEditorScreen extends Screen {
             if (!live) centeredText(graphics, text("sample"), 33, TEXT_MUTED);
         }
         centeredText(graphics, getTitle(), 8, TEXT);
-        centeredText(graphics, text("instructions"), height - 65, TEXT_DIM);
-        centeredText(graphics, text("snapping"), height - 54, TEXT_MUTED);
+        centeredText(graphics, text("instructions"), height - 54, TEXT_DIM);
         centeredText(graphics, Component.translatable("waypointer.minimap.editor.scale",
                 String.format(Locale.ROOT, "%.2f", scale)), height - 41, ACCENT);
         super.extractRenderState(graphics, mouseX, mouseY, partial);

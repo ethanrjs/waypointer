@@ -112,7 +112,6 @@
   "waypointer.settings.setting.defaultWaypointColor.color_picker_title": "Waypoint-ի լռելյայն գույն",
   "waypointer.settings.setting.action.waypointPaint.label": "Ներկում",
   "waypointer.settings.setting.placeNewWaypointsBelowPlayer.label": "Ավելացնել նոր Waypoint-ները խաղացողի տակ",
-  "waypointer.settings.setting.maxStaticWaypointRenderDistance.label": "Ստատիկ նշիչի հեռավորություն (0 = անսահման)",
   "waypointer.settings.setting.tempDefaultMode.label": "Ժամանակավոր Waypoint-ի գործողության ժամկետ",
   "waypointer.settings.setting.tempDefaultMode.option.0": "Ժամանակաչափված",
   "waypointer.settings.setting.tempDefaultMode.option.1": "Մինչև հասնելը",

@@ -549,9 +549,9 @@ class SettingsCatalogTest {
         Setting entryPath = SettingsCatalog.byId("showDungeonEntryPathToFirstWaypoint");
 
         assertNotNull(entryPath);
-        assertEquals("Pathfind to First Waypoint", entryPath.label());
+        assertEquals("Pathfind to first waypoint", entryPath.label());
         assertEquals("", entryPath.tooltip());
-        assertEquals("Pathfind to All Waypoints",
+        assertEquals("Pathfind to all waypoints",
                 SettingsCatalog.byId("showDungeonEntryPathToFollowingWaypoints").label());
         assertEquals("", SettingsCatalog.byId("showDungeonEntryPathToFollowingWaypoints").tooltip());
         assertEquals(false, entryPath.get(new WaypointerConfig(), new DungeonConfig()));
@@ -681,9 +681,9 @@ class SettingsCatalogTest {
                 SettingsCatalog.ACTION_PRESETS)) {
             assertEquals("", SettingsCatalog.byId(id).tooltip(), id);
         }
-        assertEquals("Create Waypoints from Chat Messages",
+        assertEquals("Create waypoints from chat messages",
                 SettingsCatalog.byId("autoAddChatTempWaypoints").label());
-        assertEquals("Chat Share Buttons",
+        assertEquals("Chat share buttons",
                 SettingsCatalog.byId("showWaypointChatShareButtons").label());
         assertEquals("Overrides imported waypoint colors.",
                 SettingsCatalog.byId("importedRouteColorMode").tooltip());

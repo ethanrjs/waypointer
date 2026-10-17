@@ -110,7 +110,6 @@
   "waypointer.screen.painter.status.picker_failed": "Could not open teh image picker.",
   "waypointer.screen.debug.refresh": "Refursh",
   "waypointer.screen.debug_consent.intro": "Choose what leaves ur PC. Everything is included by default.",
-  "waypointer.screen.export.settings_help.no_island": "Imports land on whatever island teh player is standing on.",
   "waypointer.screen.main.delete.select": "Zelect",
   "waypointer.screen.main.delete.select.tooltip": "Select a route in teh list first.",
   "waypointer.screen.export.preview.options": "Opshuns",
@@ -120,6 +119,5 @@
   "waypointer.update.your_version": "ur version: %1$s %2$s",
   "waypointer.screen.route_catalog.refresh.tooltip": "Reload teh route catalog (F5). Available every 10 seconds.",
   "waypointer.screen.route_catalog.install.tooltip": "Install this route an' open it in Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Search will run when u stop typing.",
-  "waypointer.screen.route_catalog.status.selection_help": "Review teh route details, den select Install."
+  "waypointer.screen.route_catalog.status.search_wait": "Search will run when u stop typing."
 }

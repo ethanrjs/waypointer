@@ -50,7 +50,10 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
     private static final int LABEL_H = 11;
     private static final int FIELD_STRIDE = LABEL_H + BTN_H + GAP_TIGHT;
     private static final int DESCRIPTION_H = 52;
+    private static final int MIN_DESCRIPTION_H = 26;
     private static final int FORM_FIELDS_H = FIELD_STRIDE * 2 + LABEL_H + DESCRIPTION_H + GAP_TIGHT;
+    /** The description box gives up height first when the window is short. */
+    private int descriptionH = DESCRIPTION_H;
 
     private static final int TIGHT_HEIGHT = 340;
 
@@ -107,7 +110,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
     private int formX;
     private int formY;
     private int formW;
-    private int visibilityHelpY;
     private int paintNoticeY;
     private int statusX;
     private int statusY;
@@ -119,7 +121,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
     private int copyW;
     private int manageW;
     private int publishW;
-    private boolean showDetail;
     private boolean showPaintNotice;
 
     public RoutePublishScreen(
@@ -189,7 +190,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 .setPlaceholder(Component.translatable(
                         "waypointer.screen.route_publish.field.description.hint",
                         DESCRIPTION_MIN))
-                .build(font, formW, DESCRIPTION_H,
+                .build(font, formW, descriptionH,
                         Component.translatable(
                                 "waypointer.screen.route_publish.field.description"));
         // The listener enforces the code-point limit; Minecraft counts UTF-16 units.
@@ -207,7 +208,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
             form.setDescription(normalized);
         });
         addRenderableWidget(descriptionBox);
-        y += LABEL_H + DESCRIPTION_H + GAP_TIGHT;
+        y += LABEL_H + descriptionH + GAP_TIGHT;
 
         buildVisibilityChoice(y);
         buildFooter();
@@ -223,7 +224,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         boolean tight = height < TIGHT_HEIGHT;
         int margin = tight ? GAP : PANEL_MARGIN;
         int pad = tight ? GAP : PAD_OUTER;
-        showDetail = !tight;
         showPaintNotice = form.groups().stream().anyMatch(RoutePublishScreen::customPaintOmitted);
         statusLines = tight ? 1 : STATUS_LINES;
 
@@ -258,14 +258,19 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         statusY = topFooterY - GAP_TIGHT - statusLines * LINE_H;
         int bodyBottom = statusY - GAP;
 
-        if (formY + formHeight() > bodyBottom) showDetail = false;
+        descriptionH = DESCRIPTION_H;
+        int overflow = formY + formFieldsHeight() - bodyBottom;
+        if (overflow > 0) descriptionH = Math.max(MIN_DESCRIPTION_H, DESCRIPTION_H - overflow);
         if (formY + formHeight() > bodyBottom) showPaintNotice = false;
-        visibilityHelpY = formY + FORM_FIELDS_H;
-        paintNoticeY = visibilityHelpY + (showDetail ? LINE_H : 0);
+        paintNoticeY = formY + formFieldsHeight();
+    }
+
+    private int formFieldsHeight() {
+        return FORM_FIELDS_H - DESCRIPTION_H + descriptionH;
     }
 
     private int formHeight() {
-        return FORM_FIELDS_H + (showDetail ? LINE_H : 0)
+        return formFieldsHeight()
                 + (showPaintNotice ? LINE_H : 0);
     }
 
@@ -416,12 +421,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                         ? "waypointer.screen.route_publish.visibility.public"
                         : "waypointer.screen.route_publish.visibility.unlisted");
         return chosen ? GuiTokens.colored(label, GuiTokens.ACCENT) : label;
-    }
-
-    private Component visibilityHelp() {
-        return Component.translatable(form.visibility() == CatalogPublishRequest.Visibility.PUBLIC
-                ? "waypointer.screen.route_publish.visibility.public.help"
-                : "waypointer.screen.route_publish.visibility.unlisted.help");
     }
 
     private Component publishButtonLabel() {
@@ -609,13 +608,8 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 null, 0);
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.visibility"),
-                formY + FIELD_STRIDE + LABEL_H + DESCRIPTION_H + GAP_TIGHT, null, 0);
+                formY + FIELD_STRIDE + LABEL_H + descriptionH + GAP_TIGHT, null, 0);
 
-        if (showDetail) {
-            graphics.text(font, font.plainSubstrByWidth(
-                            visibilityHelp().getString(), formW),
-                    formX, visibilityHelpY, TEXT_MUTED, false);
-        }
         if (showPaintNotice) {
             graphics.text(font, font.plainSubstrByWidth(
                             paintOmittedNotice().getString(), formW),

@@ -93,7 +93,6 @@
   "waypointer.settings.setting.showDungeonRouteLines.label": "Útvonal-összekötő vonalak",
   "waypointer.settings.setting.showDungeonTracers.label": "Nyomkövetők",
   "waypointer.settings.setting.chatCoordDetection.label": "Koordináták felismerése a csevegésben",
-  "waypointer.settings.setting.autoAddChatTempWaypoints.label": "Útpontok létrehozása csevegési üzenetekből",
   "waypointer.settings.setting.showContributorBadges.label": "Közreműködői jelvények",
   "waypointer.settings.setting.importedRouteColorMode.label": "Importált útvonalak színei",
   "waypointer.settings.setting.importedRouteColorMode.option.0": "Egy szín",

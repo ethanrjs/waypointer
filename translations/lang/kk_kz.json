@@ -49,7 +49,6 @@
   "waypointer.screen.settings.title": "Waypointer параметрлері",
   "waypointer.screen.settings.search": "Параметрлерді іздеу",
   "waypointer.screen.settings.done.tooltip": "Алдыңғы экранға оралу.\nБұл беттегі әрбір өзгеріс тергенде немесе басқанда сақталады.",
-  "waypointer.screen.settings.auto_save": "Өзгерістер автоматты түрде сақталады.",
   "waypointer.screen.settings.categories": "Санаттар",
   "waypointer.screen.settings.recent": "Соңғы",
   "waypointer.screen.settings.matches.none": "Сәйкестік жоқ",
@@ -198,12 +197,8 @@
   "waypointer.settings.setting.showDungeonRouteLines.label": "Маршрутты байланыстыратын сызықтар",
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp биіктігін пайдалану",
   "waypointer.settings.setting.showDungeonTracers.label": "Трассерлер",
-  "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Бірінші жол нүктесіне жол салу",
-  "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Барлық жол нүктелеріне жол салу",
   "waypointer.settings.setting.dungeonEntryPathColor.label": "Зынданға кіру жолының түсі",
   "waypointer.settings.setting.chatCoordDetection.label": "Чат координаттарын анықтау",
-  "waypointer.settings.setting.autoAddChatTempWaypoints.label": "Чат хабарламаларынан жол нүктелерін жасау",
-  "waypointer.settings.setting.showWaypointChatShareButtons.label": "Чатта бөлісу түймелері",
   "waypointer.settings.setting.chatCodecDetection.label": "Чат кодегін анықтау (импорт)",
   "waypointer.settings.setting.showContributorBadges.label": "Үлес қосушы белгілері",
   "waypointer.settings.setting.importedRouteColorMode.label": "Импортталған маршрут түстері",
@@ -402,8 +397,6 @@
   "waypointer.screen.debug_consent.category.routes_and_waypoints.label": "Маршруттар, жол нүктелері және координаттар",
   "waypointer.screen.debug_consent.category.settings_and_changes.label": "Параметрлер және соңғы өзгерістер",
   "waypointer.screen.debug_consent.category.recent_logs_and_activity.label": "Соңғы журналдар және әрекет",
-  "waypointer.screen.export.settings_help.shorter": "Барлығы қосылған. Қысқарақ код үшін қажетсіздерін өшіріңіз.",
-  "waypointer.screen.export.settings_help.no_island": "Импорттар ойыншы тұрған аралға түседі.",
   "waypointer.screen.export.target.title": "Экспорттау үшін",
   "waypointer.screen.export.target.waypointer.tooltip": "Түпнұсқа пішім. Қосылған Waypointer параметрлерінің барлығын сақтайды.",
   "waypointer.screen.main.dungeons.all_rooms": "Маршрут тізімінде көрсетілген барлық бөлмелер",
@@ -438,6 +431,5 @@
   "waypointer.update.open_modrinth": "Modrinth ашу үшін басыңыз",
   "waypointer.screen.route_catalog.refresh.tooltip": "Маршруттар каталогын қайта жүктеу (F5). Әр 10 секунд сайын қолжетімді.",
   "waypointer.screen.route_catalog.install.tooltip": "Бұл маршрутты орнатып, Waypointer ішінде ашу.",
-  "waypointer.screen.route_catalog.status.search_wait": "Теруді тоқтатқанда іздеу орындалады.",
-  "waypointer.screen.route_catalog.status.selection_help": "Маршрут мәліметтерін қарап шығып, «Орнату» түймесін таңдаңыз."
+  "waypointer.screen.route_catalog.status.search_wait": "Теруді тоқтатқанда іздеу орындалады."
 }

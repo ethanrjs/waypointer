@@ -42,7 +42,6 @@
   "waypointer.screen.settings.search": "Leita að stillingum",
   "waypointer.screen.settings.search.clear.tooltip": "Hreinsa stillingaleit.",
   "waypointer.screen.settings.done.tooltip": "Til baka á fyrri skjá.\nAllar breytingar á þessari síðu vistast þegar þú skrifar eða smellir.",
-  "waypointer.screen.settings.auto_save": "Breytingar vistast sjálfkrafa.",
   "waypointer.screen.settings.categories": "Flokkar",
   "waypointer.screen.settings.recent": "Nýlegar",
   "waypointer.screen.settings.matches.none": "Engar niðurstöður",

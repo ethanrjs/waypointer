@@ -10,6 +10,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import com.babbur.waypointer.text.AmpersandFormatting;
 import net.minecraft.network.chat.Component;
 
 record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWrite) {
@@ -38,7 +39,7 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
             stored.setStyleOverride(style);
             if (visible != stored) visible.setStyleOverride(style);
         });
-        return new AppearanceTarget(scope, Component.literal(stored.name()), afterWrite);
+        return new AppearanceTarget(scope, Component.literal(AmpersandFormatting.translate(stored.name())), afterWrite);
     }
 
     static AppearanceTarget waypoint(ActiveGroupManager manager, WaypointerConfig config,
@@ -50,7 +51,7 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         String label = group.get(index).name();
         Component name = label == null || label.isBlank()
                 ? Component.translatable("waypointer.screen.appearance.waypoint_number", index + 1)
-                : Component.literal(label);
+                : Component.literal(AmpersandFormatting.translate(label));
         return new AppearanceTarget(scope, name, afterWrite);
     }
 
@@ -59,14 +60,6 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
             case WAYPOINT -> !WAYPOINT_HIDDEN.contains(settingId);
             case ROUTE -> !ROUTE_HIDDEN.contains(settingId);
             default -> true;
-        };
-    }
-
-    Component explanation() {
-        return switch (scope.level()) {
-            case WAYPOINT -> Component.translatable("waypointer.screen.appearance.explain.waypoint");
-            case ROUTE -> Component.translatable("waypointer.screen.appearance.explain.route");
-            default -> Component.translatable("waypointer.screen.appearance.explain.zone", name);
         };
     }
 
