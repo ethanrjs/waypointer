@@ -4,7 +4,6 @@ import com.babbur.waypointer.crystal.CrystalHollowsGeometry;
 import com.babbur.waypointer.crystal.CrystalHollowsMinimap;
 import com.babbur.waypointer.crystal.CrystalHollowsMinimapLayout;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
-import com.babbur.waypointer.crystal.CrystalHollowsTerrainScanner;
 import com.babbur.waypointer.crystal.SightingConfidence;
 import com.babbur.waypointer.crystal.StructureSighting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -15,7 +14,7 @@ import java.util.List;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/** Gallery-only: the current Crystal Hollows map beside three redesign options, on one lobby. */
+/** Gallery-only: the current Crystal Hollows map beside two redesign options, on one lobby. */
 final class MinimapOptionsScreen extends Screen {
     private static final double PLAYER_X = 590, PLAYER_Y = 101, PLAYER_Z = 455;
     private static final float YAW = 135;
@@ -32,11 +31,8 @@ final class MinimapOptionsScreen extends Screen {
     /** Quadrant colors, toned to sit on the dark panel. */
     private static final int JUNGLE = 0x46B56E, MITHRIL = 0x45A7BD, GOBLIN = 0xC9975A, PRECURSOR = 0x7A8AD0;
 
-    private final com.babbur.waypointer.crystal.CrystalHollowsTerrain scan;
-
-    MinimapOptionsScreen(com.babbur.waypointer.crystal.CrystalHollowsTerrain scan) {
+    MinimapOptionsScreen() {
         super(Component.literal("Crystal Hollows map options"));
-        this.scan = scan;
     }
 
     private static StructureSighting sighting(CrystalHollowsStructure structure, int x, int y, int z,
@@ -46,19 +42,18 @@ final class MinimapOptionsScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        int size = Math.min(150, (width - 5 * 16) / 4 - PAD * 2);
+        int size = Math.min(150, (width - 4 * 16) / 3 - PAD * 2);
         int panelW = size + PAD * 2;
-        int gap = (width - panelW * 4) / 5;
+        int gap = (width - panelW * 3) / 4;
         int top = 40;
-        String[] captions = {"Current", "A  Panel", "B  Grid", "C  Grid with tunnels"};
-        for (int i = 0; i < 4; i++) {
+        String[] captions = {"Current", "A  Panel", "B  Grid"};
+        for (int i = 0; i < 3; i++) {
             int x = gap + i * (panelW + gap);
-            CrystalHollowsTerrainScanner.get().setEnabled(false);
             switch (i) {
                 case 0 -> CrystalHollowsMinimap.draw(g, new CrystalHollowsMinimapLayout(x, top, size),
                         PLAYER_X, PLAYER_Y, PLAYER_Z, YAW, SIGHTINGS, null, true, true);
                 case 1 -> optionA(g, x, top, size);
-                default -> optionB(g, x, top, size, i == 3);
+                default -> optionB(g, x, top, size);
             }
             g.text(font, captions[i], x + (panelW - font.width(captions[i])) / 2, top - 14, TEXT, true);
         }
@@ -86,17 +81,14 @@ final class MinimapOptionsScreen extends Screen {
         footer(g, x, my + size + 3, w, "Mithril Deposits");
     }
 
-    // ---- Options B and C: the community route map ---------------------------------------------
+    // ---- Option B: the community route map ----------------------------------------------------
 
-    private void optionB(GuiGraphicsExtractor g, int x, int y, int size, boolean withTunnels) {
+    private void optionB(GuiGraphicsExtractor g, int x, int y, int size) {
         int w = size + PAD * 2, h = HEADER + size + PAD + FOOTER;
         frame(g, x, y, w, h);
         header(g, x, y, w);
         int mx = x + PAD, my = y + HEADER + 3;
         g.fill(mx, my, mx + size, my + size, 0x40000000);
-        if (withTunnels && com.babbur.waypointer.crystal.CrystalHollowsTunnelMap.get() != null) {
-            com.babbur.waypointer.crystal.CrystalHollowsTunnelMap.get().draw(g, mx, my, size, PLAYER_Y);
-        }
         int step = Math.max(4, Math.round(size * 32f / (CrystalHollowsGeometry.MAX_XZ - CrystalHollowsGeometry.MIN_XZ)));
         for (int i = step; i < size; i += step) {
             g.fill(mx + i, my, mx + i + 1, my + size, 0x0CFFFFFF);

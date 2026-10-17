@@ -25,7 +25,7 @@ class CrystalHollowsCommandTreeTest {
         assertNotNull(dispatcher.getRoot().getChild("wpch"));
         assertNull(dispatcher.getRoot().getChild("waypointer-crystal"));
         assertNull(dispatcher.getRoot().getChild("wpch").getCommand());
-        assertEquals(Set.of("add", "defocus", "scan", "sendcoords"),
+        assertEquals(Set.of("add", "defocus", "sendcoords"),
                 dispatcher.getRoot().getChild("wpch").getChildren().stream()
                         .map(node -> node.getName()).collect(java.util.stream.Collectors.toSet()));
     }

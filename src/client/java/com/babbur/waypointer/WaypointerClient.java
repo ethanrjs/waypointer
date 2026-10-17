@@ -319,9 +319,6 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
         crystalHollowsCompass.install();
         new MetalDetectorController(manager, crystalHollowsTracker, config).install();
-        new com.babbur.waypointer.crystal.CrystalHollowsTerrainScanner(manager, crystalHollowsTracker,
-                FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID)
-                        .resolve("crystal-hollows-scans")).install();
         new StructureRelayController(crystalHollowsTracker, config).install();
         new CrystalHollowsCommands(crystalHollowsTracker, crystalHollowsCompass, config).install();
     }

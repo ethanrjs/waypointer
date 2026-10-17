@@ -90,8 +90,6 @@ public final class CrystalHollowsMinimap implements HudElement {
             g.fill(0, 0, size, 1, 0x304FB3C4);
             g.pose().popMatrix();
         }
-        CrystalHollowsTunnelMap tunnels = CrystalHollowsTunnelMap.get();
-        if (tunnels != null) tunnels.draw(g, x, y, size, playerY);
         for (int coordinate = 256; coordinate < CrystalHollowsGeometry.MAX_XZ; coordinate += 128) {
             int offset = layout.project(coordinate);
             int tickLength = coordinate % 256 == 0 ? 3 : 2;
@@ -104,8 +102,6 @@ public final class CrystalHollowsMinimap implements HudElement {
                 g.fill(x + offset, y + offsetZ, x + offset + 1, y + offsetZ + 1, 0x248CA3AB);
             }
         }
-        CrystalHollowsTerrainScanner scanner = CrystalHollowsTerrainScanner.get();
-        if (scanner != null) scanner.drawOverlay(g, x, y, size, playerY);
         List<StructureSighting> visible = sightings.stream().filter(sighting ->
                 CrystalHollowsMinimapLayout.contains(sighting.x(), sighting.z())
                         && (showRough || !sighting.approximate())
