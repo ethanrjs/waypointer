@@ -1092,8 +1092,15 @@ public final class WaypointGroup {
         }
         currentIndex = normalizedMainIndexFor(index);
         activeSubwaypointParentIndex = -1;
+        forgetStepDoneFrom(currentIndex);
         clearProximitySuppression();
         clearStandSkipHold();
+    }
+
+    /** A manual jump redoes the route from there, so later early secrets count again. */
+    private void forgetStepDoneFrom(int index) {
+        if (stepDone == null) return;
+        for (int i = Math.max(0, index); i < stepDone.length; i++) stepDone[i] = false;
     }
 
     private boolean isDisabledJumpTarget(int index) {

@@ -111,6 +111,15 @@ class DungeonStepProgressTest {
     }
 
     @Test
+    void jumpingBackRedoesLaterSecrets() {
+        WaypointGroup group = room();
+        DungeonStepProgress.complete(group, 3);
+        DungeonStepProgress.complete(group, 6);
+        group.setCurrentIndex(0);
+        assertFalse(group.isStepMemberDone(6));
+    }
+
+    @Test
     void doneMarksResetWithProgress() {
         WaypointGroup group = room();
         DungeonStepProgress.complete(group, 5);
