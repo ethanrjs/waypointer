@@ -405,6 +405,22 @@ public record Zone(String id, String displayName) {
         return normalized;
     }
 
+    /** Master Mode floors use the same rooms and boss as their normal floor, so they share routes. */
+    public static String routeZoneKey(String id) {
+        String canonical = canonicalId(id);
+        if (canonical.length() == 10 && canonical.startsWith("dungeon_m")
+                && Character.isDigit(canonical.charAt(9))) {
+            return "dungeon_f" + canonical.charAt(9);
+        }
+        return canonical;
+    }
+
+    /** Whether a route saved for {@code routeZoneId} shows in {@code zoneId}. */
+    public static boolean sharesRoutes(String routeZoneId, String zoneId) {
+        if (routeZoneId == null || zoneId == null) return false;
+        return routeZoneId.equals(zoneId) || routeZoneKey(routeZoneId).equals(routeZoneKey(zoneId));
+    }
+
     /** Whether an imported route with this source zone can safely use the current zone. */
     public static boolean shouldRetargetImportedZone(String sourceZoneId, String currentZoneId) {
         String source = canonicalId(sourceZoneId);

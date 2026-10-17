@@ -570,8 +570,11 @@ public final class WaypointerScreen extends Screen {
         if (isDungeonRoomsZone(selectedZoneId)) {
             out.addAll(shownDungeonRoomGroups(manager.allGroups()));
         } else {
-            for (WaypointGroup group : manager.groupsForZone(selectedZoneId)) {
-                if (group != null && !group.temp() && group.enabled()) out.add(group);
+            for (WaypointGroup group : manager.allGroups()) {
+                if (group != null && !group.temp() && group.enabled()
+                        && Zone.sharesRoutes(group.zoneId(), selectedZoneId)) {
+                    out.add(group);
+                }
             }
         }
         return out;
@@ -2085,7 +2088,7 @@ public final class WaypointerScreen extends Screen {
                     || !selectedIds.contains(group.id())) continue;
             boolean inZone = isDungeonRoomsZone(selectedZoneId)
                     ? group.routeKind() == WaypointGroup.RouteKind.DUNGEON
-                    : selectedZoneId != null && selectedZoneId.equals(group.zoneId());
+                    : Zone.sharesRoutes(group.zoneId(), selectedZoneId);
             if (inZone) groups.add(group);
         }
         return List.copyOf(groups);

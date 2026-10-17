@@ -74,7 +74,7 @@ public final class ActiveGroupManager {
         List<WaypointGroup> active = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
             if (g.enabled()
-                    && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)
+                    && Zone.sharesRoutes(g.zoneId(), zoneId) && shouldSurfaceActiveGroup(g)
                     && (focused == null || g == focused || g.runtimeOnly()
                         && g.id().startsWith(com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.GROUP_PREFIX))) {
                 active.add(g);
@@ -596,7 +596,7 @@ public final class ActiveGroupManager {
         }
 
         for (WaypointGroup g : byId.values()) {
-            if (!g.temp() && !g.runtimeOnly() && g.enabled() && zoneId.equals(g.zoneId())) {
+            if (!g.temp() && !g.runtimeOnly() && g.enabled() && Zone.sharesRoutes(g.zoneId(), zoneId)) {
                 return g;
             }
         }

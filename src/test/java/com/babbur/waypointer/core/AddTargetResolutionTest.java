@@ -25,6 +25,22 @@ class AddTargetResolutionTest {
     }
 
     @Test
+    void masterModeFloorsUseTheirNormalFloorsRoutes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup boss = WaypointGroup.create("Boss", "dungeon_f7");
+        boss.add(new Waypoint(1, 2, 3, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        WaypointGroup other = WaypointGroup.create("Floor 6", "dungeon_f6");
+        other.add(new Waypoint(1, 2, 3, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        manager.add(boss);
+        manager.add(other);
+
+        manager.onZoneChanged(Zone.fromId("dungeon_m7"));
+
+        assertEquals(java.util.List.of(boss), manager.activeGroups());
+        assertSame(boss, manager.activeRouteGroupOrNull());
+    }
+
+    @Test
     void lastEditedRouteIsRememberedPerZone() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup hubFirst = WaypointGroup.create("Hub first", "hub");

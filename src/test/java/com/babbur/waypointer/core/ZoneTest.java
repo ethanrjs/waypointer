@@ -369,4 +369,15 @@ class ZoneTest {
         assertEquals("dungeon", zone.id());
         assertEquals("Catacombs", zone.displayName());
     }
+
+    @Test
+    void masterModeSharesRoutesWithItsFloorOnly() {
+        assertTrue(Zone.sharesRoutes("dungeon_f7", "dungeon_m7"));
+        assertTrue(Zone.sharesRoutes("dungeon_m3", "dungeon_f3"));
+        assertTrue(Zone.sharesRoutes("dungeon_m3", "dungeon_m3"));
+        assertFalse(Zone.sharesRoutes("dungeon_f6", "dungeon_m7"));
+        assertFalse(Zone.sharesRoutes("dungeon", "dungeon_m7"));
+        assertFalse(Zone.sharesRoutes("hub", "dungeon_f1"));
+        assertEquals("arrow-trap", Zone.routeZoneKey("arrow-trap"));
+    }
 }
