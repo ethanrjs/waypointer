@@ -196,6 +196,14 @@ class DebugReportAnonymizerTest {
     }
 
     @Test
+    void routeCodesStayOutOfAnonymizedReports() {
+        String report = DebugReportAnonymizer.anonymize(List.of(section("Active Routes and Waypoints",
+                "  Route code:      WP:secret-route-code-sentinel")), List.of());
+        assertFalse(report.contains("secret-route-code-sentinel"));
+        assertTrue(report.contains("Route code omitted"));
+    }
+
+    @Test
     void aliasesAreConsistentWithinReportAndStateDoesNotCarryAcrossReports() {
         var sections = List.of(section("Active Routes and Waypoints", "  Name: Alice", "  Name: Alice", "  Name: Bob"));
         String first = DebugReportAnonymizer.anonymize(sections, List.of());

@@ -85,6 +85,12 @@ final class PerfProbe {
             context.waitTicks(10);
             report.add(measure(context, "catalog map of coal route"));
         }
+        if (coal != null) {
+            context.runOnClient(client -> MinecraftCompat.setScreen(client,
+                    new com.babbur.waypointer.screen.GroupEditScreen(null, manager, WaypointerClient.config(), coal)));
+            context.waitTicks(10);
+            report.add(measure(context, "route editor, coal route"));
+        }
         context.runOnClient(client -> WaypointerScreen.open(manager, WaypointerClient.config()));
         context.waitTicks(10);
         report.add(measure(context, "route hub open"));

@@ -188,13 +188,22 @@ public final class WaypointPainterScreen extends Screen {
         int left = layout.gridLeft() + faceColumn * WaypointPaint.SIZE * layout.cell();
         int top = layout.gridTop() + faceRow * WaypointPaint.SIZE * layout.cell();
         int faceSize = WaypointPaint.SIZE * layout.cell();
+        // Each face is its own stratum and same-colour runs are one rectangle: every GUI element is
+        // checked against the overlapping ones already in its stratum.
+        g.nextStratum();
         g.fill(left - 1, top - 1, left + faceSize + 1, top + faceSize + 1, BORDER);
         for (int y = 0; y < WaypointPaint.SIZE; y++) {
-            for (int x = 0; x < WaypointPaint.SIZE; x++) {
+            int y1 = top + y * layout.cell();
+            for (int x = 0; x < WaypointPaint.SIZE; ) {
                 int color = palette[Byte.toUnsignedInt(pixels[WaypointPaint.pixelOffset(face, x, y)])];
-                int x1 = left + x * layout.cell();
-                int y1 = top + y * layout.cell();
-                g.fill(x1, y1, x1 + layout.cell(), y1 + layout.cell(), 0xFF000000 | color);
+                int end = x + 1;
+                while (end < WaypointPaint.SIZE
+                        && palette[Byte.toUnsignedInt(pixels[WaypointPaint.pixelOffset(face, end, y)])] == color) {
+                    end++;
+                }
+                g.fill(left + x * layout.cell(), y1, left + end * layout.cell(), y1 + layout.cell(),
+                        0xFF000000 | color);
+                x = end;
             }
         }
         if (layout.cell() >= 3) {

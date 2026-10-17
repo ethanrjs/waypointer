@@ -125,12 +125,17 @@ public final class CrystalHollowsMinimap implements HudElement {
         occupied.add(new Rect(nucleus.x() - 3, nucleus.y() - 3, nucleus.width() + 6, nucleus.height() + 6));
         if (labels) {
             if (magma) {
-                occupied.add(centered(g, text("magma"), x + size / 2f, y + 13, size - 12, 0xFFE6B493, occupied));
+                occupied.add(centered(g, text("magma"), x + size / 2f, y + 13, size - 12, 0xFFE6B493, occupied,
+                        new Rect(x, y, size, size)));
             } else {
-                occupied.add(centered(g, text("jungle"), x + size / 4f, y + size / 4f, half - 8, 0xFFA3CBB0, occupied));
-                occupied.add(centered(g, text("mithril"), x + size * 3 / 4f, y + size / 4f, half - 8, 0xFFA5CED8, occupied));
-                occupied.add(centered(g, text("goblin"), x + size / 4f, y + size * 3 / 4f, half - 8, 0xFFD0BD99, occupied));
-                occupied.add(centered(g, text("precursor"), x + size * 3 / 4f, y + size * 3 / 4f, half - 8, 0xFFB6C0DF, occupied));
+                occupied.add(centered(g, text("jungle"), x + size / 4f, y + size / 4f, half - 8, 0xFFA3CBB0, occupied,
+                        new Rect(x, y, half, half)));
+                occupied.add(centered(g, text("mithril"), x + size * 3 / 4f, y + size / 4f, half - 8, 0xFFA5CED8, occupied,
+                        new Rect(x + half, y, size - half, half)));
+                occupied.add(centered(g, text("goblin"), x + size / 4f, y + size * 3 / 4f, half - 8, 0xFFD0BD99, occupied,
+                        new Rect(x, y + half, half, size - half)));
+                occupied.add(centered(g, text("precursor"), x + size * 3 / 4f, y + size * 3 / 4f, half - 8, 0xFFB6C0DF, occupied,
+                        new Rect(x + half, y + half, size - half, size - half)));
             }
         }
 
@@ -288,17 +293,19 @@ public final class CrystalHollowsMinimap implements HudElement {
         g.pose().popMatrix();
     }
 
+    /** An area name near (x, y): moved up or down within its area when a marker is in the way. */
     private static Rect centered(GuiGraphicsExtractor g, String text, float x, float y, int width, int color,
-                                 List<Rect> occupied) {
+                                 List<Rect> occupied, Rect area) {
         var font = Minecraft.getInstance().font;
         float scale = Math.min(1.0f, (float) width / Math.max(1, inkWidth(text)));
         if (scale < 0.7f) return new Rect((int) x, (int) y, 0, 0);
         float actualWidth = inkWidth(text) * scale;
         float actualHeight = inkHeight(text) * scale;
-        for (int offset : new int[]{0, 12}) {
+        for (int offset : new int[]{0, 12, -12, 24, -24, 36, -36}) {
             int left = Math.round(x - actualWidth / 2f), top = Math.round(y - actualHeight / 2f) + offset;
             Rect bounds = new Rect(left - 2, top - 1, (int) Math.ceil(actualWidth) + 4,
                     (int) Math.ceil(actualHeight) + 2);
+            if (bounds.y() < area.y() + 2 || bounds.y() + bounds.height() > area.y() + area.height() - 2) continue;
             if (occupied.stream().anyMatch(bounds::overlaps)) continue;
             g.pose().pushMatrix();
             g.pose().translate(left, top);

@@ -149,8 +149,9 @@ public final class WaypointerKeybinds {
         KeyMapping[] allMappings = Minecraft.getInstance().options.keyMappings;
         for (KeyMapping mapping : mappings) {
             List<String> conflicts = new ArrayList<>();
+            // Unbound keys share "no key" with every other unbound key; that is not a conflict.
             for (KeyMapping candidate : allMappings) {
-                if (candidate != mapping && mapping.same(candidate)) {
+                if (!mapping.isUnbound() && candidate != mapping && mapping.same(candidate)) {
                     conflicts.add(candidate.getName());
                 }
             }

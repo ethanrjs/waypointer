@@ -147,6 +147,9 @@ public final class DebugReportAnonymizer {
                 if (value.matches("(?i)(?:[a-z0-9-]+\\.)*hypixel\\.net(?::25565)?")) return prefix + value;
                 return prefix + remember(value);
             }
+            if (heading.equals("Active Routes and Waypoints") && key.equals("Route code")) {
+                return prefix + "[Route code omitted: contains waypoint names.]";
+            }
             if (heading.equals("Active Routes and Waypoints") && (key.equals("Name") || key.equals("ID"))
                     || heading.equals("Dungeon Entry Path Outcomes") && Set.of("Group", "Target name").contains(key)) {
                 return prefix + remember(value);

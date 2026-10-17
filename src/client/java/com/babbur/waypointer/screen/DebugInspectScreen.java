@@ -74,6 +74,8 @@ public final class DebugInspectScreen extends Screen {
         record BitNote(String text) implements Row {}
         record PoolEntry(int index, String text) implements Row {}
         record WP(DecodeDebug.WaypointDebug wp) implements Row {}
+        /** A share code: shortened on screen, whole in the copied report. */
+        record Code(String key, String code) implements Row {}
         record Blank() implements Row {}
     }
 
@@ -797,36 +799,50 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.KV("Navigation state", "focusedVisibleIndex=" + group.focusedVisibleIndex()
                     + ", proximitySuppressedIndex=" + group.proximitySuppressedIndex()
                     + ", standSkipHoldIndex=" + group.standSkipHoldIndex()));
-            List<Waypoint> waypoints = group.waypoints();
-            for (int i = 0; i < waypoints.size(); i++) {
-                Waypoint waypoint = waypoints.get(i);
-                StringBuilder value = new StringBuilder();
-                if (i == group.currentIndex()) value.append("CURRENT  ");
-                value.append("block=(").append(waypoint.x()).append(',').append(waypoint.y())
-                        .append(',').append(waypoint.z()).append(')');
-                value.append(String.format(Locale.ROOT, " world=(%.3f,%.3f,%.3f)",
-                        waypoint.centerX(), waypoint.centerY(), waypoint.centerZ()));
-                if (waypoint.hasName()) value.append(" name=\"").append(oneLine(waypoint.name())).append('"');
-                value.append(String.format(Locale.ROOT, " color=#%06X flags=0x%X",
-                        waypoint.color() & 0xFFFFFF, waypoint.flags()));
-                value.append(" disabled=").append(waypoint.isDisabled())
-                        .append(" staticReached=").append(group.isStaticWaypointReached(i));
-                double radius = waypoint.customRadius() > 0.0
-                        ? waypoint.customRadius() : group.defaultRadius();
-                value.append(" radius=").append(formatRadius(radius));
-                if (waypoint.isTemp()) {
-                    value.append(" temp=").append(Waypoint.tempModeName(waypoint.tempMode()))
-                            .append(" expiresAt=").append(waypoint.expiresAtMillis());
-                }
-                if (player != null) {
-                    double dx = waypoint.centerX() - player.getX();
-                    double dy = waypoint.centerY() - player.getY();
-                    double dz = waypoint.centerZ() - player.getZ();
-                    value.append(String.format(Locale.ROOT, " distance=%.2f", Math.sqrt(dx * dx + dy * dy + dz * dz)));
-                }
-                rows.add(new Row.KVDim(group.displayIndexLabel(i), value.toString()));
+            int current = group.currentIndex();
+            if (current >= 0 && current < group.size()) {
+                rows.add(new Row.KVDim("Current " + group.displayIndexLabel(current),
+                        waypointLine(group, current, player)));
             }
+            rows.add(routeCode(group));
         }
+    }
+
+    /** The whole route as its share code: small, and pasting it back gives the exact route. */
+    private static Row routeCode(WaypointGroup group) {
+        try {
+            return new Row.Code("Route code", WaypointCodec.encode(List.of(group)));
+        } catch (RuntimeException failure) {
+            return new Row.KVWarn("Route code", "unavailable: " + oneLine(String.valueOf(failure.getMessage())));
+        }
+    }
+
+    private static String waypointLine(WaypointGroup group, int i, net.minecraft.world.entity.player.Player player) {
+        Waypoint waypoint = group.get(i);
+        StringBuilder value = new StringBuilder();
+        value.append("block=(").append(waypoint.x()).append(',').append(waypoint.y())
+                .append(',').append(waypoint.z()).append(')');
+        value.append(String.format(Locale.ROOT, " world=(%.3f,%.3f,%.3f)",
+                waypoint.centerX(), waypoint.centerY(), waypoint.centerZ()));
+        if (waypoint.hasName()) value.append(" name=\"").append(oneLine(waypoint.name())).append('"');
+        value.append(String.format(Locale.ROOT, " color=#%06X flags=0x%X",
+                waypoint.color() & 0xFFFFFF, waypoint.flags()));
+        value.append(" disabled=").append(waypoint.isDisabled())
+                .append(" staticReached=").append(group.isStaticWaypointReached(i));
+        double radius = waypoint.customRadius() > 0.0
+                ? waypoint.customRadius() : group.defaultRadius();
+        value.append(" radius=").append(formatRadius(radius));
+        if (waypoint.isTemp()) {
+            value.append(" temp=").append(Waypoint.tempModeName(waypoint.tempMode()))
+                    .append(" expiresAt=").append(waypoint.expiresAtMillis());
+        }
+        if (player != null) {
+            double dx = waypoint.centerX() - player.getX();
+            double dy = waypoint.centerY() - player.getY();
+            double dz = waypoint.centerZ() - player.getZ();
+            value.append(String.format(Locale.ROOT, " distance=%.2f", Math.sqrt(dx * dx + dy * dy + dz * dz)));
+        }
+        return value.toString();
     }
 
     private void buildTracerAndPathSettingsReport() {
@@ -1292,6 +1308,12 @@ public final class DebugInspectScreen extends Screen {
                         p.text().isEmpty() ? TEXT_MUTED : STRING_TONE, false);
             }
             case Row.WP wp -> drawWaypointRow(g, wp.wp(), x, y, xEnd);
+            case Row.Code c -> {
+                drawKey(g, c.key(), x, y);
+                String suffix = "  (" + c.code().length() + " characters)";
+                int room = Math.max(20, xEnd - x - KEY_COL_W - font.width(suffix));
+                g.text(font, GuiTokens.ellipsize(font, c.code(), room) + suffix, x + KEY_COL_W, y, STRING_TONE, false);
+            }
             case Row.Blank ignored -> { }
         }
     }
@@ -1739,6 +1761,7 @@ public final class DebugInspectScreen extends Screen {
             case Row.PoolEntry p -> String.format(Locale.ROOT, "  [%d] %s",
                     p.index(), p.text().isEmpty() ? "\"\"" : "\"" + oneLine(p.text()) + "\"");
             case Row.WP wp -> formatWaypointPlain(wp.wp());
+            case Row.Code c -> String.format(Locale.ROOT, "  %-16s %s", oneLine(c.key()) + ":", c.code());
             case Row.Blank ignored -> "";
         };
     }
