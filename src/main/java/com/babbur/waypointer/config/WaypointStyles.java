@@ -49,6 +49,8 @@ public final class WaypointStyles {
                 "hideWaypointsNearRadius",
                 "hideWaypointLabelsNearPlayer",
                 "hideWaypointLabelsNearRadius",
+                "showLabels",
+                "labelMaxDistance",
                 "showRouteLines",
                 "useEtherwarpHeight",
                 "lineOfSightOnly",

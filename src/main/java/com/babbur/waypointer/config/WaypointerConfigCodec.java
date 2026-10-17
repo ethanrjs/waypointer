@@ -147,6 +147,8 @@ public final class WaypointerConfigCodec {
     private static final int SHOW_CHAT_COORD_BLOCK_BUTTON = 113;
     private static final int COORDINATE_SHARE_HELPER = 114;
     private static final int LINE_OF_SIGHT_ONLY = 115;
+    private static final int SHOW_LABELS = 116;
+    private static final int LABEL_MAX_DISTANCE = 117;
 
     private WaypointerConfigCodec() {
     }
@@ -332,6 +334,8 @@ public final class WaypointerConfigCodec {
                 defaults.crystalHollowsEntityDetection());
         writeBoolean(out, COORDINATE_SHARE_HELPER, config.coordinateShareHelper(), defaults.coordinateShareHelper());
         writeBoolean(out, LINE_OF_SIGHT_ONLY, config.lineOfSightOnly(), defaults.lineOfSightOnly());
+        writeBoolean(out, SHOW_LABELS, config.showLabels(), defaults.showLabels());
+        writeDouble(out, LABEL_MAX_DISTANCE, config.labelMaxDistance(), defaults.labelMaxDistance());
         writeBoolean(out, CRYSTAL_HOLLOWS_CHAT_DETECTION,
                 config.crystalHollowsChatDetection(), defaults.crystalHollowsChatDetection());
         writeBoolean(out, CRYSTAL_HOLLOWS_METAL_DETECTOR,
@@ -486,6 +490,8 @@ public final class WaypointerConfigCodec {
                         config.setCrystalHollowsEntityDetection(in.readBoolean());
                 case COORDINATE_SHARE_HELPER -> config.setCoordinateShareHelper(in.readBoolean());
                 case LINE_OF_SIGHT_ONLY -> config.setLineOfSightOnly(in.readBoolean());
+                case SHOW_LABELS -> config.setShowLabels(in.readBoolean());
+                case LABEL_MAX_DISTANCE -> config.setLabelMaxDistance(in.readDouble());
                 case CRYSTAL_HOLLOWS_CHAT_DETECTION ->
                         config.setCrystalHollowsChatDetection(in.readBoolean());
                 case CRYSTAL_HOLLOWS_METAL_DETECTOR -> config.setCrystalHollowsMetalDetector(in.readBoolean());
@@ -611,7 +617,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= LINE_OF_SIGHT_ONLY
+        return tag >= DEFAULT_REACH_RADIUS && tag <= LABEL_MAX_DISTANCE
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
@@ -697,7 +703,7 @@ public final class WaypointerConfigCodec {
                     HIDE_WAYPOINTS_NEAR_RADIUS, HIDE_WAYPOINT_LABELS_NEAR_RADIUS,
                     MAX_STATIC_RENDER_DISTANCE, LABEL_HEIGHT_OFFSET,
                     WAYPOINT_MARKER_SCALE, WAYPOINT_OUTLINE_OPACITY,
-                    EDIT_MODE_PLACEMENT_REACH -> Double.BYTES;
+                    EDIT_MODE_PLACEMENT_REACH, LABEL_MAX_DISTANCE -> Double.BYTES;
             case DEFAULT_WAYPOINT_COLOR, TRACER_COLOR, ROUTE_LINE_COLOR,
                     MAX_WAYPOINT_LABELS, IMPORTED_ROUTE_DEFAULT_COLOR,
                     TEMP_DEFAULT_MODE, TEMP_DEFAULT_DURATION_SEC,

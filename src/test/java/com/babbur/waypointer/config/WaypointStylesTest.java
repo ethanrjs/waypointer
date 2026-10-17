@@ -49,6 +49,16 @@ class WaypointStylesTest {
         Waypoint seen = point.withStyleOverride(WaypointStyle.EMPTY.with("lineOfSightOnly", true));
         assertTrue(WaypointStyles.resolve(config, route, seen).lineOfSightOnly(), "waypoints beat routes");
     }
+    @Test void aRouteCanHideItsLabelsAndLimitTheirDistanceWithoutTouchingOtherRoutes() {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup quiet = WaypointGroup.create("Quiet", "hub");
+        WaypointGroup other = WaypointGroup.create("Other", "hub");
+        quiet.setStyleOverride(WaypointStyle.EMPTY.with("showLabels", false).with("labelMaxDistance", 48.0));
+        assertFalse(WaypointStyles.resolve(config, quiet, null).showLabels());
+        assertEquals(48.0, WaypointStyles.resolve(config, quiet, null).labelMaxDistance());
+        assertTrue(WaypointStyles.resolve(config, other, null).showLabels());
+        assertEquals(0.0, WaypointStyles.resolve(config, other, null).labelMaxDistance());
+    }
     @Test void zoneStylesSitBetweenGlobalAndRouteAndCoverZoneFamilies() {
         WaypointerConfig config = new WaypointerConfig();
         WaypointGroup shaft = WaypointGroup.create("Shaft", "mineshaft_crystal");

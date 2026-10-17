@@ -131,6 +131,8 @@ public final class WaypointerConfig {
     private double hideWaypointsNearRadius = 5.0;
     private boolean hideWaypointLabelsNearPlayer = false;
     private double hideWaypointLabelsNearRadius = 5.0;
+    private boolean showLabels = true;
+    private double labelMaxDistance = 0.0;
     private boolean hideReachedStaticWaypointsUntilCycleComplete = false;
     private boolean skipAheadOnlyVisibleWaypoints = true;
     private boolean showRouteLines = false;
@@ -733,6 +735,9 @@ public final class WaypointerConfig {
     public double hideWaypointsNearRadius()   { return Math.max(0.5, hideWaypointsNearRadius); }
         public boolean hideWaypointLabelsNearPlayer() { return hideWaypointLabelsNearPlayer; }
         public double hideWaypointLabelsNearRadius() { return Math.max(0.5, hideWaypointLabelsNearRadius); }
+    public boolean showLabels() { return showLabels; }
+    /** Labels farther than this are hidden while their boxes stay; 0 means no extra limit. */
+    public double labelMaxDistance() { return Double.isFinite(labelMaxDistance) ? Math.max(0.0, labelMaxDistance) : 0.0; }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean skipAheadOnlyVisibleWaypoints() { return skipAheadOnlyVisibleWaypoints; }
     public boolean showRouteLines()           { return showRouteLines; }
@@ -978,6 +983,14 @@ public final class WaypointerConfig {
     }
         public void setHideWaypointLabelsNearPlayer(boolean v) {
         this.hideWaypointLabelsNearPlayer = v;
+        save();
+    }
+    public void setShowLabels(boolean v) {
+        this.showLabels = v;
+        save();
+    }
+    public void setLabelMaxDistance(double v) {
+        this.labelMaxDistance = Double.isFinite(v) ? clamp(v, 0.0, 100000.0) : 0.0;
         save();
     }
         public void setHideWaypointLabelsNearRadius(double v) {
@@ -1231,6 +1244,8 @@ public final class WaypointerConfig {
         hideWaypointsNearRadius = replacement.hideWaypointsNearRadius;
         hideWaypointLabelsNearPlayer = replacement.hideWaypointLabelsNearPlayer;
         hideWaypointLabelsNearRadius = replacement.hideWaypointLabelsNearRadius;
+        showLabels = replacement.showLabels;
+        labelMaxDistance = replacement.labelMaxDistance;
         hideReachedStaticWaypointsUntilCycleComplete = replacement.hideReachedStaticWaypointsUntilCycleComplete;
         skipAheadOnlyVisibleWaypoints = replacement.skipAheadOnlyVisibleWaypoints;
         showRouteLines = replacement.showRouteLines;
@@ -1475,6 +1490,8 @@ public final class WaypointerConfig {
         hideWaypointsNearRadius = defaults.hideWaypointsNearRadius;
         hideWaypointLabelsNearPlayer = defaults.hideWaypointLabelsNearPlayer;
         hideWaypointLabelsNearRadius = defaults.hideWaypointLabelsNearRadius;
+        showLabels = defaults.showLabels;
+        labelMaxDistance = defaults.labelMaxDistance;
         hideReachedStaticWaypointsUntilCycleComplete = defaults.hideReachedStaticWaypointsUntilCycleComplete;
         skipAheadOnlyVisibleWaypoints = defaults.skipAheadOnlyVisibleWaypoints;
         showRouteLines = defaults.showRouteLines;

@@ -54,10 +54,10 @@ public final class SettingsCatalog {
     public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
     public static final String ACTION_FEEDBACK = "action.feedback";
 
-    private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
+    private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) -> c.showLabels() && (
             c.showWaypointNames() || c.showWaypointDistances() || c.showRouteProgress()
                     || c.labelShowRouteName() || c.labelShowCoordinates() || c.showWaypointRoleBadge()
-                    || !"NONE".equals(c.waypointIcon());
+                    || !"NONE".equals(c.waypointIcon()));
 
     private static final List<Category> CATEGORIES = buildCategories();
     private static final List<Setting> ALL_SETTINGS = flatten(CATEGORIES);
@@ -344,6 +344,20 @@ public final class SettingsCatalog {
                                 (c, d) -> c.etherwarpAlignmentSound(),
                                 (c, d, v) -> c.setEtherwarpAlignmentSound((String) v))),
                 Group.plain("labels", "Labels",
+                        Setting.bool("showLabels", MAIN, "Show labels",
+                                null,
+                                (c, d) -> c.showLabels(),
+                                (c, d, v) -> c.setShowLabels((Boolean) v))
+                                .impact(Setting.Impact.HIGH)
+                                .aliases("hide labels", "text", "names"),
+                        Setting.number("labelMaxDistance", MAIN, "Label draw distance (blocks, 0 = unlimited)",
+                                null,
+                                (c, d) -> c.labelMaxDistance(),
+                                (c, d, v) -> c.setLabelMaxDistance(dbl(v)))
+                                .range(0, 100000)
+                                .enabledWhen(ANY_LABEL_TEXT)
+                                .impact(Setting.Impact.MEDIUM)
+                                .aliases("label distance", "text distance", "render distance"),
                         Setting.bool("showWaypointNames", MAIN, "Show waypoint names",
                                 null,
                                 (c, d) -> c.showWaypointNames(),

@@ -306,6 +306,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
 
             Waypoint w = group.get(i);
             WaypointerConfig appearance = WaypointStyles.resolve(config, group, w);
+            if (!appearance.showLabels()) return;
             if (!appearance.showWaypointNames() && !appearance.showWaypointDistances()
                     && !appearance.showRouteProgress() && !appearance.labelShowRouteName()
                     && !appearance.labelShowCoordinates() && !appearance.showWaypointRoleBadge()
@@ -329,6 +330,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             double rx = ax - camPos.x, ry = ay - camPos.y, rz = az - camPos.z;
             double distanceSq = rx * rx + ry * ry + rz * rz;
             if (!withinRouteDistance(appearance, w, camPos)) return;
+            double labelMax = appearance.labelMaxDistance();
+            if (labelMax > 0 && distanceSq > labelMax * labelMax) return;
             if (isStaticBeyondDistanceLimit(group, distanceSq, squaredDistanceLimit(appearance.maxStaticWaypointRenderDistance()))) {
                 return;
             }
