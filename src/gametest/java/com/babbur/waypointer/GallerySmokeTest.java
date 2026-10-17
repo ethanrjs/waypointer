@@ -46,19 +46,16 @@ final class GallerySmokeTest {
                 } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
                 PublishedRoutesScreen screen = (PublishedRoutesScreen) MinecraftCompat.screen(client);
                 List<AbstractWidget> cards = cards(screen);
-                int columns = (int) field(screen, "columns");
-                if (columns < 2 || cards.size() <= columns)
-                    throw new AssertionError("Wide My Routes gallery needs multiple columns and rows");
-                if (cards.get(1).getY() != cards.getFirst().getY()
-                        || cards.get(1).getX() <= cards.getFirst().getX()
-                        || cards.get(columns).getY() <= cards.getFirst().getY())
-                    throw new AssertionError("Gallery cards are not arranged across then down");
+                if (cards.size() < 2) throw new AssertionError("My Routes should list several publications");
+                if (cards.get(1).getX() != cards.getFirst().getX()
+                        || cards.get(1).getY() <= cards.getFirst().getY())
+                    throw new AssertionError("My Routes rows are not stacked in one list");
                 assertBounds(screen, cards);
                 AbstractWidget first = cards.getFirst();
                 screen.mouseClicked(new MouseButtonEvent(first.getX() + 8, first.getY() + 8,
                         new MouseButtonInfo(0, 0)), false);
                 if (!"gallery-0".equals(field(field(screen, "model"), "selectedRouteId")))
-                    throw new AssertionError("Gallery card did not select its publication");
+                    throw new AssertionError("My Routes row did not select its publication");
             });
             context.waitTicks(2);
             context.takeScreenshot("my-routes-gallery-wide");
@@ -82,19 +79,19 @@ final class GallerySmokeTest {
     }
 
     private static List<AbstractWidget> cards(PublishedRoutesScreen screen) {
-        return screen.children().stream().filter(child -> child.getClass().getSimpleName().equals("PublicationRow"))
+        return screen.children().stream().filter(child -> child.getClass().getSimpleName().equals("Row"))
                 .map(AbstractWidget.class::cast).toList();
     }
 
     private static void assertBounds(PublishedRoutesScreen screen, List<AbstractWidget> cards) {
-        int left = (int) field(screen, "contentX");
-        int right = left + (int) field(screen, "contentW");
-        int bottom = (int) field(screen, "pagerY");
+        int left = (int) field(screen, "listX");
+        int right = left + (int) field(screen, "listW");
+        int bottom = (int) field(screen, "listY") + (int) field(screen, "listH");
         for (AbstractWidget card : cards) {
             if (card.getX() < left || card.getX() + card.getWidth() > right || card.getY() + card.getHeight() > bottom)
-                throw new AssertionError("Gallery card overlaps the footer or leaves the content bounds");
+                throw new AssertionError("My Routes row leaves the list bounds");
         }
-        if ((int) field(screen, "panelW") != screen.width - 24)
+        if ((int) field(screen, "panelW") + 2 * (int) field(screen, "panelX") != screen.width)
             throw new AssertionError("My Routes should occupy the full screen with catalog margins");
     }
 
