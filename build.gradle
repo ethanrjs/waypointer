@@ -10,7 +10,8 @@ plugins {
 }
 
 def minecraftTargets = [
-		'26.2': [fabricApi: '0.154.2+26.2', dependency: '>=26.2 <26.3']
+		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2'],
+		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3']
 ]
 def targetMinecraft = project.minecraft_version.toString()
 def target = minecraftTargets[targetMinecraft]
@@ -20,7 +21,8 @@ if (target == null) {
 
 def shaderPack = providers.gradleProperty('shaderPack').map { file(it) }
 def shaderTestMods = [
-		'26.2': [iris: 'oaD6KQls', sodium: '2Yom1N68']
+		'26.1.2': [iris: '5H9TsVy4', sodium: 'vf7UgZpC'],
+		'26.2'  : [iris: 'oaD6KQls', sodium: '2Yom1N68']
 ]
 if (shaderPack.isPresent() && (!shaderPack.get().isFile()
 		|| !shaderPack.get().name.toLowerCase(Locale.ROOT).endsWith('.zip'))) {
@@ -41,9 +43,15 @@ forwardedBuildArguments += "--max-workers=${gradle.startParameter.maxWorkerCount
 if (allowStaleDocumentation.get()) {
 	forwardedBuildArguments += '-PallowStaleDocumentation=true'
 }
-def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
+def buildMinecraft26_1_2 = tasks.register('buildMinecraft26_1_2', Exec) {
 	commandLine(wrapperCommand
-			+ ['clean', 'build', '-Pminecraft_version=26.2', '--console=plain']
+			+ ['clean', 'build', '-Pminecraft_version=26.1.2', '--console=plain']
+			+ forwardedBuildArguments)
+}
+def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
+	dependsOn buildMinecraft26_1_2
+	commandLine(wrapperCommand
+			+ ['build', '-Pminecraft_version=26.2', '--console=plain']
 			+ forwardedBuildArguments)
 }
 tasks.register('buildAllTargets') {
@@ -179,6 +187,9 @@ tasks.named('runClientGameTest') {
 		}
 	}
 }
+
+// Isolate the Minecraft API differences between targets.
+sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
 
 def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')
 def generatedRemoteLocaleResources = layout.buildDirectory.dir('generated/remote-locale-resources')

@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.VertexFormatElement;
 import java.util.EnumMap;
 import java.util.Map;
 
+/** Minecraft 26.2 vertex-layout adapter. */
 final class VertexLayoutCompat {
 
     private VertexLayoutCompat() {}

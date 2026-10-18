@@ -10,6 +10,7 @@ import com.mojang.blaze3d.IndexType;
 import java.nio.ByteBuffer;
 import java.util.function.Supplier;
 
+/** Minecraft 26.2 GPU buffer adapter. */
 final class GpuMeshCompat {
 
     private GpuMeshCompat() {}
