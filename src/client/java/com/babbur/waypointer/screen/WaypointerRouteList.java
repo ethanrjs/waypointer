@@ -3,7 +3,6 @@ package com.babbur.waypointer.screen;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
-import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
@@ -1045,12 +1044,6 @@ final class WaypointerRouteList {
         }
         String progress = progressSummary(group);
         if (!progress.isEmpty()) parts.add(progress);
-        parts.add(Component.translatable(group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                ? "waypointer.screen.main.route.mode.sequence"
-                : "waypointer.screen.main.route.mode.static").getString());
-        if (WaypointStyles.setCount(group.styleOverride()) > 0 || !group.stylePresetId().isBlank()) {
-            parts.add(Component.translatable("waypointer.screen.main.route.subtitle.custom_look").getString());
-        }
         return RouteListPresentation.joinParts(parts);
     }
 
