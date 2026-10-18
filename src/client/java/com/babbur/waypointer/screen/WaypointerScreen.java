@@ -104,7 +104,6 @@ public final class WaypointerScreen extends Screen {
     private Button settingsButton;
     private EditBox zoneSearchBox;
     private String zoneSearchQuery = "";
-    // The click that opens the list focuses the zone button afterwards; focus the search then.
     private boolean zoneSearchFocusPending;
     String searchQuery = "";
     private boolean importInFlight;
@@ -354,7 +353,6 @@ public final class WaypointerScreen extends Screen {
         restoreStructuresBtn.visible = restoreStructuresShown();
         addRenderableWidget(restoreStructuresBtn);
 
-        // While the island list is open, the zone button turns into its search field.
         zoneSearchBox = new EditBox(font, 0, 0, ISLAND_SELECTOR_W - GAP - 18, 10,
                 Component.translatable("waypointer.screen.main.zone_search"));
         zoneSearchBox.setBordered(false);
@@ -417,7 +415,6 @@ public final class WaypointerScreen extends Screen {
                 + (showBrowseButton ? BROWSE_BTN_W + GAP : 0)
                 + (showMoveZoneButton ? MOVE_ZONE_BTN_W + GAP : 0)
                 + (hideAllRoutesBtn == null ? 0 : HIDE_ALL_ROUTES_BTN_W + GAP);
-        // Narrow windows fold the toolbar into icon buttons before squeezing the search box.
         boolean compact = availableWidth - fullTools < SEARCH_MIN_COMFORT_W;
         int clearW = compact ? TOOL_ICON_BTN_W : SEARCH_CLEAR_BTN_W;
         int browseW = compact ? TOOL_ICON_BTN_W : BROWSE_BTN_W;
@@ -909,7 +906,6 @@ public final class WaypointerScreen extends Screen {
                     && mouseY >= Math.max(rowY, geo.rowsTop())
                     && mouseY < Math.min(rowY + ROW_H, geo.rowsBottom());
             if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
-            // The last row sits on the outline (or on Show more's own edge), so it needs no line.
             boolean last = i == ids.size() - 1;
             drawDropdownZoneRow(g, geo.x1() + 1, rowY, geo.x2() - 1, id, hovered, currentId, !last);
         }
@@ -945,7 +941,6 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
-    /** Draws the search field over the zone button, keeping the button's arrow to close the list. */
     private void renderZoneSearch(GuiGraphicsExtractor g, DropdownGeometry geo,
                                   int mouseX, int mouseY, float partial) {
         if (zoneSearchBox == null || !zoneSearchShown() || islandSelectorBtn == null) return;
@@ -956,7 +951,6 @@ public final class WaypointerScreen extends Screen {
         g.fill(x1, y2 - 1, x2, y2, ACCENT);
         g.fill(x1, y1, x1 + 1, y2, ACCENT);
         g.fill(x2 - 1, y1, x2, y2, ACCENT);
-        // Text sorts above fills in a stratum; a new one keeps the zone name from showing through.
         g.nextStratum();
         zoneSearchBox.setX(x1 + GAP);
         zoneSearchBox.setY(y1 + (BTN_H - 8) / 2);
@@ -991,7 +985,6 @@ public final class WaypointerScreen extends Screen {
                 dropdownTab == DropdownTab.DUNGEONS, mouseX, mouseY);
         g.fill(split, geo.tabsTop(), split + 1, geo.tabsBottom() - 1, BORDER);
         g.fill(geo.x1() + 1, geo.tabsBottom(), geo.x2() - 1, geo.tabsBottom() + 1, BORDER);
-        // The selected tab's underline runs the full width of its column, divider included.
         if (dropdownTab == DropdownTab.ISLANDS) {
             g.fill(geo.x1() + 1, geo.tabsBottom() - 1, split + 1, geo.tabsBottom(), ACCENT);
         } else {
@@ -1052,9 +1045,7 @@ public final class WaypointerScreen extends Screen {
         return Math.max(0, zoneCount * ROW_H - Math.max(0, viewportHeight));
     }
 
-    /** Offered while the Structures folder is hidden and a Crystal Hollows zone is on screen. */
     private boolean restoreStructuresShown() {
-        // Only where it clears the centred title; the folder menu and settings still offer it.
         boolean fits = restoreStructuresBtn == null || restoreStructuresBtn.getX() > width / 2 + 60;
         return fits && config.crystalHollowsHideStructuresFolder() && selectedZoneId != null
                 && ("crystal_hollows".equals(selectedZoneId)

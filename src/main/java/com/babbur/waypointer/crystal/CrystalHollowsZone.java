@@ -1,6 +1,5 @@
 package com.babbur.waypointer.crystal;
 
-/** Named regions used by the Wishing Compass and rough structure detection. */
 public enum CrystalHollowsZone {
     CRYSTAL_NUCLEUS,
     JUNGLE,

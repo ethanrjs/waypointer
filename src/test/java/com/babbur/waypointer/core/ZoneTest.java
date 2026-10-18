@@ -107,7 +107,6 @@ class ZoneTest {
 
     @Test
     void galatea_scoreboardSuffixedNameStillResolvesToGalateaId() {
-        // Sidebar names and imported island IDs must share a storage key.
         Zone z = Zone.resolveFromDisplayName("Galatea Foraging 2");
         assertNotNull(z);
         assertEquals("galatea", z.id());
@@ -128,7 +127,6 @@ class ZoneTest {
         assertEquals("Galatea", z.displayName());
     }
 
-    // Hypixel may put island IDs or display names in either map or mode.
     @Test
     void resolve_matchesOnEitherMapOrMode() {
         Zone a = Zone.resolve("SKYBLOCK", null, "foraging_1");
@@ -164,7 +162,6 @@ class ZoneTest {
 
     @Test
     void kuudra_acceptsShortAndLongDisplayName() {
-        // Older exports and the sidebar abbreviate "Kuudra's Hollow" to "Kuudra".
         assertEquals("kuudra", Zone.resolveFromDisplayName("Kuudra").id());
         assertEquals("kuudra", Zone.resolveFromDisplayName("Kuudra's Hollow").id());
         assertEquals("Kuudra's Hollow", Zone.fromId("kuudra").displayName());
@@ -172,7 +169,6 @@ class ZoneTest {
 
     @Test
     void mineshaft_friendlyNamesResolveToUnknownVariant() {
-        // Without a layout code, mineshaft labels resolve only to Unknown Mineshaft.
         assertEquals("mineshaft_unknown", Zone.resolveFromDisplayName("Mineshaft").id());
         assertEquals("mineshaft_unknown", Zone.resolveFromDisplayName("Glacite Mineshafts").id());
         assertEquals("mineshaft_unknown", Zone.resolveFromDisplayName("Unknown Mineshaft").id());
@@ -180,7 +176,6 @@ class ZoneTest {
 
     @Test
     void privateIsland_matchesDynamicId() {
-        // Hypixel identifies Private Island with mode "dynamic".
         assertEquals("private_island", Zone.resolve("SKYBLOCK", null, "dynamic").id());
         assertEquals("private_island", Zone.resolve("SKYBLOCK", "Private Island", null).id());
         assertEquals("private_island", Zone.resolveFromDisplayName("Your Island").id());
@@ -251,7 +246,6 @@ class ZoneTest {
 
         @Test
     void mineshaftType_resolveFromSidebarBlob() {
-        // The sidebar carries a layout code such as AQUA_C, not its display name.
         assertEquals("mineshaft_topaz_1",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts\n04/18/26 m1 TOPA_1").id());
         assertEquals("mineshaft_crystal",
@@ -266,14 +260,12 @@ class ZoneTest {
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 FAIR_1").id());
         assertEquals("mineshaft_tungsten",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 TUNG_1").id());
-        // Without a layout code, the caller falls back to mineshaft_unknown.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts"));
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob(null));
     }
 
         @Test
     void mineshaftType_crystalCodeSharesZoneButPlainCodeStaysDistinct() {
-        // Crystal layouts share one route bucket across gem types.
         assertEquals("mineshaft_jasper",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 JASP_1").id());
         assertEquals("mineshaft_crystal",
@@ -292,16 +284,13 @@ class ZoneTest {
 
     @Test
     void mineshaftType_rejectsSubstringInsideLargerWord() {
-        // Require token boundaries to avoid matching usernames.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts\nxTOPA_1x"));
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("prefixJASP_C"));
-        // Live layout codes are uppercase; lowercase username fragments must not match.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 aqua_c"));
     }
 
     @Test
     void mineshaft_packetWithoutVariantUpgradesToUnknown() {
-        // A packet can precede the sidebar layout code; keep variant routes inactive until it arrives.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         assertEquals("mineshaft_unknown", raw.id());
         Zone refined = Zone.refineIfDwarvenMinesContext(raw, "");
@@ -318,13 +307,11 @@ class ZoneTest {
     @Test
     void mineshaft_unknownZoneRendersFriendlyDisplayName() {
         assertEquals("Unknown Mineshaft", Zone.fromId("mineshaft_unknown").displayName());
-        // Legacy IDs remain readable, but runtime refinement skips the generic bucket.
         assertEquals("Unknown Mineshaft", Zone.fromId("mineshaft").displayName());
     }
 
     @Test
     void mineshaftType_refineUpgradesMineshaftPacket() {
-        // The packet gives only "mineshaft"; the sidebar layout code selects the route zone.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         Zone refined = Zone.refineIfDwarvenMinesContext(raw, "⏣ Glacite Mineshafts\n04/18/26 m1 TOPA_2");
         assertEquals("mineshaft_topaz_2", refined.id());
@@ -332,7 +319,6 @@ class ZoneTest {
 
         @Test
     void mineshaftType_refineVariantBeatsGenericSubArea() {
-        // A specific layout code takes precedence over the generic sub-area name.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         Zone refined = Zone.refineIfDwarvenMinesContext(raw,
                 "⏣ Glacite Mineshafts\n04/18/26 m197CD AQUA_C");
@@ -349,14 +335,12 @@ class ZoneTest {
 
         @Test
     void mineshaftType_resolveFromDisplayNameAcceptsBareVariant() {
-        // Imported display names must resolve to the same key as live layout codes.
         assertEquals("mineshaft_topaz_1", Zone.resolveFromDisplayName("Topaz 1").id());
         assertEquals("mineshaft_crystal", Zone.resolveFromDisplayName("Jasper Crystal").id());
     }
 
     @Test
     void dungeonFloor_acceptsSwappedFieldOrdering() {
-        // Hypixel packet versions have swapped map and mode; accept both orders.
         assertEquals("dungeon_f7", Zone.resolve("SKYBLOCK", "dungeon", "F7").id());
         assertEquals("dungeon_f7", Zone.resolve("SKYBLOCK", "F7", "dungeon").id());
         assertEquals("dungeon_m4", Zone.resolve("SKYBLOCK", "M4", "dungeon").id());

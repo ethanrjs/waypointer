@@ -21,7 +21,6 @@ import net.minecraft.world.phys.Vec3;
 import java.util.List;
 import java.util.Locale;
 
-/** Marks secrets complete from actions the client can observe. */
 public final class DungeonTriggerDetector {
 
     private static final double ENTITY_TRIGGER_RANGE_SQ = 36.0;
@@ -63,7 +62,6 @@ public final class DungeonTriggerDetector {
         DungeonSoundHook.setListener(this::onSoundPacket);
     }
 
-    /** Rooms and the boss alike; boss routes have no room. */
     private boolean inCatacombs() {
         return tracker.inDungeon() && (config == null || config.enabled());
     }
@@ -165,10 +163,6 @@ public final class DungeonTriggerDetector {
         }
     }
 
-    /**
-     * The closest waypoint with this action in the current step, or for item and bat
-     * secrets also in later steps, within trigger range of where it happened.
-     */
     static int nearestStepAction(WaypointGroup group, int actionFlag,
                                  double x, double y, double z) {
         boolean laterSecrets = actionFlag == Waypoint.FLAG_DUNGEON_ITEM

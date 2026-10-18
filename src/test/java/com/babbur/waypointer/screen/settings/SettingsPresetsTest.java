@@ -80,7 +80,7 @@ class SettingsPresetsTest {
 
         RecentSettings.record("a");
         RecentSettings.record("b");
-        RecentSettings.record("a"); // re-change moves to front
+        RecentSettings.record("a");
         assertEquals(java.util.List.of("a", "b"), RecentSettings.mostRecentFirst());
 
         for (int i = 0; i < 20; i++) {

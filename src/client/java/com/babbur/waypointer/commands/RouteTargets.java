@@ -11,21 +11,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Which route a {@code /wp} command acts on, and how commands name routes, folders and waypoints.
- *
- * <p>Every route and waypoint command acts on the zone's target route: the same route new
- * waypoints and the add keybinds go to ({@link ActiveGroupManager#targetRoute()}). Routes are
- * named by their number in {@code /wp list} (the hub's order) or by name; waypoints by the
- * labels the route editor shows ({@code 3}, {@code 2.1}).
- */
 final class RouteTargets {
 
     enum Reason { PINNED, EDITED, FIRST }
 
     record Target(WaypointGroup route, Reason reason) {}
 
-    /** A looked-up value, or the message explaining why there is none. */
     record Lookup<T>(T value, Component error) {
         static <T> Lookup<T> of(T value) { return new Lookup<>(value, null); }
 
@@ -56,7 +47,6 @@ final class RouteTargets {
         return Lookup.fail(Component.translatable("waypointer.command.error.no_target", zoneName()));
     }
 
-    /** Saved routes in the current zone, in hub order, plus the target when the hub lists it elsewhere. */
     List<WaypointGroup> listed() {
         Zone zone = manager.currentZone();
         List<WaypointGroup> out = new ArrayList<>();
@@ -70,7 +60,6 @@ final class RouteTargets {
         return List.copyOf(out);
     }
 
-    /** The route's number in {@code /wp list}, or 0 when it is not listed. */
     int number(WaypointGroup route) {
         return listed().indexOf(route) + 1;
     }
@@ -101,7 +90,6 @@ final class RouteTargets {
                 () -> Component.translatable("waypointer.command.error.folder_not_found", reference, zoneName()));
     }
 
-    /** Resolves an editor label such as {@code 3}, {@code #3} or {@code 2.1} to a waypoint index. */
     static Lookup<Integer> waypoint(WaypointGroup route, String rawLabel) {
         String label = rawLabel == null ? "" : rawLabel.trim();
         if (label.startsWith("#")) label = label.substring(1);
@@ -125,7 +113,6 @@ final class RouteTargets {
                 "#" + main, route.childEndExclusive(mainIndex) - mainIndex - 1));
     }
 
-    /** The label the editor shows for a waypoint, without the leading {@code #}. */
     static String label(WaypointGroup route, int index) {
         String label = route.displayIndexLabel(index);
         return label.startsWith("#") ? label.substring(1) : label;

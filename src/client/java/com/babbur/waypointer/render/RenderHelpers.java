@@ -8,9 +8,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public final class RenderHelpers {
 
-    // Line vertices require an explicit width.
     private static final float DEFAULT_LINE_WIDTH = 3.0f;
-    /** Small world-space overlap removes butt-cap pinholes where box edges meet. */
     static final float LINE_BOX_JOIN_OVERLAP = 1.0f / 512.0f;
     private static final int FULL_BRIGHT_LIGHT = 0x00F000F0;
     private static final int HUD_LINE_CULL_MARGIN = 64;
@@ -108,7 +106,6 @@ public final class RenderHelpers {
                 visible, atlasWidth, atlasHeight, padding);
     }
 
-    /** Emits every exterior face for a retained mesh; back-face culling selects at draw time. */
     public static void emitTexturedBoxAllFaces(VertexConsumer consumer, PoseStack ps,
                                                float x1, float y1, float z1,
                                                float x2, float y2, float z2,
@@ -147,7 +144,6 @@ public final class RenderHelpers {
                 atlasWidth, atlasHeight, padding);
     }
 
-    /** Select only the camera-facing exterior planes so rear paint cannot bleed through. */
     static int visibleTexturedFaces(float x1, float y1, float z1,
                                     float x2, float y2, float z2,
                                     double cameraX, double cameraY, double cameraZ) {
@@ -161,7 +157,6 @@ public final class RenderHelpers {
         return faces;
     }
 
-    /** Emits an uncapped column so distant beams do not look like solid pillars. */
     public static void emitVerticalColumn(VertexConsumer consumer, PoseStack ps,
                                           float centerX, float y1, float centerZ,
                                           float y2, float halfWidth,
@@ -268,8 +263,6 @@ public final class RenderHelpers {
                              float x3, float y3, float z3,
                              float x4, float y4, float z4,
                              int r, int g, int b, int a) {
-        // POSITION_COLOR vertex format -- no normal, no line width. Writing either
-        // would throw "unexpected element" against the DEBUG_QUADS-style pipeline.
         c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
         c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a);
         c.addVertex(pose, x3, y3, z3).setColor(r, g, b, a);
@@ -286,7 +279,6 @@ public final class RenderHelpers {
         int stride = WaypointPaint.SIZE + padding * 2;
         int faceX = (face.atlasX() / WaypointPaint.SIZE) * stride + padding;
         int faceY = (face.atlasY() / WaypointPaint.SIZE) * stride + padding;
-        // Padded borders need no half-texel inset.
         float halfTexelU = padding > 0 ? 0.0f : 0.5f / atlasWidth;
         float halfTexelV = padding > 0 ? 0.0f : 0.5f / atlasHeight;
         float u0 = faceX / (float) atlasWidth + halfTexelU;
@@ -294,8 +286,6 @@ public final class RenderHelpers {
         float u1 = (faceX + WaypointPaint.SIZE) / (float) atlasWidth - halfTexelU;
         float v1 = (faceY + WaypointPaint.SIZE) / (float) atlasHeight - halfTexelV;
 
-        // Side quads are wound from exterior-right to exterior-left. Flip only
-        // their U axis so editor pixels remain readable when viewed from outside.
         float firstEdgeU = face.isSide() ? u1 : u0;
         float oppositeEdgeU = face.isSide() ? u0 : u1;
 
@@ -328,7 +318,6 @@ public final class RenderHelpers {
                             float x2, float y2, float z2,
                             int r, int g, int b, int a,
                             float nx, float ny, float nz, float width) {
-        // Match vertex order: POSITION, COLOR, NORMAL, LINE_WIDTH to avoid incomplete vertices.
         c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a)
                 .setNormal(pose, nx, ny, nz).setLineWidth(width);
         c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a)

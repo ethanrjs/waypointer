@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 
-/** Writes through a temporary file and uses an atomic move when available. */
 final class CatalogAtomicFile {
     private CatalogAtomicFile() {
     }

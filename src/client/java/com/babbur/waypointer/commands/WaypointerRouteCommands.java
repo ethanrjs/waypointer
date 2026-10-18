@@ -33,10 +33,6 @@ import static com.babbur.waypointer.commands.CommandHelpers.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
-/**
- * Route commands: which route is the target, the route list, and every route action the hub and
- * the route editor offer. Each acts on the target route (see {@link RouteTargets}).
- */
 final class WaypointerRouteCommands {
 
     private final ActiveGroupManager manager;
@@ -52,7 +48,6 @@ final class WaypointerRouteCommands {
         this.targets = new RouteTargets(manager);
     }
 
-    // ---- Command tree -----------------------------------------------------------------------
 
     LiteralArgumentBuilder<FabricClientCommandSource> listCommand() {
         return literal("list").executes(ctx -> runList(ctx.getSource()));
@@ -183,7 +178,6 @@ final class WaypointerRouteCommands {
         return literal("edit").executes(ctx -> runOpenEditor(ctx.getSource()));
     }
 
-    /** {@code appearance} edits the target route's look; the subcommands reach every other look. */
     LiteralArgumentBuilder<FabricClientCommandSource> appearanceCommand(WaypointerWaypointCommands waypoints) {
         return literal("appearance")
                 .executes(ctx -> runOpenAppearance(ctx.getSource()))
@@ -225,7 +219,6 @@ final class WaypointerRouteCommands {
         return literal("publish").executes(ctx -> runOpenPublish(ctx.getSource()));
     }
 
-    // ---- Target ---------------------------------------------------------------------------------
 
     int runList(FabricClientCommandSource src) {
         List<WaypointGroup> routes = targets.listed();
@@ -309,7 +302,6 @@ final class WaypointerRouteCommands {
         return 1;
     }
 
-    // ---- Route actions --------------------------------------------------------------------------
 
     int runCreate(FabricClientCommandSource src, String rawName) {
         String name = rawName == null ? "" : rawName.trim();
@@ -424,7 +416,6 @@ final class WaypointerRouteCommands {
         return 1;
     }
 
-    /** Item ids, without "minecraft:" for vanilla items. */
     private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestItems(
             com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> ctx,
             com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
@@ -642,7 +633,6 @@ final class WaypointerRouteCommands {
         return here.size();
     }
 
-    // ---- Folders ------------------------------------------------------------------------------
 
     int runCreateFolder(FabricClientCommandSource src, String rawName) {
         String name = RouteTargets.unquote(rawName);
@@ -715,7 +705,6 @@ final class WaypointerRouteCommands {
         return 1;
     }
 
-    // ---- Screens ------------------------------------------------------------------------------
 
     int runOpenEditor(FabricClientCommandSource src) {
         WaypointGroup route = targetOrError(src);
@@ -749,7 +738,6 @@ final class WaypointerRouteCommands {
         return 1;
     }
 
-    /** A zone key or name; none means the zone the player is in. */
     int runOpenZoneAppearance(FabricClientCommandSource src, String reference) {
         List<String> keys = SettingsScreen.appearanceZoneKeys(manager, config);
         String key = null;
@@ -786,7 +774,6 @@ final class WaypointerRouteCommands {
         return 1;
     }
 
-    // ---- Shared -------------------------------------------------------------------------------
 
     WaypointGroup targetOrError(FabricClientCommandSource src) {
         RouteTargets.Lookup<WaypointGroup> target = targets.targetOrError();
@@ -794,7 +781,6 @@ final class WaypointerRouteCommands {
         return target.value();
     }
 
-    /** Records a route edit the way the route editor does, so the edited route stays the target. */
     void changed(WaypointGroup route) {
         manager.noteRouteEdited(route);
         manager.fireDataChanged();

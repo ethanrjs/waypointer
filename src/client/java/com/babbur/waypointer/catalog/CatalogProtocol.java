@@ -17,9 +17,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Validates catalog data before it reaches local route state. */
 public final class CatalogProtocol {
-    /** Regular catalog routes use V9; dungeon packs use the strict WPD schema-2 profile. */
     private static final int CATALOG_CODEC_VERSION = 9;
     private static final int MAX_REGULAR_GROUPS = 64;
     private static final int MAX_DUNGEON_GROUPS = 256;
@@ -78,7 +76,6 @@ public final class CatalogProtocol {
                 publishManifest.codecVersion(), publishManifest.payloadSha256());
     }
 
-    /** Encodes snapshots and their manifest together, avoiding a second decode before publishing. */
     public static PreparedCatalogPayload prepareCatalogPayload(
             List<WaypointGroup> groups) {
         Objects.requireNonNull(groups, "groups");
@@ -90,7 +87,6 @@ public final class CatalogProtocol {
         requireGroupCounts(immutableSnapshots);
         String payload;
         if (hasDungeonRoutes(immutableSnapshots)) {
-            // WPD rejects mixed selections instead of dropping their room-local route kind.
             payload = DungeonRoomShareCodec.encodeCatalog(immutableSnapshots);
         } else {
             WaypointImporter.validateCatalogEmbeddedZones(immutableSnapshots);
@@ -319,7 +315,6 @@ public final class CatalogProtocol {
             return payload;
         }
 
-        /** The base64url SHA-256 the publication record stores for this payload. */
         public String payloadSha256() {
             return manifest.payloadSha256();
         }

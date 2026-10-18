@@ -3,7 +3,6 @@ package com.babbur.waypointer.feedback;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-/** An immutable, explicitly approved feedback payload. Never includes a game identity implicitly. */
 public record FeedbackSubmission(String type, String message, boolean anonymous,
                                  String contact, String debugReport, boolean anonymized,
                                  List<FeedbackImage> images) {
@@ -24,7 +23,6 @@ public record FeedbackSubmission(String type, String message, boolean anonymous,
         debugReport = debugReport == null ? "" : debugReport;
         if (!"bug".equals(type) && !debugReport.isEmpty())
             throw new IllegalArgumentException("Debug reports can only be attached to bug reports.");
-        // Sender anonymity and optional snapshot anonymization are independent choices.
         anonymized = !debugReport.isEmpty() && anonymized;
         if (debugReport.getBytes(StandardCharsets.UTF_8).length > MAX_REPORT_BYTES)
             throw new IllegalArgumentException("The debug report is too large. Remove it to send feedback.");

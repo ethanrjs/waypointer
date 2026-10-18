@@ -136,12 +136,9 @@ tasks.named('runClientGameTest') {
 
 	args '--width', '1708', '--height', '960'
 	finalizedBy retainLaunchLogs
-	// -PscreenGallery skips the other smoke checks and only screenshots the everyday screens.
 	if (providers.gradleProperty('screenGallery').isPresent()) {
 		systemProperty 'waypointer.test.screenGallery', 'true'
 	}
-	// -PperfProbe=<config dir> loads that route library, plays it as the Crystal Hollows and
-	// records frame times and a Flight Recorder profile in build/reports/perf.
 	if (providers.gradleProperty('perfProbe').isPresent()) {
 		def probeSource = file(providers.gradleProperty('perfProbe').get())
 		def reports = layout.buildDirectory.dir('reports/perf').get().asFile
@@ -188,7 +185,6 @@ tasks.named('runClientGameTest') {
 	}
 }
 
-// Isolate the Minecraft API differences between targets.
 sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
 
 def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')

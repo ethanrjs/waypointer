@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// Captures last-frame decisions for the debug report.
 public final class RenderDiagnostics {
 
     private static final String PENDING_OUTCOME = "pending renderer decision";
@@ -70,7 +69,6 @@ public final class RenderDiagnostics {
                                         WaypointerConfig config,
                                         boolean irisHudFallbackActiveNow) {
         frameToken++;
-        // Identity sets clear their whole table even when empty; most frames have no dungeon paths.
         if (!PREPARED_DUNGEON_PATHS.isEmpty()) PREPARED_DUNGEON_PATHS.clear();
         if (!SUBMITTED_DUNGEON_PATHS.isEmpty()) SUBMITTED_DUNGEON_PATHS.clear();
         irisHudFallbackActive = irisHudFallbackActiveNow;

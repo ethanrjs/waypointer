@@ -6,7 +6,6 @@ import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Independently implemented hysky CRYSTAL_WAYPOINTS wire adapter; no peer data is publishable. */
 public final class SkyblockerStructureProtocol {
     public static final String SOURCE = "skyblocker";
     public static final String SERVICE = "CRYSTAL_WAYPOINTS";
@@ -68,7 +67,7 @@ public final class SkyblockerStructureProtocol {
                 if (messages.size() > 128) return List.of();
                 for (var message : messages) {
                     try { addSighting(result, message.getAsJsonObject(), now); }
-                    catch (RuntimeException malformedEntry) { /* Keep independently valid peer entries. */ }
+                    catch (RuntimeException malformedEntry) {                                              }
                 }
             }
             return List.copyOf(result);
@@ -91,7 +90,6 @@ public final class SkyblockerStructureProtocol {
             values[i] = value.getAsBigDecimal().intValueExact();
         }
         if (!CrystalHollowsGeometry.insideHollows(values[0], values[1], values[2])) throw new IllegalArgumentException();
-        // hysky supplies neither observation time nor local evidence: do not invent either.
         result.add(new StructureSighting(structure, values[0], values[1], values[2],
                 SightingConfidence.SHARED_REMOTE, SOURCE, now));
     }

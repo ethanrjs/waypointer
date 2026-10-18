@@ -83,7 +83,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         super(manager, config, dungeonConfig);
     }
 
-    /** Emits world geometry into a supplied sink. */
     public boolean emitWorldGeometryFor(LevelRenderContext ctx, PoseStack poseStack,
                                         GeometrySink sink, net.minecraft.world.phys.Vec3 origin,
                                         boolean gpuDepthTestOwnsOcclusion) {
@@ -123,7 +122,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
 
     public void install() {
         WorldOverlayCompat.register(this::onWorldRender);
-        // CHAT placement makes labels follow the F1 hide-GUI state.
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, LABEL_HUD_ID, this);
     }
 
@@ -438,7 +436,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         for (int i = 0; i < count; i++) {
             LabelCandidate target = labels.get(i);
             if (!CompassMarkerState.isTarget(target.waypoint)) continue;
-            // Only the visible generated copy replaces the compass navigation label.
             for (int j = 0; j < count; j++) {
                 LabelCandidate structure = labels.get(j);
                 if (!structure.group.runtimeOnly()
@@ -484,7 +481,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             if (preventOverlap) acceptLabel(candidate, selected);
             else selected.add(candidate);
         }
-        // Selection keeps its distance/route priority; painting puts nearer labels on top.
         selected.sort(LABEL_NEAREST_FIRST.reversed());
     }
 
@@ -585,7 +581,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         double currentFov = Math.max(1.0, Math.min(179.0, fovDegrees));
         double fovScale = Math.tan(Math.toRadians(LABEL_SCALE_BASELINE_FOV_DEGREES) * 0.5)
                 / Math.tan(Math.toRadians(currentFov) * 0.5);
-        // Cap distance scaling at the user's size to avoid huge nearby labels.
         double scale = Math.min(1.0, fovScale * LABEL_SCALE_REFERENCE_DEPTH / depth);
         return (float) clampLabelScale(baseScale * scale);
     }
@@ -603,7 +598,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return (font.lineHeight + DISTANCE_ROW_GAP) * scale;
     }
 
-    // Fractional centering avoids one-pixel jumps during FOV animation.
     public static void drawCenteredLabel(GuiGraphicsExtractor g, Font font, String text,
                                    double cx, double top, int argb, float alpha,
                                    float scale, WaypointerConfig appearance) {
@@ -632,7 +626,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return formatProgressPercent(RouteProgress.snapshot(group).percentComplete);
     }
 
-    /** Sequence context labels describe their own stage, rather than repeating the current stage. */
     public static String routeProgressText(WaypointGroup group, int index) {
         if (group.loadMode() == WaypointGroup.LoadMode.STATIC || index == group.currentIndex()) {
             return routeProgressText(group);

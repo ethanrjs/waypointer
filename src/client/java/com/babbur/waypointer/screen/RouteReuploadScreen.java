@@ -32,9 +32,6 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
-/**
- * Confirms replacement waypoints and the pending metadata edits.
- */
 final class RouteReuploadScreen extends Screen implements RoutePickerHost {
     private static final int PANEL_W = 440;
     private static final int PANEL_MARGIN = 12;

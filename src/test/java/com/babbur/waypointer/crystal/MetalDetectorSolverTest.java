@@ -12,7 +12,7 @@ class MetalDetectorSolverTest {
         var position = new MetalDetectorSolver.PositionStability();
         for (int tick = 0; tick <= 5; tick++) position.tick(663, 79, 426, tick * 50_000_000L);
         assertTrue(position.stableAt(663, 79, 426));
-        assertTrue(solver.candidates().isEmpty()); // Ticks alone never reuse a cached distance.
+        assertTrue(solver.candidates().isEmpty());
         solver.accept(CENTRE, 663, 79, 426, 1, java.util.List.of(), position.stableAt(663, 79, 426));
         assertEquals(java.util.List.of(new CrystalHollowsPosition(662, 78, 426)), solver.candidates());
     }
@@ -22,10 +22,10 @@ class MetalDetectorSolverTest {
         var position = new MetalDetectorSolver.PositionStability();
         position.tick(663, 79, 426, 0);
         for (int tick = 1; tick <= 5; tick++) position.tick(663, 79, 426, 1);
-        assertFalse(position.stableAt(663, 79, 426)); // Catch-up ticks are not elapsed standstill.
+        assertFalse(position.stableAt(663, 79, 426));
         position.tick(663, 79, 426, 250_000_000L);
         assertTrue(position.stableAt(663.0001, 79, 426));
-        assertFalse(position.stableAt(663.01, 79, 426)); // Movement between tick and packet.
+        assertFalse(position.stableAt(663.01, 79, 426));
         position.tick(663.01, 79, 426, 300_000_000L);
         assertFalse(position.stableAt(663.01, 79, 426));
         for (int tick = 1; tick <= 5; tick++) position.tick(663.01, 79, 426, 300_000_000L + tick * 50_000_000L);

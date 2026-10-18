@@ -9,7 +9,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Locale-aware number formatting for display text only. */
 public final class LocalizedNumberFormatter {
 
     private static final String DEFAULT_LOCALE = "en_us";
@@ -32,7 +31,6 @@ public final class LocalizedNumberFormatter {
         return forMinecraftLocale(localeCode);
     }
 
-    /** The game language's locale, for dates and other formatting. */
     public Locale locale() {
         return locale;
     }
@@ -60,7 +58,6 @@ public final class LocalizedNumberFormatter {
         return format.format(value);
     }
 
-    /** Localizes the digits and structural decimal separator in labels such as {@code #1.2}. */
     public String waypointOrdinal(String asciiLabel) {
         if (asciiLabel == null || asciiLabel.isEmpty()) return "";
         char zeroDigit = symbols.getZeroDigit();

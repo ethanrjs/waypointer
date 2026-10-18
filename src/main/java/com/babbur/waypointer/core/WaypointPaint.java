@@ -3,11 +3,6 @@ package com.babbur.waypointer.core;
 import java.util.Arrays;
 import java.util.Base64;
 
-/**
- * Immutable 16x16 texture for the six faces of a waypoint box.
- *
- * <p>Pixels index a sixteen-color palette, keeping all six faces near 2 KiB on disk.
- */
 public final class WaypointPaint {
 
     public static final int SIZE = 16;
@@ -15,7 +10,6 @@ public final class WaypointPaint {
     public static final int FACE_PIXELS = SIZE * SIZE;
     public static final int PIXEL_COUNT = FACE_PIXELS * Face.values().length;
 
-    /** T-shaped atlas placement used by both the editor and the world renderer. */
     public enum Face {
         NORTH(1, 1),
         EAST(2, 1),
@@ -77,7 +71,6 @@ public final class WaypointPaint {
 
     private static final WaypointPaint MISSING = missingTexture();
 
-    /** The classic magenta-and-black placeholder, shown when a painted style has no paint. */
     public static WaypointPaint missing() {
         return MISSING;
     }

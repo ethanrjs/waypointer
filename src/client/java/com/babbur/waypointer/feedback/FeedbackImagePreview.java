@@ -10,7 +10,6 @@ import net.minecraft.resources.Identifier;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Screen-owned thumbnail. Call render and close on the client thread; recreate after close. */
 public final class FeedbackImagePreview implements AutoCloseable {
     private static final AtomicLong SEQUENCE = new AtomicLong();
     private final FeedbackImage image;
@@ -18,12 +17,10 @@ public final class FeedbackImagePreview implements AutoCloseable {
     private TextureManager textures;
     private boolean closed;
 
-    /** Does not allocate a GPU texture until the first nonempty render. */
     public FeedbackImagePreview(FeedbackImage image) {
         this.image = Objects.requireNonNull(image);
     }
 
-    /** Draws the full thumbnail centered inside the bounds, with its aspect ratio preserved. */
     public void render(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
         if (closed || width <= 0 || height <= 0) return;
         graphics.fill(x, y, x + width, y + height, 0xFF25282D);
@@ -59,7 +56,6 @@ public final class FeedbackImagePreview implements AutoCloseable {
         }
     }
 
-    /** Releases the registered texture and its native pixels once. Safe before first render. */
     @Override
     public void close() {
         if (closed) return;

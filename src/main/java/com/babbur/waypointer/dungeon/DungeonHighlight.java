@@ -1,9 +1,5 @@
 package com.babbur.waypointer.dungeon;
 
-/**
- * A room-local block drawn for a parent waypoint. {@code color} is
- * {@code 0xRRGGBB}, or {@link #INHERIT_COLOR} to use the parent color.
- */
 public record DungeonHighlight(int x, int y, int z, DungeonHighlightStyle style, int color) {
 
     public static final int INHERIT_COLOR = -1;

@@ -110,7 +110,6 @@ public final class DungeonCommands {
     static DungeonRouteImporter.Result decodeImportPayload(String payload) {
         IllegalArgumentException legacyFailure;
         try {
-            // Try legacy dungeon formats before universal WP shares.
             return DungeonRouteImporter.parse(payload);
         } catch (IllegalArgumentException failure) {
             legacyFailure = failure;

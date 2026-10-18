@@ -60,7 +60,6 @@ final class PublisherNameScreen extends Screen {
                     addRenderableWidget(new MultiLineTextWidget(layout.contentX(), layout.errorY(), message, font)
                             .setMaxWidth(layout.contentWidth()));
                 } else {
-                    // Keep the entire rejection readable when a short window leaves only one line.
                     StringWidget messageWidget = new StringWidget(
                             layout.contentX(), layout.errorY(), message, font)
                             .setMaxWidth(layout.contentWidth(), StringWidget.TextOverflow.SCROLLING);

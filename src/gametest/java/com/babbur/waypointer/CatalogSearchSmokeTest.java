@@ -13,14 +13,13 @@ import net.minecraft.network.chat.Component;
 import java.util.List;
 import java.util.Map;
 
-/** Exercises the actual EditBox responder ordering that crashed player searches. */
 @SuppressWarnings("UnstableApiUsage")
 final class CatalogSearchSmokeTest {
     static void run(ClientGameTestContext context) {
         context.runOnClient(client -> {
             var screen = new RouteCatalogScreen(null, RouteCatalogClient.production());
             try {
-                field(screen, "listRequested", true); // An already loaded catalog: no network in this check.
+                field(screen, "listRequested", true);
                 @SuppressWarnings("unchecked")
                 var cache = (Map<String, CatalogPage>) field(screen, "searchCache");
                 cache.put("\n", new CatalogPage(List.of(new CatalogRouteSummary(
@@ -39,7 +38,7 @@ final class CatalogSearchSmokeTest {
                         throw new AssertionError("Typing should not show a waiting message");
                     search.setCursorPosition(2);
                     search.setHighlightPos(2);
-                    search.deleteCharsToPos(1); // Previously getHighlighted() read [1,2) of "t" here.
+                    search.deleteCharsToPos(1);
                     if (field(screen, "searchBox") != search)
                         throw new AssertionError("Search rebuilt during EditBox mutation");
                     screen.tick();

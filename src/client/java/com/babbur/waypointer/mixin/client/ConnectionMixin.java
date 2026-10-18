@@ -11,7 +11,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Connection.class)
 public abstract class ConnectionMixin {
-    // Observe once at receipt, before packet handling queues work on the client thread.
     @Inject(method = "channelRead0(Lio/netty/channel/ChannelHandlerContext;Lnet/minecraft/network/protocol/Packet;)V",
             at = @At("HEAD"))
     private void waypointer$receiveTiming(ChannelHandlerContext context, Packet<?> packet, CallbackInfo ci) {

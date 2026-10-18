@@ -14,7 +14,6 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-/** Finds structures using nearby visible entities. */
 public final class CrystalHollowsEntityScanner {
 
     public record Detection(int entityId, CrystalHollowsStructure structure,
@@ -64,7 +63,6 @@ public final class CrystalHollowsEntityScanner {
         return java.util.List.copyOf(detections);
     }
 
-    /** Dialogue confirms proximity, so skip the visibility test. */
     public static Optional<CrystalHollowsPosition> nearestDialogueAnchor(
             Minecraft client, CrystalHollowsStructure structure) {
         if (client.level == null || client.player == null) return Optional.empty();

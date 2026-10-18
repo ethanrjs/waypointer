@@ -19,7 +19,6 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
 
-/** Synthetic observations rendered by the actual gameplay HUD; these are not live Hypixel evidence. */
 @SuppressWarnings("UnstableApiUsage")
 final class CrystalHollowsMinimapSmokeTest {
     private record Scene(int size, int corner, double altitude, boolean navigating, boolean atNucleus) {}
@@ -31,7 +30,6 @@ final class CrystalHollowsMinimapSmokeTest {
         int previousScale = context.computeOnClient(client -> {
             var config = new WaypointerConfig();
             var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), config, null);
-            // An inactive lobby must return before touching the render state.
             new CrystalHollowsMinimap(tracker, config).extractRenderState(null, null);
             HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                     Identifier.fromNamespaceAndPath("waypointer-smoke", "synthetic_minimap"), (g, tick) -> {
@@ -94,7 +92,6 @@ final class CrystalHollowsMinimapSmokeTest {
                 config.setCrystalHollowsMinimap(true);
                 var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), config, null);
                 try {
-                    // Activate this isolated fixture without installing lobby listeners or sharing data.
                     var active = CrystalHollowsTracker.class.getDeclaredField("active");
                     active.setAccessible(true);
                     active.setBoolean(tracker, true);
@@ -146,7 +143,6 @@ final class CrystalHollowsMinimapSmokeTest {
                     client.font.width(net.minecraft.network.chat.Component.translatable("waypointer.crystal.minimap.title")));
             return frames;
         });
-        // Keep the native framebuffer: withSize changes it without resizing the HUD viewport.
         context.takeScreenshot(name);
         if (context.computeOnClient(client -> frames) <= before) {
             throw new AssertionError("Synthetic minimap screenshot never ran the gameplay HUD callback");
@@ -177,7 +173,6 @@ final class CrystalHollowsMinimapSmokeTest {
                 var layout = editorLayout(editor);
                 double fromX = layout.x() + 20;
                 double fromY = layout.y() + 10;
-                // Three pixels from the anchor must snap exactly to the center on both axes.
                 double toX = CrystalHollowsMinimapLayout.placementX(editor.width, layout.width(), 0.5) + 23;
                 double toY = CrystalHollowsMinimapLayout.placementY(editor.height, layout.height(), 0.5) + 13;
                 if (!editor.mouseClicked(mouse(fromX, fromY), false)

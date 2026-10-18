@@ -71,7 +71,6 @@ public final class CatalogRouteInstaller {
                         && !prior.matchingGroupIds().contains(group.id()))
                 .toList();
         DungeonRoomRouteSync.batched(() -> {
-            // Keep old room routes available, while making the newly installed pack active.
             overlapping.forEach(group -> group.setEnabled(false));
             try {
                 manager.replaceGroupsAtomically(
@@ -172,8 +171,6 @@ public final class CatalogRouteInstaller {
         replacement.setStyleOverride(previous.styleOverride());
         if (!previous.zoneId().equals(replacement.zoneId())
                 || previous.routeKind() != replacement.routeKind()) return;
-        // Shared waypoints have no stable IDs: only transfer an otherwise identical,
-        // unique point, never an index that may now refer to a different route step.
         Map<Waypoint, List<Waypoint>> oldPoints = previous.waypoints().stream().collect(
                 Collectors.groupingBy(point -> point.withStyleOverride(WaypointStyle.EMPTY)));
         Map<Waypoint, Long> newCounts = replacement.waypoints().stream().collect(

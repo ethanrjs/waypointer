@@ -11,7 +11,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import com.google.gson.JsonParser;
 
-/** Uploads only when send is explicitly called. No cookies, account token, retry or redirect. */
 public final class FeedbackClient {
     public static final URI ENDPOINT = URI.create("https://waypointermod.com/api/feedback");
 
@@ -53,7 +52,6 @@ public final class FeedbackClient {
     }
 
     public CompletableFuture<Void> send(FeedbackSubmission submission) {
-        // Multipart assembly and all HTTP work run off the client/render thread.
         return CompletableFuture.supplyAsync(() -> request(submission))
                 .thenCompose(transport::send).thenAccept(status -> {
                     if (status != 201) throw new IllegalStateException(switch (status) {

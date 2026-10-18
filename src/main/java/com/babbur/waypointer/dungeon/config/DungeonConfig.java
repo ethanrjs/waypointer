@@ -16,36 +16,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** User-tunable dungeon-waypoint settings stored in {@code dungeon.json}. */
 public final class DungeonConfig {
 
     private static final String FILE_NAME = "dungeon.json";
     private static final long SAVE_DEBOUNCE_MS = 500L;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    /** Master switch. Off skips every dungeon tick + render path entirely. */
     private boolean enabled = true;
 
-    /** Logs a message whenever the detected room changes. */
     private boolean debugLogRoomChanges = false;
 
-    /**
-     * Fallback direction for room definitions whose fingerprints do not encode
-     * rotation. Players can adjust it with the dungeon command.
-     */
     private String defaultDirection = "NW";
 
     private boolean hideCompletedRooms = true;
 
-    /** Dungeon routes use their own low-noise presentation defaults. */
     private boolean showDungeonRouteLines = true;
     private boolean showDungeonTracers = false;
-    /** Number of current and upcoming secret stages shown at once. */
     private int visibleSecretStages = 1;
     private boolean secretCompletionSound = true;
-    /** Shows how long a room's route took, with the best time for that route. */
     private boolean roomTimes = true;
-    /** Best finish time in milliseconds by saved route id. Not a setting; never reset. Saved off-thread. */
     private ConcurrentHashMap<String, Long> roomBestMillis = new ConcurrentHashMap<>();
 
     private transient Path file;
@@ -157,7 +146,6 @@ public final class DungeonConfig {
         }
     }
 
-    // ---- accessors -----------------------------------------------------
 
     public boolean enabled()              { return enabled; }
     public boolean debugLogRoomChanges()  { return debugLogRoomChanges; }
@@ -169,14 +157,12 @@ public final class DungeonConfig {
     public boolean secretCompletionSound() { return secretCompletionSound; }
     public boolean roomTimes() { return roomTimes; }
 
-    /** The best time recorded for this route, or 0 when it has none. */
     public long roomBestMillis(String routeId) {
         if (routeId == null || roomBestMillis == null) return 0L;
         Long best = roomBestMillis.get(routeId);
         return best == null ? 0L : best;
     }
 
-    /** Records a finish time; returns true when it is the route's new best. */
     public boolean recordRoomTime(String routeId, long millis) {
         if (routeId == null || routeId.isBlank() || millis <= 0) return false;
         if (roomBestMillis == null) roomBestMillis = new ConcurrentHashMap<>();

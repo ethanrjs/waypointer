@@ -58,10 +58,6 @@ public final class ExportOptions {
         return includeGroupMeta;
     }
 
-    /**
-     * Whether exports retain the recorded island, when the target supports omission.
-     * Recipients choose how to place routes without an island.
-     */
     public boolean includeZone() {
         return includeZone;
     }

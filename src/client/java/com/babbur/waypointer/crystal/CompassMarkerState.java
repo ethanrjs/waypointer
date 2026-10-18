@@ -5,7 +5,6 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Client-thread-only compass and arrival state; removed markers are not retained or exported. */
 public final class CompassMarkerState {
     private static final List<WeakReference<Waypoint>> arrived = new ArrayList<>();
     private static final List<WeakReference<Waypoint>> defocused = new ArrayList<>();
@@ -26,7 +25,6 @@ public final class CompassMarkerState {
         return contains(regionExited, waypoint);
     }
 
-    /** A stopped marker stays visible, but cannot be selected by automatic tracer rendering. */
     public static boolean navigationStopped(Waypoint waypoint) {
         return arrived(waypoint) || regionExited(waypoint) || defocused(waypoint);
     }

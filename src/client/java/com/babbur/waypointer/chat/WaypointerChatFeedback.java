@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-/** Prevents Waypointer's own messages from triggering coordinate actions. */
 public final class WaypointerChatFeedback {
 
     private static final int MAX_SUPPRESSED_MESSAGES = 16;

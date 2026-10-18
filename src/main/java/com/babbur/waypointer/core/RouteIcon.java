@@ -4,19 +4,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-/**
- * A route's icon: any Minecraft item, drawn as it looks in the inventory, optionally with the
- * enchantment shimmer. Stored as the item id with a trailing {@code *} for the shimmer, e.g.
- * {@code minecraft:diamond_pickaxe*}. An empty string means no icon was chosen; the zone's
- * default is shown instead.
- */
 public final class RouteIcon {
     public static final String NONE = "";
     public static final int MAX_LENGTH = 96;
 
     private static final Pattern SPEC = Pattern.compile("[a-z0-9_.-]{1,32}:[a-z0-9_./-]{1,62}\\*?");
 
-    /** A picture for every zone family, so a row without a chosen icon still says where it is. */
     private static final Map<String, String> ZONE_DEFAULTS = Map.ofEntries(
             Map.entry("hub", "minecraft:oak_sapling"),
             Map.entry("private_island", "minecraft:grass_block"),
@@ -46,10 +39,6 @@ public final class RouteIcon {
 
     private RouteIcon() {}
 
-    /**
-     * The canonical form of a typed or stored icon: lower case, {@code minecraft:} added when no
-     * namespace is given, or {@link #NONE} when it isn't a valid item id.
-     */
     public static String normalize(String raw) {
         if (raw == null) return NONE;
         String value = raw.strip().toLowerCase(Locale.ROOT);
@@ -64,7 +53,6 @@ public final class RouteIcon {
         return id.isEmpty() ? NONE : id + (glint ? "*" : "");
     }
 
-    /** The item id without the shimmer mark. */
     public static String itemId(String spec) {
         if (spec == null) return NONE;
         return spec.endsWith("*") ? spec.substring(0, spec.length() - 1) : spec;
@@ -74,7 +62,6 @@ public final class RouteIcon {
         return spec != null && spec.endsWith("*");
     }
 
-    /** The icon to draw for a route: its own, else its zone's. */
     public static String display(String spec, String zoneId) {
         String own = normalize(spec);
         return own.isEmpty() ? zoneDefault(zoneId) : own;

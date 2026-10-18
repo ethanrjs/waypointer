@@ -4,22 +4,16 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.util.MathUtil;
 
-/**
- * Applies an HSL gradient along a route using the shortest path around the hue
- * wheel. Locked colors stay unchanged.
- */
 public final class GradientColorizer {
 
     private GradientColorizer() {}
 
-    /** Subwaypoints inherit their parent color and do not consume a gradient step. */
     public static void apply(WaypointGroup group) {
         int n = group.size();
         if (n == 0) return;
         int mainCount = group.mainWaypointCount();
         if (mainCount == 0) return;
 
-        // Avoid allocating HSL arrays whenever a route changes.
         int startRgb = group.gradientStartColor();
         int endRgb   = group.gradientEndColor();
         float sh = hueOf(startRgb),  ss = satOf(startRgb),  sl = lightOf(startRgb);
@@ -79,7 +73,6 @@ public final class GradientColorizer {
         return a + (b - a) * t;
     }
 
-    /** Interpolates hues in {@code [0, 360)} along the shorter arc. */
     private static float lerpHueShortWay(float a, float b, float t) {
         float diff = b - a;
         if (diff > 180f)  diff -= 360f;
@@ -110,7 +103,6 @@ public final class GradientColorizer {
                 | MathUtil.clampByte(bi);
     }
 
-    /** Converts {@code 0xRRGGBB} to hue, saturation, and lightness. */
     public static float[] rgbToHsl(int rgb) {
         float r = ((rgb >> 16) & 0xFF) / 255f;
         float g = ((rgb >>  8) & 0xFF) / 255f;

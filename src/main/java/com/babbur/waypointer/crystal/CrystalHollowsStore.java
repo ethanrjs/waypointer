@@ -24,7 +24,6 @@ import java.util.Optional;
 import java.util.function.LongSupplier;
 import net.fabricmc.loader.api.FabricLoader;
 
-/** Debounced per-lobby persistence for Crystal Hollows sightings. */
 public final class CrystalHollowsStore {
 
     public static final int SCHEMA_VERSION = 1;
@@ -190,7 +189,6 @@ public final class CrystalHollowsStore {
                     sighting.get("source").getAsString(), sighting.get("atMillis").getAsLong(),
                     candidates, sighting.get("note").getAsString()));
         }
-        // Older builds mistook the shared grunt profile name for a confirmed boss sighting.
         sightings.removeIf(sighting -> sighting.structure() == CrystalHollowsStructure.CORLEONE
                 && sighting.confidence() == SightingConfidence.ENTITY
                 && "entity:team treasurite".equals(CrystalHollowsSidebar.normalizeName(sighting.source())));

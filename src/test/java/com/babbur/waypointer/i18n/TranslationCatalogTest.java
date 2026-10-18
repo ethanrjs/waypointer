@@ -30,12 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-/**
- * Contract for Waypointer's language resources.
- *
- * <p>{@code en_us.json} is the canonical catalog. Each remote locale is a
- * sparse overlay with known keys and formatting-compatible translated values.
- */
 class TranslationCatalogTest {
 
     private static final Path ENGLISH_FILE = Path.of(
@@ -282,11 +276,6 @@ class TranslationCatalogTest {
                 || key.startsWith("key.category.waypointer.");
     }
 
-    /**
-     * Returns the argument indexes used by Minecraft's supported {@code %s}
-     * and {@code %1$s} placeholders. Sorting deliberately permits translators
-     * to reorder positional arguments while retaining the same signature.
-     */
     private static List<Integer> placeholderSignature(String value, String locale, String key) {
         List<Integer> arguments = new ArrayList<>();
         Matcher matcher = FORMAT_TOKEN.matcher(value);
@@ -320,8 +309,6 @@ class TranslationCatalogTest {
                     Matcher matcher = TRANSLATABLE_LITERAL.matcher(source);
                     while (matcher.find()) {
                         String key = matcher.group(1);
-                        // Vanilla keys such as gui.cancel are owned by Minecraft,
-                        // not Waypointer's catalog.
                         if (!isWaypointerKey(key)) continue;
                         references.computeIfAbsent(key, ignored -> new TreeSet<>())
                                 .add(path.toString());

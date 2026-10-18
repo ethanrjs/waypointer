@@ -56,13 +56,11 @@ class WishingCompassControllerTest {
                 CrystalHollowsZone.CRYSTAL_NUCLEUS);
         var marker = manager.getOrCreateTempGroup().get(0);
         controller.solver().onUse(500, 107, 500, CrystalHollowsZone.CRYSTAL_NUCLEUS, 100);
-        // Walking from the Nucleus into an outer zone keeps the unfinished search alive.
         tracker.observeCompassPosition(600, 107, 500);
         assertEquals(WishingCompassSolver.State.WAITING_PARTICLES, controller.solver().state());
         assertSame(marker, manager.getOrCreateTempGroup().get(0));
         assertTrue(CompassMarkerState.regionExited(marker));
         assertFalse(manager.tempWaypointFocusActive());
-        // Crossing between two outer zones changes the compass target and resets the search.
         tracker.observeCompassPosition(600, 107, 600);
         assertEquals(WishingCompassSolver.State.IDLE, controller.solver().state());
         assertEquals("region_changed", controller.lastEvent());
@@ -94,7 +92,6 @@ class WishingCompassControllerTest {
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
         var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
         tracker.observeCompassPosition(300, 100, 300);
-        // Deliberately outside the origin region: navigation follows the use, not target coordinates.
         var target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                 700, 100, 300, SightingConfidence.COMPASS, "compass", 1L);
         tracker.focusCompassTarget(target, CrystalHollowsZone.JUNGLE);

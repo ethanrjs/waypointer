@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(MouseHandler.class)
 public abstract class MouseHandlerMixin {
-    /** Edit mode turns the wheel into a placement-distance control before the hotbar sees it. */
     @Inject(method = "onScroll", at = @At("HEAD"), cancellable = true)
     private void waypointer$editModeScroll(long window, double xOffset, double yOffset, CallbackInfo ci) {
         if (WaypointRepositionMode.handleScroll(Minecraft.getInstance(), yOffset)) ci.cancel();

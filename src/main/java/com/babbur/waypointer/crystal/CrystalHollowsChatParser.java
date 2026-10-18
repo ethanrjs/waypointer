@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Parses server and player chat signals used by the Crystal Hollows feature. */
 public final class CrystalHollowsChatParser {
 
     public record NpcDialogue(CrystalHollowsStructure structure, String prefix) {}
@@ -141,7 +140,6 @@ public final class CrystalHollowsChatParser {
         return List.copyOf(results);
     }
 
-    /** Splits a player chat line from its rank and profile badges. */
     public static Optional<PlayerChat> playerChat(String text) {
         Matcher matcher = PLAYER_CHAT.matcher(clean(text));
         return matcher.matches()

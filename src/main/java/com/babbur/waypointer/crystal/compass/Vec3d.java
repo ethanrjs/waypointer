@@ -1,6 +1,5 @@
 package com.babbur.waypointer.crystal.compass;
 
-/** Minimal immutable vector used by the Minecraft-free compass solver. */
 public record Vec3d(double x, double y, double z) {
 
     private static final double NORMAL_EPSILON = 1.0e-12;

@@ -203,7 +203,6 @@ final class WaypointerCommandHelp {
                 return i;
             }
         }
-        // Then a command word, so "help hide" opens the page that explains /wp hide.
         for (int i = 0; i < SECTIONS.size(); i++) {
             for (HelpRow row : SECTIONS.get(i).rows()) {
                 if (commandWord(row.usage()).equals(normalized)) return i;

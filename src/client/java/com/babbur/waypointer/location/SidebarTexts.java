@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-/** Reads and caches the visible scoreboard sidebar text used for zone detection. */
 public final class SidebarTexts {
 
     private static final char FORMATTING_PREFIX = '\u00a7';
@@ -25,7 +24,6 @@ public final class SidebarTexts {
 
     private SidebarTexts() {}
 
-    /** Returns the sidebar's score lines as plain text, or {@code null} when none are shown. */
     public static String collectColorStripped(Minecraft mc) {
         ClientLevel level = mc.level;
         if (level == null) {
@@ -101,7 +99,6 @@ public final class SidebarTexts {
         return formatted.getString();
     }
 
-    // Hidden row names contain formatting pairs; strip the pairs, not their text.
     private static void appendStripped(StringBuilder out, String line) {
         int n = line.length();
         for (int i = 0; i < n; i++) {

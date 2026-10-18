@@ -12,7 +12,6 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.function.Supplier;
 
-/** Tracks this device's UTC daily send quota; the service also enforces its own limit. */
 public final class FeedbackQuota {
     public static final int DAILY_LIMIT = 20;
 
@@ -53,7 +52,6 @@ public final class FeedbackQuota {
         return remainingToday() == 0;
     }
 
-    /** Records one confirmed send; a failed or rejected upload never counts. */
     public synchronized void recordSend() {
         refresh();
         count++;

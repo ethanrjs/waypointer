@@ -2,7 +2,6 @@ package com.babbur.waypointer.crystal.compass;
 
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
 
-/** Server targets that can be selected by the Wishing Compass. */
 public enum WishingCompassTarget {
     GOBLIN_QUEEN,
     GOBLIN_KING,

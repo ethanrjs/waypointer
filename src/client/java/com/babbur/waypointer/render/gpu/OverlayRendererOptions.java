@@ -4,7 +4,6 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.function.UnaryOperator;
 
-/** System-property options for the retained renderer. */
 public record OverlayRendererOptions(OverlayCompositing compositing,
                                      boolean assignIrisPrograms,
                                      boolean debugLogging,

@@ -119,7 +119,6 @@ public final class DungeonRoomRouteSync {
             WaypointGroup existing = manager.get(generatedId);
             WaypointGroup next = DungeonRoomRouteProjection.transformedRouteGroupForRoom(
                     room, userRoute, visibleSecretStages());
-            // In edit mode the whole route shows, finished or not, so any waypoint can be picked.
             next.setShowAllWaypoints(
                     com.babbur.waypointer.input.WaypointRepositionMode.isEditModeEnabled());
             replaceGeneratedGroup(generatedId, next);

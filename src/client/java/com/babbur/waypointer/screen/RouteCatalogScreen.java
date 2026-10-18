@@ -79,13 +79,9 @@ public final class RouteCatalogScreen extends Screen {
     private static final int SCROLLBAR_W = 3;
     private static final int SCROLLBAR_INSET = 2;
     private static final int ICON_BTN_W = 24;
-    // Four client ticks debounce uncached searches by roughly 200 ms.
     private static final int SEARCH_DEBOUNCE_TICKS = 4;
     private static final int SEARCH_CACHE_LIMIT = 32;
-    // Previews load once a route has stayed selected for a moment, so arrowing through is cheap.
-    /** A short pause so holding an arrow key doesn't request every route on the way. */
     private static final int PREVIEW_DELAY_TICKS = 1;
-    /** Previews of the routes on screen load ahead, a few at a time. */
     private static final int PREVIEW_PREFETCH = 16;
     private static final int PREVIEW_PARALLEL = 3;
     private static final int PREVIEW_CACHE_LIMIT = 24;
@@ -126,7 +122,6 @@ public final class RouteCatalogScreen extends Screen {
     private int zoneDropdownScroll;
     private List<String> zoneDropdownIds = List.of();
     private final ContextMenuOverlay sortMenu = new ContextMenuOverlay();
-    /** Narrow screens show the list and one route's details as separate pages. */
     private boolean showingDetail;
     private boolean wideLayout;
 
@@ -186,7 +181,6 @@ public final class RouteCatalogScreen extends Screen {
         browser.setHere(playerPlace(manager));
     }
 
-    /** Where the player is for the Recommended order, including the Hollows structure they are in. */
     private static List<String> playerPlace(ActiveGroupManager manager) {
         Zone current = manager == null ? null : manager.currentZone();
         String structure = null;
@@ -199,7 +193,6 @@ public final class RouteCatalogScreen extends Screen {
         return CatalogRecommendation.here(current, structure);
     }
 
-    /** Browse the complete catalog on every fresh open. */
     static String initialZoneFilterId(Zone zone) {
         return null;
     }
@@ -215,7 +208,6 @@ public final class RouteCatalogScreen extends Screen {
         initializing = true;
         browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
 
-        // Short screens (high GUI scales) give the list every pixel they can.
         boolean compact = height < 300;
         int margin = compact ? GAP_TIGHT : PANEL_MARGIN;
         panelX = width > margin * 2 ? margin : 0;
@@ -229,7 +221,6 @@ public final class RouteCatalogScreen extends Screen {
         wideLayout = contentW >= WIDE_BREAKPOINT;
         if (wideLayout || selectedRoute() == null) showingDetail = false;
 
-        // Header: title, then My routes and an icon-only refresh on the right.
         int titleY = panelY + panelPad;
         Component refreshLabel = refreshButtonLabel(System.nanoTime());
         GuiTokens.StyledButton refresh = (GuiTokens.StyledButton) styledButton(
@@ -250,7 +241,6 @@ public final class RouteCatalogScreen extends Screen {
                 Icons.Icon.UPLOAD));
         headerTextWidth = Math.max(1, contentW - mineW - ICON_BTN_W - GAP * 2);
 
-        // Toolbar: search, zone, sort. Zone and sort drop under the search box when space is short.
         int toolbarY = titleY + BTN_H + GAP;
         int zoneW = Math.max(96, Math.min(150, widestZoneOptionWidth() + 28));
         int sortW = widestSortLabelWidth() + 28;
@@ -299,7 +289,6 @@ public final class RouteCatalogScreen extends Screen {
         sortButton = new SortButton(zoneX + zoneW + GAP, filtersY, sortW, BTN_H, sortLabel());
         addRenderableWidget(sortButton);
 
-        // Filter chips, with the result count on the right of the same line.
         chipsY = filtersY + BTN_H + GAP_TIGHT + 1;
         hideInstalledChip = new CatalogFilterChip(contentX, chipsY,
                 Component.translatable("waypointer.screen.route_catalog.filter.hide_installed"),
@@ -324,7 +313,6 @@ public final class RouteCatalogScreen extends Screen {
             addRenderableWidget(miningCultChip);
         }
 
-        // Body: list beside details, or one of them on narrow screens.
         int bodyY = chipsY + CatalogFilterChip.HEIGHT + GAP;
         int footerY = panelY + panelH - panelPad - BTN_H;
         dropdownBottom = footerY - GAP_TIGHT;
@@ -361,7 +349,6 @@ public final class RouteCatalogScreen extends Screen {
         loadMoreButton = null;
         if (listH > 0) addRouteRows();
 
-        // Footer: Back on the left, the selected route's actions on the right.
         Component copyLabel = Component.translatable("waypointer.screen.published_routes.action.copy_code");
         int copyW = GuiTokens.iconButtonWidth(font, copyLabel, Icons.Icon.SHARE);
         int installW = Math.max(PRIMARY_W, GuiTokens.iconButtonWidth(font, installButtonLabel(), Icons.Icon.DOWNLOAD));
@@ -427,7 +414,6 @@ public final class RouteCatalogScreen extends Screen {
                 : Math.max(224, (contentWidth - GAP_SECTION) * 54 / 100);
     }
 
-    // Preserve the caret and selection across widget rebuilds.
     @Override
     protected void rebuildWidgets() {
         rememberSearchFocus();
@@ -468,7 +454,6 @@ public final class RouteCatalogScreen extends Screen {
                 searchBox.getValue(), pendingSearchCursor, searchBox.getHighlighted());
     }
 
-    /** Recover the selection anchor, which EditBox does not expose, from its highlighted text. */
     static int searchHighlightAnchor(String value, int cursor, String highlighted) {
         if (highlighted == null || highlighted.isEmpty()) return cursor;
         if (value != null
@@ -478,7 +463,6 @@ public final class RouteCatalogScreen extends Screen {
         return Math.max(0, cursor - highlighted.length());
     }
 
-    /** Bounded per-query response cache; the least recently used entry falls out. */
     static <V> LinkedHashMap<String, V> boundedPageCache(int limit) {
         return new LinkedHashMap<>(16, 0.75f, true) {
             @Override
@@ -492,7 +476,6 @@ public final class RouteCatalogScreen extends Screen {
         return (zone == null ? "" : zone) + '\n' + (query == null ? "" : query);
     }
 
-    /** Server-sorted or tag-filtered pages are cached apart from the plain listing. */
     static String searchCacheKey(String zone, String query, String tag, CatalogBrowserModel.Sort sort) {
         String key = searchCacheKey(zone, query);
         boolean plain = tag == null && (sort == null || sort == CatalogBrowserModel.Sort.RECOMMENDED);
@@ -518,8 +501,6 @@ public final class RouteCatalogScreen extends Screen {
             Runnable updateState, Runnable scheduleRebuild) {
         if (!browser.editSearch(value)) return false;
         updateState.run();
-        // EditBox calls its responder before finishing selection updates. Rebuilding
-        // here reads a stale selection and can also replace the box mid-keystroke.
         scheduleRebuild.run();
         return true;
     }
@@ -542,7 +523,6 @@ public final class RouteCatalogScreen extends Screen {
             CatalogRouteSummary route = filtered.get(index);
             int y = listY + row * ROW_PITCH;
             boolean selected = route.id().equals(browser.selectedRouteId());
-            // No divider touches the selected row: its highlight already separates it.
             boolean nextSelected = index + 1 < filtered.size()
                     && filtered.get(index + 1).id().equals(browser.selectedRouteId());
             CatalogRouteRowButton button = new CatalogRouteRowButton(
@@ -569,7 +549,6 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
-    /** Selects a route; on narrow screens this also opens its detail page. */
     private void openRoute(CatalogRouteSummary route) {
         boolean already = route.id().equals(browser.selectedRouteId());
         if (!wideLayout) showingDetail = true;
@@ -580,14 +559,12 @@ public final class RouteCatalogScreen extends Screen {
         selectRoute(route);
     }
 
-    /** Unconditional network reload of the first page (initial load, refresh). */
     private void refreshCatalog() {
         searchDebounceTicks = 0;
         browser.submitPendingSearch();
         requestPage(null, false);
     }
 
-    /** Reuse cached results before requesting the pending search. */
     private void runPendingSearch() {
         searchDebounceTicks = 0;
         browser.submitPendingSearch();
@@ -604,10 +581,6 @@ public final class RouteCatalogScreen extends Screen {
         return cachedSearchPage(cache, zone, query, null, CatalogBrowserModel.Sort.RECOMMENDED);
     }
 
-    /**
-     * An exact cached page, or one cut from a complete cached listing. Sorting and tag
-     * filtering of a complete listing happen in the browser model, so any order can reuse it.
-     */
     static CatalogPage cachedSearchPage(Map<String, CatalogPage> cache, String zone, String query,
                                         String tag, CatalogBrowserModel.Sort sort) {
         CatalogPage exact = cache.get(searchCacheKey(zone, query, tag, sort));
@@ -651,7 +624,6 @@ public final class RouteCatalogScreen extends Screen {
                 : Component.literal(Zone.fromId(browser.zoneFilter()).displayName());
     }
 
-    /** Returns {labelX, labelMaxW, caretCenterX, caretCenterY}, aligned with dropdown rows. */
     static int[] filterSelectGeometry(int x, int y, int w, int h) {
         return new int[] {x + GAP, Math.max(12, w - 27), x + w - 13, y + h / 2 - 1};
     }
@@ -734,7 +706,6 @@ public final class RouteCatalogScreen extends Screen {
         refetchForServerFilters();
     }
 
-    /** Sort and tag apply on the server, so a partial listing has to start over. */
     private void refetchForServerFilters() {
         requests.invalidateForSearch();
         listLoading = false;
@@ -760,7 +731,6 @@ public final class RouteCatalogScreen extends Screen {
                 : Zone.fromId(id).displayName();
     }
 
-    /** Every canonical zone by display name, behind an all-zones sentinel ({@code ""}). */
     static List<String> zoneFilterDropdownIds() {
         List<String> ids = new ArrayList<>();
         for (Zone zone : Zone.knownZones()) ids.add(zone.id());
@@ -835,7 +805,6 @@ public final class RouteCatalogScreen extends Screen {
                 anchorX, anchorBottom, buttonW, panelX, panelW, dropdownBottom, rowCount);
     }
 
-    /** Pure dropdown layout: anchored under its button, clipped to the panel. */
     static ZoneDropdownGeometry zoneDropdownGeometry(
             int anchorX, int anchorBottom, int buttonW,
             int panelX, int panelW, int statusY, int rowCount) {
@@ -852,7 +821,6 @@ public final class RouteCatalogScreen extends Screen {
         return new ZoneDropdownGeometry(x1, y1, x2, y2, rowsTop, y2 - 1);
     }
 
-    /** Scrollbar thumb as {top offset, height}, or {@code null} when everything fits. */
     static int[] dropdownThumb(int viewport, int contentHeight, int scroll, int maxScroll) {
         if (contentHeight <= viewport) return null;
         int thumbH = Math.max(8, viewport * viewport / contentHeight);
@@ -907,7 +875,6 @@ public final class RouteCatalogScreen extends Screen {
         boolean inside = mx >= geo.x1() && mx < geo.x2()
                 && my >= geo.y1() && my < geo.y2();
         if (!inside) {
-            // Consume outside clicks so the filter button cannot reopen at once.
             closeZoneDropdown();
             return true;
         }
@@ -1001,7 +968,6 @@ public final class RouteCatalogScreen extends Screen {
         updateListStatus();
     }
 
-    /** Counts live beside the filter chips; the footer line is for messages only. */
     private void updateListStatus() {
         if (!lastLoadFailed && !detailLoading) {
             statusText = Component.empty();
@@ -1024,7 +990,6 @@ public final class RouteCatalogScreen extends Screen {
         previewDelayTicks = PREVIEW_DELAY_TICKS;
     }
 
-    /** Queues the previews of a page's first routes so they are ready before they are clicked. */
     private void prefetchPreviews(List<CatalogRouteSummary> routes) {
         previewQueue.clear();
         for (CatalogRouteSummary route : routes) {
@@ -1033,7 +998,6 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
-    /** The selected route's preview goes first; the queued ones fill the remaining slots. */
     private void tickPreview() {
         CatalogRouteSummary route = selectedRoute();
         if (route != null && route.id().equals(previewWantedId) && needsPreview(route)
@@ -1057,7 +1021,6 @@ public final class RouteCatalogScreen extends Screen {
         previewLoading.add(id);
         catalogClient.getRoutePreview(id)
                 .thenApply(CatalogRoutePreview::of)
-                // Catalogs without the preview endpoint still have the full route.
                 .exceptionallyCompose(missing -> catalogClient.getRoute(id)
                         .thenApply(details -> validateDetails(route, details))
                         .thenApplyAsync(details -> CatalogRoutePreview.of(
@@ -1231,7 +1194,6 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
-        // Suppress underlying hover states and tooltips while a dropdown is open.
         boolean overlay = zoneDropdownOpen || sortMenu.isOpen();
         int backgroundMouseX = overlay ? -1 : mouseX;
         int backgroundMouseY = overlay ? -1 : mouseY;
@@ -1279,7 +1241,6 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
-    /** "12 routes", or "50+ routes" while more pages exist; nothing while the first page loads. */
     private Component countLabel() {
         if (listLoading && !appending) return null;
         if (browser.routes().isEmpty()) return null;
@@ -1358,8 +1319,6 @@ public final class RouteCatalogScreen extends Screen {
             return null;
         }
 
-        // The route's icon, then beside it the title with the Mining Cult badge, zone and
-        // publisher, and size and age.
         int y = detailY + pad;
         int iconTop = y - 1;
         RouteIcons.slotted(graphics, route.displayIcon(), x, iconTop, DETAIL_ICON, 32);
@@ -1387,12 +1346,10 @@ public final class RouteCatalogScreen extends Screen {
         x = detailX + pad;
         available = Math.max(20, right - x);
 
-        // Install state, when the route is already here.
         CatalogInstallState state = installState(route);
         Component stateLine = installStateLine(state, route);
         int stateH = stateLine == null ? 0 : DETAIL_LINE_H + GAP_TIGHT;
 
-        // Map preview: roughly half the pane, leaving room for a few description lines.
         int descriptionMin = DETAIL_LINE_H * 3;
         int mapH = Math.max(0, Math.min(220, Math.max(56, (bottom - y - stateH) * 55 / 100)));
         if (bottom - y - stateH - mapH - GAP < descriptionMin) mapH = Math.max(0, bottom - y - stateH - GAP - descriptionMin);
@@ -1436,7 +1393,6 @@ public final class RouteCatalogScreen extends Screen {
         return null;
     }
 
-    /** "16 waypoints · 2 installs · updated 3 days ago". */
     static String detailFacts(CatalogRouteSummary route) {
         List<String> parts = new ArrayList<>();
         parts.add(waypointCount(route.waypointCount()).getString());
@@ -1447,7 +1403,6 @@ public final class RouteCatalogScreen extends Screen {
         return String.join("  \u00B7  ", parts);
     }
 
-    /** Hovering the age at the end of the facts line shows the exact update and publish times. */
     private void dateTooltip(GuiGraphicsExtractor graphics, CatalogRouteSummary route, int factsRight,
                              int y, int mouseX, int mouseY) {
         dateTooltip(graphics, font, route, factsRight, y, mouseX, mouseY);
@@ -1472,7 +1427,6 @@ public final class RouteCatalogScreen extends Screen {
         if (!lines.isEmpty()) graphics.setTooltipForNextFrame(font, lines, mouseX, mouseY);
     }
 
-    /** A catalog timestamp in the player's time zone and game language, e.g. "17 October 2026, 14:35". */
     static String exactTime(String timestamp) {
         if (timestamp == null || timestamp.isBlank()) return null;
         try {
@@ -1497,7 +1451,6 @@ public final class RouteCatalogScreen extends Screen {
         };
     }
 
-    /** "updated 3 days ago" from an ISO-8601 timestamp, or {@code null} when it cannot be read. */
     static Component ageLabel(String timestamp) {
         if (timestamp == null || timestamp.isBlank()) return null;
         java.time.Instant then;
@@ -1611,7 +1564,6 @@ public final class RouteCatalogScreen extends Screen {
         }
         boolean enter = event.key() == GLFW_KEY_ENTER || event.key() == GLFW_KEY_KP_ENTER;
         if (enter && searchBox != null && searchBox.isFocused()) {
-            // Displayed results are never refetched; only a pending edit runs.
             if (browser.searchPending()) runPendingSearch();
             return true;
         }
@@ -1675,7 +1627,6 @@ public final class RouteCatalogScreen extends Screen {
         previewLoading.clear();
         previewQueue.clear();
         if (listLoading || appending) {
-            // Retry interrupted requests on return, keeping loaded rows and cache.
             restartAppendOnReentry = appending && browser.nextCursor() != null;
             listRequested = false;
             listLoading = false;
@@ -1816,7 +1767,6 @@ public final class RouteCatalogScreen extends Screen {
             };
             return Component.translatable(key);
         }
-        // The download worked but the route itself couldn't be read or installed.
         if (cause instanceof IllegalArgumentException || cause instanceof IllegalStateException) {
             return Component.translatable("waypointer.screen.route_catalog.error.unreadable");
         }

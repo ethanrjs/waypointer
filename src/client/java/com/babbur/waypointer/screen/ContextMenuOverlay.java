@@ -23,7 +23,6 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 
-/** One popup per screen, with shortcut hints beside its actions. */
 final class ContextMenuOverlay {
 
     record Item(Component label, String hint, boolean enabled, Runnable action, Icons.Icon icon) {
@@ -50,12 +49,10 @@ final class ContextMenuOverlay {
 
     private static final int ICON_COLUMN = Icons.SIZE + 4;
 
-    /** Localized shortcut hint shown at the right of a menu item, e.g. "double-click". */
     static String hint(String id) {
         return Component.translatable("waypointer.screen.menu.hint." + id).getString();
     }
 
-    /** Gives every item whose label is one of {@code icons}' translation keys that icon. */
     static List<Item> withIcons(List<Item> items, java.util.Map<String, Icons.Icon> icons) {
         List<Item> out = new java.util.ArrayList<>(items.size());
         for (Item item : items) {
@@ -90,7 +87,6 @@ final class ContextMenuOverlay {
         cursor = -1;
     }
 
-    /** Opens beside a pointer position, flipped above when it would clip the bottom. */
     void openAt(Font font, List<Item> menuItems, double anchorX, double anchorY,
                 int minX, int minY, int maxRight, int maxBottom) {
         int widest = fittedWidest(font, menuItems, maxRight - minX);
@@ -98,7 +94,6 @@ final class ContextMenuOverlay {
         fitWidth(minX, maxRight);
     }
 
-    /** Opens under a dropdown button, at least as wide as the button and aligned with it. */
     void openUnder(Font font, List<Item> menuItems, int anchorX, int anchorBottomY, int anchorWidth,
                    int minX, int minY, int maxRight, int maxBottom) {
         openAt(font, menuItems, anchorX, anchorBottomY, minX, minY, maxRight, maxBottom);
@@ -107,12 +102,10 @@ final class ContextMenuOverlay {
         x = clampedX(anchorX, minX, maxRight, width);
     }
 
-    /** The width these items need, hints included. */
     static int naturalWidth(Font font, List<Item> menuItems) {
         return menuWidth(measureWidest(font, menuItems, true));
     }
 
-    /** Narrow spaces drop the shortcut hints before the labels get cut. */
     private int fittedWidest(Font font, List<Item> menuItems, int room) {
         int widest = measureWidest(font, menuItems, true);
         boolean hide = menuWidth(widest) > room;
@@ -140,7 +133,6 @@ final class ContextMenuOverlay {
         open = true;
     }
 
-    /** Opens with its bottom edge sitting on {@code anchorBottomY} (footer menus). */
     void openAbove(Font font, List<Item> menuItems, int anchorX, int anchorBottomY,
                    int minX, int minY, int maxRight) {
         int widest = fittedWidest(font, menuItems, maxRight - minX);
@@ -189,7 +181,6 @@ final class ContextMenuOverlay {
         return (int) Math.max(minX, Math.min(anchorX, maxRight - width));
     }
 
-    /** Opens below the anchor; slides up only as far as needed to keep the bottom on screen. */
     static int openY(double anchorY, int height, int minY, int maxBottom) {
         return Math.max(minY, Math.min((int) anchorY, maxBottom - height));
     }
@@ -229,7 +220,6 @@ final class ContextMenuOverlay {
         }
     }
 
-    /** Consumes every click while open; outside clicks just dismiss. */
     boolean mouseClicked(double mouseX, double mouseY) {
         if (!open) return false;
         int index = itemIndexAt(mouseX, mouseY);

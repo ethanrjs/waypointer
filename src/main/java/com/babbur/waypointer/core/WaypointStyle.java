@@ -3,7 +3,6 @@ package com.babbur.waypointer.core;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Immutable local appearance overrides; absent properties inherit their parent. */
 public record WaypointStyle(Map<String, String> values) {
     public static final WaypointStyle EMPTY = new WaypointStyle(Map.of());
     public WaypointStyle {

@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-/** Particle-chain state for a single Wishing Compass use. */
 public final class CompassTrail {
 
     public static final double MAX_PARTICLE_GAP = 0.75;
@@ -77,7 +76,6 @@ public final class CompassTrail {
         }
     }
 
-    /** Advances the 40-client-tick watchdog and wall-clock timeout. */
     public void tick(long nowMillis) {
         if (state == State.COMPLETE || state == State.FAILED) return;
         if (nowMillis - useMillis >= TIMEOUT_MILLIS) {

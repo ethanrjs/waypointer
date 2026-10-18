@@ -10,7 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Adds the contributor badge to the name tag rendered above a contributor's player. */
 @Mixin(AvatarRenderer.class)
 public abstract class ContributorNameTagMixin {
     @Inject(

@@ -26,8 +26,8 @@ class WaypointGroupTest {
     @Test
     void insert_shiftsCurrentIndexWhenInsertingBeforeIt() {
         WaypointGroup g = route();
-        g.advancePast(1);                 // currentIndex = 2
-        g.insert(0, wp(-10, 70, 0));      // insert at 0 shifts everything right
+        g.advancePast(1);
+        g.insert(0, wp(-10, 70, 0));
         assertEquals(3, g.currentIndex());
         assertEquals(5, g.size());
     }
@@ -35,7 +35,7 @@ class WaypointGroupTest {
     @Test
     void remove_decrementsCurrentWhenRemovingBeforeIt() {
         WaypointGroup g = route();
-        g.advancePast(2);                 // currentIndex = 3
+        g.advancePast(2);
         g.remove(0);
         assertEquals(2, g.currentIndex());
         assertEquals(3, g.size());
@@ -44,9 +44,9 @@ class WaypointGroupTest {
     @Test
     void remove_clampsToEndWhenRemovingTail() {
         WaypointGroup g = route();
-        g.advancePast(2);                 // currentIndex = 3 (the last one)
-        g.remove(3);                      // remove the current one
-        assertEquals(3, g.currentIndex()); // clamped to size()
+        g.advancePast(2);
+        g.remove(3);
+        assertEquals(3, g.currentIndex());
         assertTrue(g.isComplete());
     }
 
@@ -71,8 +71,8 @@ class WaypointGroupTest {
     @Test
     void move_currentIndexFollowsMovedWaypoint() {
         WaypointGroup g = route();
-        g.advancePast(0);                 // currentIndex = 1 -> points at (10,70,0)
-        g.move(1, 3);                     // that waypoint moves to end
+        g.advancePast(0);
+        g.move(1, 3);
         assertEquals(3, g.currentIndex());
         Waypoint now = g.current();
         assertNotNull(now);
@@ -82,16 +82,16 @@ class WaypointGroupTest {
     @Test
     void move_currentIndexAdjustsWhenJumpingOverIt() {
         WaypointGroup g = route();
-        g.advancePast(1);                 // currentIndex = 2
-        g.move(0, 3);                     // moves first element past current
-        assertEquals(1, g.currentIndex()); // current waypoint is now at position 1
+        g.advancePast(1);
+        g.move(0, 3);
+        assertEquals(1, g.currentIndex());
     }
 
     @Test
     void advancePast_monotonic() {
         WaypointGroup g = route();
         g.advancePast(2);
-        g.advancePast(1);                 // should NOT go backward
+        g.advancePast(1);
         assertEquals(3, g.currentIndex());
     }
 
@@ -415,7 +415,7 @@ class WaypointGroupTest {
     void forEachVisibleIndex_sequenceMode_afterCompletion_fallsBackToLastPoint() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
-        g.setCurrentIndex(g.size()); // past the end -> isComplete()
+        g.setCurrentIndex(g.size());
 
         int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { g.size() - 1 }, visible,
@@ -879,7 +879,6 @@ class WaypointGroupTest {
 
     @Test
     void exportSnapshotDoesNotRepaintWaypoints() {
-        // Using color setters while copying would repaint the MANUAL waypoint colors.
         WaypointGroup group = WaypointGroup.create("Manual colours", "hub");
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.add(wp(0, 70, 0).withColor(0xFF0000));
@@ -893,7 +892,6 @@ class WaypointGroupTest {
 
     @Test
     void exportSnapshotIsDetachedFromLaterEdits() {
-        // The export worker must not observe subsequent client-thread edits.
         WaypointGroup group = WaypointGroup.create("Live route", "hub");
         group.add(wp(0, 70, 0));
 

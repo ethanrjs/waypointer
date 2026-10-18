@@ -22,12 +22,6 @@ public final class AsyncSaver {
     private ScheduledFuture<?> pending;
     private boolean dirty;
 
-    /**
-     * @param name    log label so error output distinguishes config vs waypoints
-     * @param writer  the actual serialize+write body (runs on the saver thread
-     *                when debounced, on the caller thread when flushing)
-     * @param delayMs quiet window before a dirty marker triggers a write
-     */
     public AsyncSaver(String name, Runnable writer, long delayMs) {
         this.name = name;
         this.writer = writer;
@@ -42,7 +36,6 @@ public final class AsyncSaver {
         }
     }
 
-    /** Writes pending data on the calling thread. A failure remains pending. */
     public void flush() {
         synchronized (lock) {
             if (pending != null) { pending.cancel(false); pending = null; }

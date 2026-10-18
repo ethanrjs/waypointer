@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Converts between world blocks, dungeon-map pixels, and rotated room-local coordinates. */
 public final class DungeonMapMath {
 
     public static final byte ENTRANCE_COLOR = DungeonRoomType.ENTRANCE.packedColor;
@@ -26,7 +25,6 @@ public final class DungeonMapMath {
 
     private DungeonMapMath() {}
 
-    /** Returns the player's map-pixel position, or {@code null} before it appears. */
     public static int[] getMapPlayerPos(MapItemSavedData map) {
         for (MapDecoration decoration : map.getDecorations()) {
             if (decoration.type().value().equals(MapDecorationTypes.FRAME.value())) {
@@ -47,7 +45,6 @@ public final class DungeonMapMath {
         return getColor(map, x, z) == ENTRANCE_COLOR;
     }
 
-    /** Returns {@code [entranceX, entranceZ, roomSize]}, or {@code null} before the map is ready. */
     public static int[] findEntranceAndRoomSize(MapItemSavedData map) {
         int[] start = getMapPlayerPos(map);
         if (start == null) return null;
@@ -90,7 +87,6 @@ public final class DungeonMapMath {
         return (((long) x) << 32) | (z & 0xFFFFFFFFL);
     }
 
-    /** Snaps a world position to its 32x32 room-segment corner. */
     public static int[] physicalSegmentCorner(double x, double z) {
         int px = (int) Math.floor(x + 0.5) + DUNGEON_BLOCK_OFFSET;
         int pz = (int) Math.floor(z + 0.5) + DUNGEON_BLOCK_OFFSET;
@@ -122,7 +118,6 @@ public final class DungeonMapMath {
         };
     }
 
-    /** Finds all same-colored room segments connected across map gaps. */
     public static List<int[]> floodSegments(MapItemSavedData map, int mapX, int mapZ,
                                             int mapRoomSize, byte color) {
         List<int[]> out = new ArrayList<>();
@@ -132,7 +127,6 @@ public final class DungeonMapMath {
             out.add(new int[] { mapX, mapZ });
             queue.add(new int[] { mapX, mapZ });
         }
-        // The probe is already one pixel into the room gap.
         int backStep = mapRoomSize + 3;
         int[] cur;
         while ((cur = queue.poll()) != null) {
@@ -154,11 +148,9 @@ public final class DungeonMapMath {
         }
     }
 
-    /** Finds the physical corner used as the room data's local origin. */
     public static int[] physicalCorner(Direction dir,
                                        int minSegmentX, int minSegmentZ,
                                        int maxSegmentX, int maxSegmentZ) {
-        // Authored routes use the inner corner at +30, not the outer +32 edge.
         int farX = maxSegmentX + 30;
         int farZ = maxSegmentZ + 30;
         return switch (dir) {
@@ -169,7 +161,6 @@ public final class DungeonMapMath {
         };
     }
 
-    /** Converts a room-local block to a world block. */
     public static int[] relativeToActual(Direction dir,
                                          int physicalCornerX, int physicalCornerZ,
                                          int rx, int ry, int rz) {
@@ -220,10 +211,6 @@ public final class DungeonMapMath {
         };
     }
 
-    /**
-     * Converts room-local sixteenth-block coordinates to world coordinates.
-     * Mirrored axes also flip the position inside the block.
-     */
     public static int[] relativePreciseToActual(Direction dir,
                                                 int physicalCornerX, int physicalCornerZ,
                                                 int rx, int ry, int rz) {

@@ -24,7 +24,6 @@ public record CatalogRouteSummary(
         List<String> tags,
         String icon) {
 
-    /** Routes from the Mining Cult carry this server-assigned tag. */
     public static final String TAG_MINING_CULT = "mining-cult";
 
     public CatalogRouteSummary {
@@ -32,7 +31,6 @@ public record CatalogRouteSummary(
         icon = com.babbur.waypointer.core.RouteIcon.normalize(icon);
     }
 
-    /** A summary without a chosen icon. */
     public CatalogRouteSummary(String id, String title, String description, String authorName,
                                String publisherId, boolean publisherVerified, String visibility,
                                String zoneId, String zoneLabel, int waypointCount, int groupCount,
@@ -43,7 +41,6 @@ public record CatalogRouteSummary(
                 createdAt, updatedAt, sharePath, tags, "");
     }
 
-    /** A summary without server-assigned tags (older catalog servers send none). */
     public CatalogRouteSummary(String id, String title, String description, String authorName,
                                String publisherId, boolean publisherVerified, String visibility,
                                String zoneId, String zoneLabel, int waypointCount, int groupCount,
@@ -54,7 +51,6 @@ public record CatalogRouteSummary(
                 createdAt, updatedAt, sharePath, List.of(), "");
     }
 
-    /** The icon to draw: the publisher's choice, else the zone's. */
     public String displayIcon() {
         return com.babbur.waypointer.core.RouteIcon.display(icon, zoneId);
     }

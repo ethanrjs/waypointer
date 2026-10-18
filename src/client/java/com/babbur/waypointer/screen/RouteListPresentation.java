@@ -34,7 +34,6 @@ public final class RouteListPresentation {
         return String.join(Component.translatable("waypointer.screen.main.route.separator").getString(), parts);
     }
 
-    /** The folder's own colour, lifted toward white when it would vanish on the dark list. */
     static int folderIconTint(RouteFolder folder) {
         return readableOnDark(folder.color());
     }
@@ -172,7 +171,6 @@ public final class RouteListPresentation {
         NONE
     }
 
-    /** Each route's number in {@code /wp list}: its 1-based position in the zone's hub order. */
     static Map<String, Integer> routeCommandIndices(List<WaypointGroup> zoneRoutes) {
         Map<String, Integer> indices = new HashMap<>();
         if (zoneRoutes == null) return indices;

@@ -1,10 +1,5 @@
 package com.babbur.waypointer.text;
 
-/**
- * Translates player-friendly Minecraft formatting codes in waypoint labels.
- *
- * <p>Rendering translates codes such as {@code &e&l}; stored names remain unchanged.
- */
 public final class AmpersandFormatting {
 
     private static final char FORMAT_PREFIX = '\u00A7';

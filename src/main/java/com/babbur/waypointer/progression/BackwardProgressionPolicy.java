@@ -3,7 +3,6 @@ package com.babbur.waypointer.progression;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 
-/** Pure proximity policy for moving a sequence route to an earlier main waypoint. */
 public final class BackwardProgressionPolicy {
 
     private BackwardProgressionPolicy() {}

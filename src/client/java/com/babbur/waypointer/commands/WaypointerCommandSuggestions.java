@@ -37,7 +37,6 @@ final class WaypointerCommandSuggestions {
         this.chatImportCache = chatImportCache;
     }
 
-    /** Route numbers and names from {@code /wp list}, with the route's name and size as tooltip. */
     SuggestionProvider<FabricClientCommandSource> suggestRoutes() {
         return (ctx, builder) -> {
             List<WaypointGroup> routes = new RouteTargets(manager).listed();
@@ -57,7 +56,6 @@ final class WaypointerCommandSuggestions {
         };
     }
 
-    /** Folder names in the current zone; quoted when the argument is not the last one. */
     SuggestionProvider<FabricClientCommandSource> suggestFolders(boolean quoteIfNeeded) {
         return (ctx, builder) -> {
             Zone zone = manager.currentZone();
@@ -72,7 +70,6 @@ final class WaypointerCommandSuggestions {
         };
     }
 
-    /** The target route's waypoint labels as the editor shows them: 1, 2, 2.1, 3... */
     SuggestionProvider<FabricClientCommandSource> suggestWaypointLabels() {
         return (ctx, builder) -> {
             suggestWaypointLabels(manager.targetRoute(), builder);

@@ -15,7 +15,6 @@ import net.minecraft.network.chat.Component;
 
 record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWrite, int color) {
 
-    /** No color of its own: zones and saved styles. */
     static final int NO_COLOR = -1;
 
     AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWrite) {
@@ -65,10 +64,6 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         return new AppearanceTarget(scope, name, afterWrite, group.get(index).color() & 0xFFFFFF);
     }
 
-    /**
-     * The name in the route's or waypoint's own color, lifted toward white when it is too dark to
-     * read on the panel. Color codes typed into the name still win.
-     */
     Component coloredName() {
         if (color == NO_COLOR) return name;
         return name.copy().withColor(readable(color));
@@ -116,7 +111,6 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         return crumbs;
     }
 
-    /** The dungeon room a route or waypoint look belongs to, or null outside dungeon rooms. */
     Component roomName() {
         for (AppearanceScope.Layer layer : scope.parents()) {
             if (layer.level() == AppearanceScope.Level.ZONE && DungeonRoomData.entry(layer.key()) != null) {
@@ -142,11 +136,6 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         return switcherZoneKeys(current, List.of(), List.of());
     }
 
-    /**
-     * Zones offered by the Editing switcher: the current zone, the three zone families, then
-     * every other zone the player has routes in or already gave a look, sorted by name. Single
-     * dungeon rooms and mineshaft variants stay under their family.
-     */
     static List<String> switcherZoneKeys(Zone current, java.util.Collection<String> routeZoneIds,
                                          java.util.Collection<String> styledZoneKeys) {
         List<String> keys = new ArrayList<>();

@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Pipelines and legacy RenderType mappings for retained geometry. */
 public final class OverlayPipelines {
 
     private record PipelineKey(MeshBucket.Kind kind, boolean depthTested, boolean smooth) {
@@ -92,7 +91,6 @@ public final class OverlayPipelines {
         return slots.computeIfAbsent(PipelineKey.from(bucket), OverlayPipelines::buildSlot);
     }
 
-    /** Iris changes native entity strides while toggling packs; call inside the world-render phase. */
     boolean refreshVertexLayouts() {
         boolean changed = false;
         for (var entry : slots.entrySet()) {

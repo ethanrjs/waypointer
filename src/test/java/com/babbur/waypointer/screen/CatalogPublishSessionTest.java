@@ -166,8 +166,6 @@ class CatalogPublishSessionTest {
         assertTrue(needsName.attempt() > beforePublish,
                 "a new attempt lets the view reopen its name prompt");
 
-        // While a name is needed, the publish action re-notifies instead of
-        // restarting, and there is no published code to copy yet.
         session.beginPublish();
         assertEquals(CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME,
                 session.snapshot().phase());

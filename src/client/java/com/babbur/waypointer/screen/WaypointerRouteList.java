@@ -898,7 +898,6 @@ final class WaypointerRouteList {
         Component hint = Component.translatable(key.endsWith(".zone")
                 ? "waypointer.screen.main.empty.zone_hint" : key + "_hint");
 
-        // A large icon over two centred lines, together centred in the empty list.
         int iconSize = Icons.SIZE * EMPTY_ICON_SCALE;
         int lineH = font().lineHeight;
         int blockH = iconSize + 6 + lineH + 4 + lineH;
@@ -1047,7 +1046,6 @@ final class WaypointerRouteList {
         return RouteListPresentation.joinParts(parts);
     }
 
-    /** Progress only means something on a step-by-step route that has been started. */
     private static String progressSummary(WaypointGroup group) {
         if (group.loadMode() != WaypointGroup.LoadMode.SEQUENCE) return "";
         RouteProgress.Snapshot snapshot = RouteProgress.snapshot(group);

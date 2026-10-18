@@ -12,11 +12,6 @@ import net.minecraft.client.gui.screens.Screen;
 import java.util.List;
 import java.util.function.Supplier;
 
-/**
- * Opens the everyday screens on a seeded library and saves a screenshot of each at GUI
- * scales 2 and 4, so UI changes can be reviewed side by side. Run it alone with
- * {@code ./gradlew runClientGameTest -PscreenGallery}.
- */
 @SuppressWarnings("UnstableApiUsage")
 public final class ScreenGallery {
 
@@ -57,7 +52,6 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-editor-menu-s" + scale);
-        // A dungeon room route with the waypoint type picker open and its first type hovered.
         String roomRouteId = context.computeOnClient(client -> {
             var room = com.babbur.waypointer.core.WaypointGroup.create("Arrow Trap", "arrow-trap");
             room.setRouteKind(com.babbur.waypointer.core.WaypointGroup.RouteKind.DUNGEON);
@@ -127,7 +121,6 @@ public final class ScreenGallery {
         shoot(context, "minimap-editor", scale, () -> new CrystalHollowsMinimapEditorScreen(null, config));
         shoot(context, "minimap-options", scale, MinimapOptionsScreen::new);
         shoot(context, "debug", scale, () -> new DebugInspectScreen(null));
-        // Menus and states inside the everyday screens.
         shoot(context, "hub-new-menu", scale, () -> new WaypointerScreen(manager, config));
         call(context, "toggleNewMenu");
         context.takeScreenshot("gallery-hub-new-menu-open-s" + scale);
@@ -141,7 +134,6 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-hub-empty-zone-s" + scale);
-        // A real click on the zone button, then typing: the search must keep focus.
         shoot(context, "hub-before-zone-click", scale, () -> new WaypointerScreen(manager, config));
         double[] zoneButton = new double[2];
         context.runOnClient(client -> {
@@ -197,7 +189,6 @@ public final class ScreenGallery {
         context.runOnClient(client -> MinecraftCompat.setScreen(client, null));
     }
 
-    /** The community browser on a seeded catalog page, so the shots never depend on the live server. */
     private static void shootCatalog(ClientGameTestContext context, int scale) {
         context.runOnClient(client -> {
             var screen = new RouteCatalogScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production());
@@ -240,7 +231,6 @@ public final class ScreenGallery {
         shootRouteView(context, scale);
     }
 
-    /** A route opened from a link or code: details, map and a description longer than the pane. */
     private static void shootRouteView(ClientGameTestContext context, int scale) {
         context.runOnClient(client -> {
             var base = catalogRoutes().getFirst();
@@ -279,7 +269,6 @@ public final class ScreenGallery {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
-    /** My routes with three sample publications; the first changed since it was published. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void shootMyRoutes(ClientGameTestContext context, int scale) {
         context.runOnClient(client -> {
@@ -329,7 +318,6 @@ public final class ScreenGallery {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
-    /** A tungsten loop through the Glacite Tunnels, for the preview map. */
     private static WaypointGroup sampleRoute() {
         WaypointGroup route = WaypointGroup.create("Glacite tungsten", "dwarven_mines");
         int[][] points = {{0, 120, 0}, {14, 118, -6}, {30, 116, -4}, {44, 117, 8}, {52, 119, 24},
@@ -340,7 +328,6 @@ public final class ScreenGallery {
         return route;
     }
 
-    /** Icons a publisher might pick; two routes keep the zone's. */
     private static final java.util.Map<String, String> ICONS = java.util.Map.of(
             "AAAAAAAAAAAAAAAAAAAAA1", "minecraft:diamond_pickaxe*",
             "AAAAAAAAAAAAAAAAAAAAA2", "minecraft:red_stained_glass",
@@ -426,7 +413,6 @@ public final class ScreenGallery {
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
-    /** A realistic library: folders, styled routes, subwaypoints, named stops, a temp waypoint. */
     private static String seed(ActiveGroupManager manager) {
         String zone = manager.currentZone() == null ? "private_world" : manager.currentZone().id();
         WaypointGroup ruby = WaypointGroup.create("Ruby route", zone);

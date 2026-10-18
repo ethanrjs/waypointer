@@ -42,7 +42,6 @@ class CrystalHollowsTrackerBatchTest {
             assertEquals(246, group.get(0).x());
             assertEquals(104, group.get(0).y());
             assertEquals(625, group.get(0).z());
-            // A matching share confirms our estimate once (no longer "approx."), then changes nothing.
             assertEquals(hasRemote ? CrystalHollowsLobbyState.MergeResult.IGNORED
                     : CrystalHollowsLobbyState.MergeResult.REFINED, lobby.merge(remote));
             assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(remote));

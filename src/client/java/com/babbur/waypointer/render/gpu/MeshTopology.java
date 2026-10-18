@@ -1,6 +1,5 @@
 package com.babbur.waypointer.render.gpu;
 
-/** Version-neutral primitive topology. */
 public enum MeshTopology {
 
     LINES(2, 4, 6),

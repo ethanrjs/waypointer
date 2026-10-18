@@ -5,7 +5,6 @@ import com.mojang.blaze3d.pipeline.DepthStencilState;
 
 import java.util.Optional;
 
-/** Minecraft 26.1.2 color-target construction for preview pipelines. */
 final class RoutePreviewPipelineCompat {
 
     private RoutePreviewPipelineCompat() {}

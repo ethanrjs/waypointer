@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
-/** Stores chat share codes behind short handles that fit in click commands. */
 public final class ChatImportCache {
 
     private static final int CAPACITY = 16;
@@ -61,7 +60,6 @@ public final class ChatImportCache {
         return entries.size();
     }
 
-    /** Returns a copy of live handles in least-to-most-recently-used order. */
     public synchronized List<String> handles() {
         pruneExpired(clock.getAsLong());
         return new ArrayList<>(order);

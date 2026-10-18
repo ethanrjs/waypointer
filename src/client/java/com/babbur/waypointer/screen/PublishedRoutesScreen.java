@@ -41,12 +41,6 @@ import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/**
- * The player's published routes, laid out like the community browser: a list beside the
- * selected route's details. Each route remembers the local routes it was published from
- * ({@link PublishedSources}), so the page says when they have changed and Publish changes sends
- * them as a new version in one step.
- */
 public final class PublishedRoutesScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
     private static final int ROW_H = CatalogRouteRowButton.HEIGHT;
@@ -54,7 +48,6 @@ public final class PublishedRoutesScreen extends Screen {
     private static final int LINE_H = 11;
     private static final int PUBLIC_COLOR = 0xFF6AA9FF;
 
-    /** How the local routes behind a published route compare with what was published. */
     enum LinkState { UNKNOWN, NOT_LINKED, MISSING, SAME, CHANGED }
 
     private final Screen parent;
@@ -144,7 +137,6 @@ public final class PublishedRoutesScreen extends Screen {
 
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
-        // Right to left: the main action last, at the edge.
         int right = contentX + contentW;
         publishButton = footerButton(right, footerY, publishLabel(), this::publishOrChoose);
         right = publishButton.getX() - GAP_TIGHT;
@@ -169,7 +161,6 @@ public final class PublishedRoutesScreen extends Screen {
         return button;
     }
 
-    // ---- Data ---------------------------------------------------------------------------------
 
     private void loadRecords() {
         loading = false;
@@ -197,7 +188,6 @@ public final class PublishedRoutesScreen extends Screen {
         }));
     }
 
-    /** Live installs, update time and map for each route, and whether its local routes changed. */
     private void fetch(CatalogPublication publication) {
         String id = publication.routeId();
         if (!requested.add(id)) return;
@@ -231,7 +221,6 @@ public final class PublishedRoutesScreen extends Screen {
         return store == null ? List.of() : store.groups(publication.routeId());
     }
 
-    /** The local routes a publication came from, in order, or null when any is gone. */
     private static List<WaypointGroup> sources(CatalogPublication publication) {
         List<String> ids = linkedIds(publication);
         var manager = WaypointerClient.manager();
@@ -249,7 +238,6 @@ public final class PublishedRoutesScreen extends Screen {
         return publication == null ? LinkState.UNKNOWN : links.getOrDefault(publication.routeId(), LinkState.UNKNOWN);
     }
 
-    // ---- List ---------------------------------------------------------------------------------
 
     private int visibleRows() {
         return Math.max(1, listH / ROW_H);
@@ -270,7 +258,6 @@ public final class PublishedRoutesScreen extends Screen {
         }
     }
 
-    /** A published route: title and visibility, then zone, version and installs. */
     private final class Row extends AbstractButton {
         private final CatalogPublication publication;
         private final boolean selected;
@@ -298,7 +285,6 @@ public final class PublishedRoutesScreen extends Screen {
             Font font = Minecraft.getInstance().font;
             int textX = x1 + GAP, right = x2 - GAP;
 
-            // Line 1: title, then Changed on the right when the local routes moved on.
             LinkState state = link(publication);
             Component changed = Component.translatable("waypointer.screen.published_routes.link.changed_short");
             int stateW = state == LinkState.CHANGED ? font.width(changed) + GAP : 0;
@@ -306,7 +292,6 @@ public final class PublishedRoutesScreen extends Screen {
             g.text(font, GuiTokens.ellipsize(font, publication.title(), Math.max(20, right - stateW - textX)),
                     textX, y1 + 6, TEXT, false);
 
-            // Line 2: zone · visibility, version and installs on the right.
             CatalogRouteSummary live = summaries.get(publication.routeId());
             String facts = Component.translatable("waypointer.screen.published_routes.version", publication.version())
                     .getString() + (live == null ? "" : "  ·  "
@@ -338,7 +323,6 @@ public final class PublishedRoutesScreen extends Screen {
         rebuildWidgets();
     }
 
-    // ---- Actions ------------------------------------------------------------------------------
 
     private Component publishLabel() {
         LinkState state = link(model.selected());
@@ -376,7 +360,6 @@ public final class PublishedRoutesScreen extends Screen {
                 this, catalogClient, identity, publicationRegistry, selected));
     }
 
-    /** Sends the linked routes as a new version, or lets the player pick routes when none are linked. */
     private void publishOrChoose() {
         CatalogPublication selected = model.selected();
         if (selected == null || identity == null || busy) return;
@@ -463,7 +446,6 @@ public final class PublishedRoutesScreen extends Screen {
                 }));
     }
 
-    /** Reloads this device's records after an edit, keeping the selection. */
     void refreshFromRegistry(Component message, int color) {
         if (identity == null) return;
         String selected = model.selectedRouteId();
@@ -491,7 +473,6 @@ public final class PublishedRoutesScreen extends Screen {
         return Component.translatable("waypointer.screen.published_routes.status.delete_failed");
     }
 
-    // ---- Drawing ------------------------------------------------------------------------------
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
@@ -570,7 +551,6 @@ public final class PublishedRoutesScreen extends Screen {
         }
         y += LINE_H + GAP_TIGHT;
 
-        // On this device: whether the local routes match what was published.
         LinkState state = link(publication);
         List<WaypointGroup> sources = sources(publication);
         String names = sources == null ? "" : String.join(", ", sources.stream().map(WaypointGroup::name).toList());

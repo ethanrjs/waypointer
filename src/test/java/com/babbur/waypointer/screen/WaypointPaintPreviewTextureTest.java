@@ -32,7 +32,6 @@ class WaypointPaintPreviewTextureTest {
                 for (int x = 50; x < 210; x += 7) {
                     int actual = raster.pixels()[y * WaypointPaintPreviewTexture.SIZE + x];
                     int expected = rayColor(paint, angle, x, y);
-                    // Cube outlines cover edge texels; compare the painted face interiors.
                     if (expected == Integer.MIN_VALUE) continue;
                     compared++;
                     if (expected != 0) painted++;
@@ -62,7 +61,6 @@ class WaypointPaintPreviewTextureTest {
                 "rotation must clear the previous silhouette and depth buffer");
     }
 
-    // Independent ray/box oracle: it does not share triangle interpolation or UV helpers.
     private static int rayColor(WaypointPaint paint, int angle, int x, int y) {
         double yaw = Math.toRadians(angle), pitch = Math.toRadians(24);
         double cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);

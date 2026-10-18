@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Stable, instance-aware references for lobby sightings and runtime structure groups. */
 public final class CrystalHollowsSightingSelector {
 
     public record Selection(CrystalHollowsStructure structure, int instance) {

@@ -104,12 +104,12 @@ class StructureRelayControllerTest {
         set(controller, "lastSyncAt", 100_000L);
         set(controller, "lastSyncAge", 10_000L);
         set(controller, "nextSync", 400_000L);
-        assertFalse(controller.syncDue(399_000, 15_980)); // Normal 20 TPS.
+        assertFalse(controller.syncDue(399_000, 15_980));
         assertTrue(controller.syncDue(400_000, 16_000));
-        assertFalse(controller.syncDue(154_000, 10_000)); // Server disallows sync before 55 seconds.
-        assertTrue(controller.syncDue(155_000, 10_000)); // Stalled game clock.
-        assertFalse(controller.syncDue(279_000, 12_864)); // 16 TPS, less than 45 seconds drift.
-        assertTrue(controller.syncDue(325_000, 13_600)); // 16 TPS, resync before 60 seconds drift.
+        assertFalse(controller.syncDue(154_000, 10_000));
+        assertTrue(controller.syncDue(155_000, 10_000));
+        assertFalse(controller.syncDue(279_000, 12_864));
+        assertTrue(controller.syncDue(325_000, 13_600));
     }
 
     @Test

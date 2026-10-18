@@ -32,7 +32,6 @@ import java.util.function.Consumer;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/** A local draft. Nothing is uploaded until Send Feedback is pressed. */
 public final class FeedbackScreen extends Screen {
     private final Screen parent;
     private final WaypointerConfig config;
@@ -62,7 +61,6 @@ public final class FeedbackScreen extends Screen {
     private Button sendButton;
     private static final int TOP = 30;
 
-    /** What the sender is telling us; the service only distinguishes bug reports from the rest. */
     enum Category {
         COMMENT("comment", "general", "[Comment] "),
         BUG("bug", "bug", "");
@@ -154,7 +152,6 @@ public final class FeedbackScreen extends Screen {
             int tileX = left + i * (tileWidth + GAP);
             imageTiles.add(new ImageTile(image, tileX, cursor, tileWidth, tileHeight));
             button(tileX, cursor + tileHeight + 4, tileWidth, tr("remove", "Remove"), () -> {
-                // Stale buttons survive until the next tick; a repeated press must not index past the end.
                 if (!images.remove(image)) return;
                 FeedbackImagePreview preview = imagePreviews.remove(image);
                 if (preview != null) preview.close();

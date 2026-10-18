@@ -249,7 +249,6 @@ class RouteCatalogScreenSearchTest {
         assertEquals(40 + 110 - 8, geo[2] + 5, "caret right edge mirrors the label inset");
         assertEquals(30 + 9, geo[3], "caret optically centered in a 20px control");
 
-        // Label max width never collapses below a legible floor on narrow buttons.
         assertEquals(12, RouteCatalogScreen.filterSelectGeometry(0, 0, 30, 20)[1]);
     }
 

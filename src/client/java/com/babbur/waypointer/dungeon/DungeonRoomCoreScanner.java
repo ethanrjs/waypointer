@@ -11,10 +11,6 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Hashes each loaded segment's center column from Y 140 to 12. Mutable blocks are skipped;
- * air/gold above the roof and air below the bedrock floor contribute zeroes.
- */
 final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
 
     private static final int ROOM_CENTER_OFFSET = 15;

@@ -3,7 +3,6 @@ package com.babbur.waypointer.render;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import com.babbur.waypointer.config.WaypointerConfig;
 
-/** Shared pixel geometry and visibility math for world labels and the appearance inspector. */
 public final class WaypointLabelAppearance {
     private WaypointLabelAppearance() {}
 
@@ -34,7 +33,6 @@ public final class WaypointLabelAppearance {
         return left < otherRight && right > otherLeft && top < otherBottom && bottom > otherTop;
     }
 
-    /** Nine-pixel symbols avoid dependence on installed font glyphs. Center is in GUI coordinates. */
     public static void drawIcon(GuiGraphicsExtractor g, String icon, double cx, double cy, float scale, int argb) {
         if (icon == null || "NONE".equals(icon)) return;
         g.pose().pushMatrix();

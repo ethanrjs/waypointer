@@ -310,7 +310,6 @@ class RouteCatalogClientTest {
         assertEquals(12, route.downloads());
         assertEquals("Renamed", route.title());
 
-        // A response for another route or another publisher is refused.
         RecordingTransport wrongRoute = new RecordingTransport(new RouteCatalogClient.Response(
                 200, "application/json", json.replace(ID, "Bbcdefghijklmnopqrstuv")
                         .getBytes(StandardCharsets.UTF_8)));

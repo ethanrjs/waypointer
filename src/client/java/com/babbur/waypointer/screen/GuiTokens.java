@@ -58,13 +58,11 @@ public final class GuiTokens {
         }
     }
 
-    /** The player's Menu opacity setting (1 = solid panels and a blurred world). */
     public static float menuOpacity() {
         var config = com.babbur.waypointer.WaypointerClient.config();
         return config == null ? 1.0f : (float) config.menuOpacity();
     }
 
-    /** {@code argb} with its alpha scaled by the Menu opacity setting. */
     public static int panel(int argb) {
         float opacity = menuOpacity();
         if (opacity >= 1.0f) return argb;
@@ -72,11 +70,6 @@ public final class GuiTokens {
         return (alpha << 24) | (argb & 0xFFFFFF);
     }
 
-    /**
-     * Background for Waypointer's menus: vanilla's blur at full opacity; below it, only a light
-     * dim so the world stays sharp behind the panels. Returns false when the caller should fall
-     * back to the vanilla background.
-     */
     static boolean extractSeeThroughBackground(GuiGraphicsExtractor g, int width, int height) {
         float opacity = menuOpacity();
         var minecraft = Minecraft.getInstance();
@@ -85,7 +78,6 @@ public final class GuiTokens {
         return true;
     }
 
-    /** {@code text} cut to {@code maxWidth}, ending in "..." when anything was dropped. */
     public static String ellipsize(net.minecraft.client.gui.Font font, String text, int maxWidth) {
         if (font.width(text) <= maxWidth) return text;
         String dots = "...";
@@ -94,7 +86,6 @@ public final class GuiTokens {
         return font.plainSubstrByWidth(text, room).stripTrailing() + dots;
     }
 
-    /** Message tinted with a token color, e.g. {@code colored(label, ACCENT)}. */
     public static MutableComponent colored(Component message, int argb) {
         return message.copy().withStyle(
                 style -> style.withColor(TextColor.fromRgb(argb & 0xFFFFFF)));
@@ -112,7 +103,6 @@ public final class GuiTokens {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
         }
 
-        /** Shows {@code icon} before the label (or alone when the label is empty). */
         public StyledButton icon(Icons.Icon icon) {
             this.icon = icon;
             return this;
@@ -122,12 +112,10 @@ public final class GuiTokens {
             return icon;
         }
 
-        /** Compact layouts show just the icon; the label stays the narration and tooltip text. */
         public void setIconOnly(boolean iconOnly) {
             this.iconOnly = iconOnly && icon != null;
         }
 
-        /** The label always wins: the icon only shows when both fit (long translations drop it). */
         boolean showsIcon(net.minecraft.client.gui.Font font, String label) {
             if (icon == null || getHeight() < Icons.SIZE) return false;
             int needed = Icons.SIZE + (label.isEmpty() ? 0 : ICON_GAP + font.width(label));
@@ -241,7 +229,6 @@ public final class GuiTokens {
 
     public static final int MINI_CHECK = 9;
 
-    /** A 9 px check box drawn inline with text: on, off, or unavailable (dash). */
     public static void drawMiniCheck(GuiGraphicsExtractor g, int x, int y, boolean on, boolean available) {
         int border = !available ? TEXT_MUTED & 0x80FFFFFF : on ? ACCENT : TEXT_MUTED;
         g.fill(x, y, x + MINI_CHECK, y + MINI_CHECK, border);
@@ -253,7 +240,6 @@ public final class GuiTokens {
         }
     }
 
-    /** Minecraft's visible pixel glyphs are 8px tall even though the font line box is 9px. */
     public static int opticalTextY(int controlY, int controlHeight) {
         return controlY + (controlHeight - StyledButton.VISIBLE_GLYPH_HEIGHT) / 2;
     }
@@ -281,7 +267,6 @@ public final class GuiTokens {
         return button;
     }
 
-    /** Width that fits an icon and label with the usual 8 px side padding. */
     public static int iconButtonWidth(net.minecraft.client.gui.Font font, Component label, Icons.Icon icon) {
         int text = font.width(label);
         if (icon == null) return text + 16;
@@ -320,7 +305,6 @@ public final class GuiTokens {
     private static final int INFO_FILL_HOVER = 0xFF26343A;
     private static final int TOOLTIP_SEPARATOR = 0x55FFFFFF;
 
-    /** Floating panel used by tooltips, dropdowns, and pickers: OVERLAY fill, BORDER frame. */
     public static void drawTooltipPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, OVERLAY);
         g.fill(x1, y1, x2, y1 + 1, BORDER);
@@ -334,10 +318,7 @@ public final class GuiTokens {
         g.fill(x, y, x + size, y + size, hovered ? 0xB0FFFFFF : BORDER);
         g.fill(x + 1, y + 1, x + size - 1, y + size - 1,
                 hovered ? INFO_FILL_HOVER : INFO_FILL);
-        // The font's width includes a pixel of spacing after the glyph; centre the ink itself.
-        // An odd button size gives the one-pixel glyph a true middle column.
         int glyphX = x + (size - (font.width("i") - 1)) / 2;
-        // The i's ink is seven pixels tall, from the dot down, starting at the top of its cell.
         g.text(font, "i", glyphX, y + (size - 7) / 2,
                 hovered ? ACCENT : TEXT_DIM, false);
     }
@@ -479,7 +460,7 @@ public final class GuiTokens {
             while (cut > 0 && running > leftLimit - startX) {
                 cut--;
                 running -= widths[cut];
-                if (cut < left.size()) running -= GAP; // removed separator
+                if (cut < left.size()) running -= GAP;
             }
             primary = new ArrayList<>(left.subList(0, cut));
             wrapped = new ArrayList<>(left.subList(cut, left.size()));
@@ -511,7 +492,6 @@ public final class GuiTokens {
         return placements;
     }
 
-    /** Footer icons are a nicety: drop them before they would push buttons onto a second row. */
     static List<ButtonSpec> fittedSpecs(int screenW, List<ButtonSpec> left, ButtonSpec right,
                                         net.minecraft.client.gui.Font font,
                                         int startX, int rightInset) {
@@ -519,7 +499,6 @@ public final class GuiTokens {
         List<ButtonSpec> plain = left.stream()
                 .map(spec -> spec.icon() == null ? spec : spec.withIcon(null)).toList();
         if (!needsFooterWrap(screenW, plain, right, font, startX, rightInset)) return plain;
-        // Still too wide: let auto-sized buttons hug their labels instead of the 60 px minimum.
         return plain.stream().map(spec -> spec.width() > 0 ? spec : new ButtonSpec(spec.label(),
                 Math.max(TIGHT_BUTTON_MIN_W, font.width(spec.label()) + 16),
                 spec.onClick(), spec.tooltip(), null)).toList();

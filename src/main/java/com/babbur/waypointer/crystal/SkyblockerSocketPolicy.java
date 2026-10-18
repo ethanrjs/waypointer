@@ -10,7 +10,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/** Short-lived permission from Waypointer's site; no keys, account data, or user settings. */
 final class SkyblockerSocketPolicy {
     static final long POLL_MILLIS = 60_000;
     static final long MAX_AGE_MILLIS = 120_000;
@@ -40,7 +39,6 @@ final class SkyblockerSocketPolicy {
         this.clock = clock;
     }
 
-    /** Client-thread polling: late responses cannot extend permission beyond their request's lifetime. */
     void refresh() {
         long now = clock.getAsLong();
         if (pending != null && pending.isDone()) {

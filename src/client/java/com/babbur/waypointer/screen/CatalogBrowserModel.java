@@ -13,9 +13,7 @@ import java.util.Objects;
 
 final class CatalogBrowserModel {
 
-    /** Client-side order of the loaded routes. */
     enum Sort {
-        /** {@link CatalogRecommendation}: updates first, then where the player is, installed last. */
         RECOMMENDED("recommended"),
         POPULAR("popular"), NEWEST("newest"), UPDATED("updated"), WAYPOINTS("waypoints"), NAME("name");
 
@@ -83,7 +81,6 @@ final class CatalogBrowserModel {
         return searchPending;
     }
 
-    /** Server-side zone filter; {@code null} means every zone. */
     String zoneFilter() {
         return zoneFilter;
     }
@@ -152,7 +149,6 @@ final class CatalogBrowserModel {
         return true;
     }
 
-    /** Only routes carrying this tag, or every route when {@code null}. */
     String tagFilter() {
         return tagFilter;
     }
@@ -164,17 +160,14 @@ final class CatalogBrowserModel {
         return true;
     }
 
-    /** Whether any loaded route carries the tag, so its filter is worth offering. */
     boolean anyLoadedRouteHas(String tag) {
         return loadedRoutes.stream().anyMatch(route -> route.hasTag(tag));
     }
 
-    /** Where the player is, most specific first, for the Recommended order. */
     void setHere(List<String> zones) {
         here = zones == null ? List.of() : List.copyOf(zones);
     }
 
-    /** Applies the installed and tag filters and the sort order to the loaded routes. */
     void filterInstalled(String apiRoot, ActiveGroupManager manager, boolean onlyNotInstalled) {
         if (filteringInstalled != onlyNotInstalled) scrollOffset = 0;
         filteringInstalled = onlyNotInstalled;

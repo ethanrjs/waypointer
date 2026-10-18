@@ -178,7 +178,6 @@ public final class DebugSignals {
                 + ", confidence=" + result.confidence() + ", targets=" + result.targets();
     }
 
-    /** Only technical fields: sighting notes and source text can contain personal data. */
     public static String structureEvidenceLine(StructureSighting sighting) {
         if (sighting == null) return "(none)";
         return "structure=" + sighting.structure() + ", position=" + sighting.position()

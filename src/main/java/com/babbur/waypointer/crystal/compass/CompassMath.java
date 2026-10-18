@@ -3,7 +3,6 @@ package com.babbur.waypointer.crystal.compass;
 import java.util.List;
 import java.util.Optional;
 
-/** Line fitting and triangulation math for Wishing Compass trails. */
 public final class CompassMath {
 
     public static final double PARALLEL_DENOMINATOR = 1.0e-9;

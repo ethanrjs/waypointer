@@ -7,13 +7,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Immutable input for a route owned by another mod for the current session.
- *
- * <p>Overlays are not user data. Waypointer renders them through the same route
- * pipeline, but they are removed when the returned handle is closed and are not
- * written to the user's waypoint file.
- */
 public record RouteOverlaySpec(
         String name,
         String zoneId,

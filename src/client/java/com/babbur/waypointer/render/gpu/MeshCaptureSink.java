@@ -10,7 +10,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-/** Captures geometry into static and dynamic CPU mesh builders. */
 public final class MeshCaptureSink implements GeometrySink {
 
     public static final class Pair {
@@ -34,7 +33,6 @@ public final class MeshCaptureSink implements GeometrySink {
         this.poseStack = Objects.requireNonNull(poseStack, "poseStack");
     }
 
-    /** Starts a full or dynamic-only capture. */
     public void beginCapture(boolean fullRebuild) {
         captureStatic = fullRebuild;
         inDynamicScope = false;

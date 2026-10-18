@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-"""Builds Waypointer's GUI icon atlas from the hand-drawn grids in icons.txt.
 
-Every icon is a grid of up to 16x16 characters, centred in its 16x16 cell:
 
-    .  transparent
-    #  white          (the tint colour at full strength)
-    +  light shade    (78% of the tint)
-    =  mid shade      (55% of the tint)
-    -  dark shade     (35% of the tint)
 
-The screens tint icons when they draw them (text colour, accent on hover, muted when
-disabled, a folder's own colour), so the atlas stays greyscale. The order of icons in
-icons.txt is the order of Icons.Icon in the client code; tests check the two agree.
 
-Run from the repository root:  python3 tools/icons/build_icons.py
-"""
 import pathlib
 import struct
 import sys

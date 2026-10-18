@@ -15,9 +15,6 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Objects;
 
-/**
- * HMACs each route ID with a device secret to deduplicate installs without linking different routes.
- */
 public final class InstallTokenStore {
 
     private static final int SECRET_BYTES = 32;
@@ -44,10 +41,6 @@ public final class InstallTokenStore {
         return store;
     }
 
-    /**
-     * Returns the token for one route, or null when the secret cannot be read
-     * or created; a tokenless install still counts once per IP on the server.
-     */
     public String tokenFor(String routeId) {
         if (routeId == null || routeId.isBlank()) return null;
         try {
@@ -91,7 +84,6 @@ public final class InstallTokenStore {
             byte[] decoded = Base64.getDecoder().decode(root.get("secret").getAsString());
             return decoded.length == SECRET_BYTES ? decoded : null;
         } catch (Exception invalid) {
-            // A damaged file just means this device counts once more per route.
             return null;
         }
     }

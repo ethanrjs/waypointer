@@ -62,7 +62,6 @@ public final class CommandHelpers {
                 message.copy().withStyle(ChatFormatting.RED)));
     }
 
-    /** A route's name for chat: clicking it opens Waypointer on that route. */
     static MutableComponent routeName(WaypointGroup route) {
         String name = route == null || route.name().isBlank() ? "?" : route.name();
         if (route == null) return Component.literal(name).withStyle(ChatFormatting.AQUA);
@@ -74,7 +73,6 @@ public final class CommandHelpers {
                         Component.translatable("waypointer.command.route.open_hover"))));
     }
 
-    /** Feedback about a change to one route, led by the route's name so it is clear what changed. */
     static void routeSuccess(FabricClientCommandSource source, WaypointGroup route, Component message) {
         source.sendFeedback(WaypointerChatFeedback.suppress(Component.empty()
                 .append(routeName(route))

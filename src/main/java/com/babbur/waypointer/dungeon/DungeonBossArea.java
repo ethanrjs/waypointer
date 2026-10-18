@@ -1,14 +1,9 @@
 package com.babbur.waypointer.dungeon;
 
-/**
- * Where each floor's boss arena starts. Rooms fill a grid that ends before these lines;
- * the boss lies past them (the same thresholds Odin uses).
- */
 public final class DungeonBossArea {
 
     private DungeonBossArea() {}
 
-    /** The floor number of a Catacombs floor zone ({@code dungeon_f7}, {@code dungeon_m3}), or 0. */
     public static int floorNumber(String zoneId) {
         if (zoneId == null || zoneId.length() != 10) return 0;
         if (!zoneId.startsWith("dungeon_f") && !zoneId.startsWith("dungeon_m")) return 0;
@@ -16,7 +11,6 @@ public final class DungeonBossArea {
         return digit >= '1' && digit <= '7' ? digit - '0' : 0;
     }
 
-    /** Whether a position is in the boss arena; an unknown floor uses Floor 7's line. */
     public static boolean contains(int floor, double x, double z) {
         return switch (floor) {
             case 1 -> x > -71 && z > -39;

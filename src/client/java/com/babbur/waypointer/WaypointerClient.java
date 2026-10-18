@@ -109,7 +109,6 @@ public final class WaypointerClient implements ClientModInitializer {
         return dungeonTracker;
     }
 
-    /** Player chat bypasses Fabric's game-message modifier, so its mixin calls this. */
     public static Component decorateChatImport(Component message) {
         ChatImportDetector detector = chatImportDetector;
         return detector == null ? message : detector.decorate(message);

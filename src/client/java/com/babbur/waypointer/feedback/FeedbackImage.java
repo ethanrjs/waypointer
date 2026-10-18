@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
 
-/** Decoded and re-encoded image: no local path, original file name, EXIF or PNG text is uploaded. */
 public final class FeedbackImage {
     private final byte[] bytes;
     private final String mimeType;
@@ -38,7 +37,6 @@ public final class FeedbackImage {
         thumbnailPixels = thumbnail.getRGB(0, 0, thumbnailWidth, thumbnailHeight, null, 0, thumbnailWidth);
     }
 
-    /** Decode, sanitize and create the bounded thumbnail on the caller's worker thread. */
     public static FeedbackImage read(Path path) throws IOException {
         if (!Files.isRegularFile(path) || Files.size(path) > FeedbackSubmission.MAX_IMAGE_BYTES)
             throw new IOException("Choose a PNG or JPEG file of 5 MiB or less.");
@@ -76,7 +74,6 @@ public final class FeedbackImage {
     public String extension() { return mimeType.equals("image/png") ? "png" : "jpg"; }
     public int thumbnailWidth() { return thumbnailWidth; }
     public int thumbnailHeight() { return thumbnailHeight; }
-    /** Returns a defensive copy of row-major ARGB pixels, including PNG alpha and opaque JPEG alpha. */
     public int[] thumbnailPixels() { return thumbnailPixels.clone(); }
     byte[] bytes() { return bytes; }
 }

@@ -9,7 +9,6 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
 
-/** Optional Iris API access without a compile-time Iris dependency. */
 public final class IrisBridge {
 
     private static final String IRIS_MOD_ID = "iris";
@@ -75,7 +74,6 @@ public final class IrisBridge {
         return resolve() ? minorRevision : -1;
     }
 
-    /** Assigns a pipeline once and reports whether Iris accepted it. */
     public boolean assign(RenderPipeline pipeline, Program program) {
         if (pipeline == null || program == null || !resolve() || assignPipeline == null) return false;
         synchronized (assigned) {

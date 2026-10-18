@@ -41,7 +41,6 @@ class DungeonRoomZoneBridgeTest {
             tracker.setCurrentRoom(namedSpiderRoom());
 
             assertEquals("spider", manager.currentZone().id());
-            // Stored coordinates are room-local; only the projected runtime mirror should activate.
             List<WaypointGroup> active = manager.activeGroups();
             assertEquals(1, active.size());
             assertEquals("Spider Route", active.get(0).name());

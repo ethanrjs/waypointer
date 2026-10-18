@@ -41,7 +41,6 @@ class ServerTickEstimatorTest {
 
         estimator.reset("test pause");
         for (int i = 0; i <= 30; i++) estimator.recordTime(i * 20, i * SECOND);
-        // A five-second server stall is retained in observed throughput, not filtered as an outlier.
         for (int i = 31; i <= 55; i++) estimator.recordTime(i * 20, (i + 5) * SECOND);
         snapshot = estimator.snapshot(60 * SECOND);
         assertEquals(1100.0 / 60, snapshot.mediumWindow().observedTps(), 0.001);
@@ -78,7 +77,7 @@ class ServerTickEstimatorTest {
         estimator.recordTime(0, 9 * SECOND);
         assertEquals(1, estimator.snapshot(9 * SECOND).discontinuities());
         assertTrue(Double.isNaN(estimator.snapshot(9 * SECOND).shortWindow().observedTps()));
-        estimator.recordTime(20, 8 * SECOND); // Out-of-order arrival must not alter the baseline.
+        estimator.recordTime(20, 8 * SECOND);
         assertEquals(1, estimator.snapshot(9 * SECOND).shortWindow().samples());
         estimator.setTickState(10, true);
         assertTrue(estimator.snapshot(9 * SECOND).frozen());

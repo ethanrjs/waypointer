@@ -8,7 +8,6 @@ import net.minecraft.network.chat.Component;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Reads the player-list area as a fallback for delayed sidebar and location packets. */
 public final class TabListTexts {
 
     private static final Pattern AREA = Pattern.compile("^\\s*Area:\\s*(.+?)\\s*$");
@@ -16,7 +15,6 @@ public final class TabListTexts {
 
     private TabListTexts() {}
 
-    /** Returns the area named by the player list, or {@code null} when it is absent. */
     public static String areaName(Minecraft mc) {
         ClientPacketListener connection = mc == null ? null : mc.getConnection();
         if (connection == null) return null;
@@ -29,7 +27,6 @@ public final class TabListTexts {
         return null;
     }
 
-    /** Parses one player-list line such as {@code Area: Dwarven Mines}. */
     static String areaName(String line) {
         if (line == null || line.indexOf("Area:") < 0) return null;
         Matcher matcher = AREA.matcher(FORMATTING.matcher(line).replaceAll(""));

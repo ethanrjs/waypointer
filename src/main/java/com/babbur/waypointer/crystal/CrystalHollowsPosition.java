@@ -1,6 +1,5 @@
 package com.babbur.waypointer.crystal;
 
-/** Integer world position used by the Minecraft-free Crystal Hollows model. */
 public record CrystalHollowsPosition(int x, int y, int z) {
 
     public double distanceSquared(CrystalHollowsPosition other) {

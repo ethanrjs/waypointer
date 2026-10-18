@@ -200,7 +200,6 @@ class ActiveGroupManagerTest {
         assertNotNull(DungeonRoomData.entry("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
-        // DungeonRoomRouteSync exposes projected mirrors; stored routes use room-local coordinates.
         WaypointGroup group = new WaypointGroup("dungeon:auto:spider", "Room Route", "spider");
         group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setRuntimeOnly(true);

@@ -260,7 +260,6 @@ final class WaypointerShareCommands {
         return line;
     }
 
-    /** {@code /wp export} shares the target route, the same route every other route command acts on. */
     static List<WaypointGroup> cliExportGroups(ActiveGroupManager manager) {
         if (manager == null) return List.of();
         WaypointGroup target = manager.targetRoute();

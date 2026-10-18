@@ -52,7 +52,6 @@ public final class WaypointerContributorBadge {
                 ? replace(component, contributor.color())
                 : prependBadge(component, contributor.color());
     }
-    /** Tab names are asked for every frame while the list is open; each one only changes when Hypixel resends it. */
     private static final java.util.Map<Component, Component> TAB_NAMES = new java.util.IdentityHashMap<>();
 
     public static Component applyTabName(Component component, WaypointerConfig config) {

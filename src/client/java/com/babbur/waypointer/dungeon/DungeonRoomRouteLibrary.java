@@ -10,12 +10,10 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** Keeps saved dungeon routes and their temporary rendered copies in sync. */
 public final class DungeonRoomRouteLibrary {
 
     private DungeonRoomRouteLibrary() {}
 
-    /** Counts rooms once, excluding known zero-secret rooms and temporary or empty routes. */
     public static int secretRoomCount(Collection<WaypointGroup> routes) {
         if (routes == null) return 0;
         return (int) routes.stream()
@@ -39,7 +37,6 @@ public final class DungeonRoomRouteLibrary {
         return disabled;
     }
 
-    /** A dungeon-room or Crystal Hollows structure mirror projected from a saved route. */
     static boolean isProjectedMirror(WaypointGroup group) {
         return DungeonRoomRouteProjection.isGeneratedGroup(group)
                 || com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync.isGeneratedGroup(group);
@@ -56,7 +53,6 @@ public final class DungeonRoomRouteLibrary {
         return storedRouteForRoom(manager, mirror.zoneId());
     }
 
-    /** The runtime mirror currently projected from a saved route, if any. */
     private static WaypointGroup mirrorOf(ActiveGroupManager manager, WaypointGroup source) {
         if (manager == null || source == null) return null;
         if (com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes.isStructureRoute(source)) {
@@ -83,7 +79,6 @@ public final class DungeonRoomRouteLibrary {
         applyManualProgress(manager, visibleGroup, WaypointGroup::resetProgress);
     }
 
-    /** Applies a progress change to a route and to its stored source or projected room copy. */
     public static void applyProgress(ActiveGroupManager manager, WaypointGroup route,
                                      Consumer<WaypointGroup> mutation) {
         applyManualProgress(manager, route, mutation);
@@ -129,7 +124,6 @@ public final class DungeonRoomRouteLibrary {
         List<WaypointGroup> imported = new ArrayList<>();
         for (WaypointGroup route : routes) {
             if (route == null || route.isEmpty()) continue;
-            // Boss routes stay floor routes; everything else belongs to a room.
             if (!com.babbur.waypointer.core.Zone.isCatacombsFloor(route.zoneId())) {
                 route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             }
@@ -152,7 +146,6 @@ public final class DungeonRoomRouteLibrary {
         return List.copyOf(imported);
     }
 
-    /** Migrates the retired dungeon_rooms.json store without overwriting saved routes. */
     public static int installMissingLegacyRoutes(ActiveGroupManager manager,
                                                  Collection<WaypointGroup> routes) {
         if (manager == null || routes == null || routes.isEmpty()) return 0;
@@ -181,7 +174,6 @@ public final class DungeonRoomRouteLibrary {
         return changed;
     }
 
-    /** @return number of saved dungeon route groups removed. */
     public static int deleteAllDungeonRoutes(ActiveGroupManager manager, DungeonConfig config) {
         if (manager == null) return 0;
         List<String> removeIds = new ArrayList<>();

@@ -7,7 +7,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.timeline.Timelines;
 
-/** Resolves lobby identity from server packets first and the visible sidebar second. */
 public final class CrystalHollowsLobbyIdentity {
 
     private CrystalHollowsLobbyIdentity() {}

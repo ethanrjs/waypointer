@@ -55,11 +55,10 @@ public final class SettingsSearch {
                 }
             }
         }
-        out.sort(Comparator.comparingInt(Match::tier)); // stable: catalog order breaks ties
+        out.sort(Comparator.comparingInt(Match::tier));
         return out;
     }
 
-    /** Shared matcher for settings and Appearance; lower tiers sort first, -1 means no match. */
     public static int matchTier(String rawQuery, Setting setting, String categoryLabel,
                                 String groupLabel, TranslationResolver translations) {
         String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase(Locale.ROOT);
@@ -114,7 +113,6 @@ public final class SettingsSearch {
         return resolved == null ? fallback : resolved;
     }
 
-    /** All inputs must already be lowercase. */
     static int tierFor(String token, String label, List<String> aliases, String tooltip,
                        String categoryLabel, String groupLabel) {
         if (label.contains(token)) return 0;
@@ -134,7 +132,6 @@ public final class SettingsSearch {
     }
 
     private static boolean fuzzyWord(String token, String text) {
-        // One typo (including a swapped pair) is enough without making unrelated settings match.
         for (String word : WORD_BOUNDARIES.split(text)) {
             if (Math.abs(token.length() - word.length()) > 1) continue;
             int i = 0;

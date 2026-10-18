@@ -56,7 +56,6 @@ public final class ColorSwatchButton extends AbstractButton {
             renderPlainSwatch(g, x1, y1, x1 + getWidth(), y1 + getHeight());
             return;
         }
-        // A control like the others: a colour chip, then the caption (or the hex value).
         GuiTokens.drawControlFrame(g, x1, y1, getWidth(), getHeight(), active, highlighted, isFocused());
         int chip = Math.min(CHIP, getHeight() - 6);
         var font = Minecraft.getInstance().font;

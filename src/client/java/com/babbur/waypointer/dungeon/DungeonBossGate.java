@@ -6,7 +6,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 
-/** Tells the route manager when the player is in the boss, so boss routes stay out of the clear. */
 public final class DungeonBossGate {
 
     private final ActiveGroupManager manager;
@@ -29,7 +28,6 @@ public final class DungeonBossGate {
             manager.setInDungeonBoss(false);
             return;
         }
-        // Rooms replace the floor zone while inside them, so remember the floor last seen.
         Zone zone = manager.currentZone();
         int seen = DungeonBossArea.floorNumber(zone == null ? null : zone.id());
         if (seen > 0) floor = seen;

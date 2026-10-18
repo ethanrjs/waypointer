@@ -5,17 +5,10 @@ import com.babbur.waypointer.core.WaypointGroup;
 
 import java.util.function.IntPredicate;
 
-/**
- * Step-aware completion for dungeon room routes. A step is a main waypoint and its
- * subwaypoints. While a step is current, any of its remaining actions can be done:
- * a later ordered action skips ahead to it, an any-order action is simply ticked off,
- * and a secret from a later step is remembered so that step is skipped when reached.
- */
 public final class DungeonStepProgress {
 
     private DungeonStepProgress() {}
 
-    /** Whether events on this route use step rules rather than the plain route cursor. */
     public static boolean appliesTo(WaypointGroup group) {
         return group != null
                 && !group.temp()
@@ -25,11 +18,6 @@ public final class DungeonStepProgress {
                 && !group.isComplete();
     }
 
-    /**
-     * Calls {@code visitor} for each waypoint an event may complete, nearest first: the
-     * cursor, the rest of the current step, then (when {@code laterSecrets}) secrets of
-     * later steps. Stops when the visitor returns {@code false}.
-     */
     public static void forEachCandidate(WaypointGroup group, boolean laterSecrets,
                                         IntPredicate visitor) {
         if (group == null || visitor == null || group.isComplete()) return;
@@ -51,7 +39,6 @@ public final class DungeonStepProgress {
         }
     }
 
-    /** The first candidate accepted by {@code matches}, or -1. */
     public static int findCandidate(WaypointGroup group, boolean laterSecrets,
                                     IntPredicate matches) {
         int[] found = { -1 };
@@ -63,10 +50,6 @@ public final class DungeonStepProgress {
         return found[0];
     }
 
-    /**
-     * Completes one candidate. Returns true when progress changed. A later ordered action
-     * in the current step moves the cursor past it; anything else is remembered as done.
-     */
     public static boolean complete(WaypointGroup group, int index) {
         if (group == null || index < 0 || index >= group.size()) return false;
         int cursor = group.currentIndex();

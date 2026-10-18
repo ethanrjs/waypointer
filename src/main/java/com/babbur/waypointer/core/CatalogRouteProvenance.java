@@ -4,7 +4,6 @@ import java.net.URI;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Local-only provenance for one group installed from the public route catalog. */
 public record CatalogRouteProvenance(
         String apiRoot,
         String routeId,

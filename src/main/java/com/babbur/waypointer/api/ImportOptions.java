@@ -2,7 +2,6 @@ package com.babbur.waypointer.api;
 
 public record ImportOptions(boolean targetCurrentZoneWhenUnknown) {
 
-    /** Default import behavior: keep unknown-zone routes in the unknown bucket. */
     public static ImportOptions defaults() {
         return new ImportOptions(false);
     }
@@ -17,10 +16,6 @@ public record ImportOptions(boolean targetCurrentZoneWhenUnknown) {
         private Builder() {
         }
 
-        /**
-         * When true, routes imported with Waypointer's {@code unknown} zone are
-         * moved to the current detected zone.
-         */
         public Builder targetCurrentZoneWhenUnknown(boolean on) {
             this.targetCurrentZoneWhenUnknown = on;
             return this;

@@ -14,7 +14,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Times each room's route from entering the room to finishing it, and keeps the best. */
 public final class DungeonRoomTimer {
 
     private final ActiveGroupManager manager;
@@ -70,15 +69,10 @@ public final class DungeonRoomTimer {
         return String.format(Locale.ROOT, "%.1fs", millis / 1000.0);
     }
 
-    /**
-     * Starts a room's clock when its route is first seen unfinished and reports the time
-     * once when it finishes. A route already finished when first seen is never timed.
-     */
     static final class Clock {
         private final Map<String, Long> startedAt = new HashMap<>();
         private final Set<String> finished = new HashSet<>();
 
-        /** Returns the finish time once, when the route completes; 0 otherwise. */
         long observe(String key, boolean complete, long now) {
             if (complete) {
                 if (!finished.add(key)) return 0L;

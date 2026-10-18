@@ -7,7 +7,6 @@ import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
-/** Probe-only: a large route's catalog map, the size the community viewer shows it. */
 public final class PreviewProbeScreen extends Screen {
     private final CatalogRoutePreview preview;
 

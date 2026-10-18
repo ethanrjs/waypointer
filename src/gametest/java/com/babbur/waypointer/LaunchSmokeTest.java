@@ -140,7 +140,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             client.getConnection().setActionBarText(packet);
             Object hud = client.gui;
             try { hud = client.gui.getClass().getField("hud").get(client.gui); }
-            catch (NoSuchFieldException ignored) { /* 26.1 keeps the HUD on Gui. */ }
+            catch (NoSuchFieldException ignored) {                                  }
             var overlay = hud.getClass().getDeclaredField("overlayMessageString");
             overlay.setAccessible(true);
             String displayed = ((net.minecraft.network.chat.Component) overlay.get(hud)).getString();

@@ -13,7 +13,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
-/** Deterministic Wishing Compass capture and triangulation state machine. */
 public final class WishingCompassSolver {
 
     public static final double MIN_USE_DISTANCE = 8.0;
@@ -65,7 +64,6 @@ public final class WishingCompassSolver {
                     : Set.copyOf(EnumSet.copyOf(targets));
         }
 
-        /** The zone the search belongs to; a Nucleus use inherits the paired zone's context. */
         public CrystalHollowsZone searchZone() {
             return effectiveZone(firstRay == null ? null : firstRay.zone(),
                     secondRay == null ? null : secondRay.zone());
@@ -124,13 +122,11 @@ public final class WishingCompassSolver {
                     || !previous.crystals().equals(targetCrystals)) {
                 reset();
             } else {
-                // A different outer zone means a different compass target; Nucleus rays stay usable.
                 rays.removeIf(captured -> !zonesCompatible(captured.ray().zone(), zone));
             }
         }
         Vec3d use = new Vec3d(x, y, z);
         pending = new CompassTrail(use, nowMillis, zone);
-        // Snapshot context at use time, including uses inside the nucleus.
         pendingCandidates = Set.copyOf(targetCandidates);
         pendingCrystals = Map.copyOf(targetCrystals);
         state = State.WAITING_PARTICLES;
@@ -237,7 +233,6 @@ public final class WishingCompassSolver {
             return;
         }
         CompassMath.ClosestPoints points = closest.orElseThrow();
-        // Accept low-angle intersections only when their closest points agree.
         if (best.angle() < MIN_PAIR_ANGLE_DEGREES && points.gap() > HIGH_CONFIDENCE_GAP) {
             state = State.NEED_SECOND_USE;
             emit(SolverEvent.NEARLY_PARALLEL, rays.getLast().ray(), null);
@@ -274,18 +269,12 @@ public final class WishingCompassSolver {
         emit(SolverEvent.SOLVED, rays.getLast().ray(), lastResult);
     }
 
-    /**
-     * Uses inside the Crystal Nucleus pair with uses from any surrounding zone, so a search may
-     * start at the hub and finish after walking into the target's zone. Two different outer zones
-     * never share a search because the compass changes target between them.
-     */
     public static boolean zonesCompatible(CrystalHollowsZone first, CrystalHollowsZone second) {
         return first == second
                 || first == CrystalHollowsZone.CRYSTAL_NUCLEUS
                 || second == CrystalHollowsZone.CRYSTAL_NUCLEUS;
     }
 
-    /** The outer zone of a compatible pair, or the Nucleus when both uses were inside it. */
     static CrystalHollowsZone effectiveZone(CrystalHollowsZone first, CrystalHollowsZone second) {
         if (first != null && first != CrystalHollowsZone.CRYSTAL_NUCLEUS) return first;
         if (second != null && second != CrystalHollowsZone.CRYSTAL_NUCLEUS) return second;

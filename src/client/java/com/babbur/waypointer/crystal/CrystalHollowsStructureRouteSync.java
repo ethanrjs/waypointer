@@ -12,10 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Projects saved structure routes into world-coordinate mirrors while an exact lobby pivot exists.
- * Saved routes stay inactive; mirrors follow edits and disappear when the pivot or lobby is lost.
- */
 public final class CrystalHollowsStructureRouteSync {
 
     public static final String GENERATED_PREFIX = "crystal_hollows:route:";
@@ -45,11 +41,9 @@ public final class CrystalHollowsStructureRouteSync {
         return group != null && group.runtimeOnly() && group.id().startsWith(GENERATED_PREFIX);
     }
 
-    /** Updates changed mirrors and removes those without a live pivot. */
     public void sync() {
         if (syncing) return;
         boolean inLobby = tracker.active() && tracker.lobby() != null;
-        // Outside the Hollows there is nothing to project and nothing to remove.
         if (!inLobby && signatures.isEmpty()) return;
         syncing = true;
         try {
@@ -65,7 +59,6 @@ public final class CrystalHollowsStructureRouteSync {
                     String id = generatedId(source.id());
                     String signature = signature(source, pivot);
                     WaypointGroup existing = manager.get(id);
-                    // A saved route that happens to own this id is never replaced.
                     if (existing != null && !isGeneratedGroup(existing)) continue;
                     if (existing != null && signature.equals(signatures.get(id))) {
                         kept.add(id);
@@ -110,7 +103,6 @@ public final class CrystalHollowsStructureRouteSync {
             waypoints.add(CrystalHollowsStructureZones.toWorld(stored, pivot));
         }
         group.addAll(waypoints);
-        // In-world progress belongs to the mirror; a rebuild for an edit keeps it when the shape allows.
         int progress = previous != null && previous.size() == group.size()
                 ? previous.currentIndex() : source.currentIndex();
         group.setCurrentIndex(Math.max(0, Math.min(progress, group.size())));

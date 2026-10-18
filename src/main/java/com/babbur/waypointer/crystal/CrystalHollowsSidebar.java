@@ -5,7 +5,6 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Parsing helpers for the colour-stripped Crystal Hollows sidebar. */
 public final class CrystalHollowsSidebar {
 
     private static final Pattern AREA = Pattern.compile("(?m)[⏣\uE067][\\t ]*([^\\r\\n]+)");

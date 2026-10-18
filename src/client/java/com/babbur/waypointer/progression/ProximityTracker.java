@@ -147,7 +147,6 @@ public final class ProximityTracker {
         if (shouldHideCompletedDungeonRoomRoute(group)) manager.fireTransientDataChanged();
     }
 
-    /** The current step's action, or a later step's secret, on this block; -1 when none. */
     static int stepInteractedIndex(WaypointGroup group, int blockX, int blockY, int blockZ,
                                    boolean superboomHeld) {
         return DungeonStepProgress.findCandidate(group, true, i -> {
@@ -228,7 +227,6 @@ public final class ProximityTracker {
         observedMineTargets.retainAll(liveMineTargets);
     }
 
-    /** Secrets behind the cursor or done early; rises when a secret is completed. */
     static int secretsPassed(WaypointGroup group) {
         if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) return 0;
         int passed = 0;
@@ -269,7 +267,6 @@ public final class ProximityTracker {
                                        boolean hideReachedStatic,
                                        SequenceVisibility visibility,
                                        boolean allowBackwardProgress) {
-        // Temporary markers and detector results have their own expiry rules.
         if (group.temp() || MetalDetectorController.isDetectorGroup(group)) return false;
         boolean releasedSubwaypointParentHold =
                 releaseCompletionWrappedSubwaypointParentHoldIfOutsideReach(group, px, py, pz);
@@ -279,7 +276,6 @@ public final class ProximityTracker {
             return releasedSubwaypointParentHold || markedStatic;
         }
 
-        // The global switch controls every route; groups can only opt out.
         boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
         boolean restart = restartWhenComplete && !isDungeonRoomRouteGroup(group);
         boolean advanced = advanceIfReached(group, px, py, pz, restart, allowSkip,
@@ -310,7 +306,6 @@ public final class ProximityTracker {
         return group.clearActiveSubwaypointParent();
     }
 
-    /** Static groups scan every waypoint because they have no route order. */
     public static boolean markReachedStaticWaypoints(WaypointGroup group,
                                                      double px, double py, double pz) {
         return markReachedStaticWaypoints(group, px, py, pz, System.currentTimeMillis());
@@ -429,7 +424,6 @@ public final class ProximityTracker {
                 restartWhenComplete, skippingEnabled, false);
     }
 
-    /** Another of the current step's actions stood on exactly; -1 when none. */
     private static int stepStandReachedIndex(WaypointGroup group, int cursor,
                                              double px, double py, double pz, long nowMillis) {
         return DungeonStepProgress.findCandidate(group, false, i -> {
@@ -489,10 +483,6 @@ public final class ProximityTracker {
                 allowBackwardProgress);
     }
 
-    /**
-     * Mining in the current step: every remaining mine action is watched, a block already
-     * gone counts as mined, and the furthest ordered one mined moves the cursor past it.
-     */
     static boolean updateMinedStepProgress(WaypointGroup group, MineBlockLookup blocks,
                                            Set<MineTarget> observed, Set<MineTarget> live) {
         List<Integer> mined = new ArrayList<>();
@@ -668,7 +658,6 @@ public final class ProximityTracker {
             if (i > from && group.isSubwaypoint(i)) return true;
             if (i <= reachedIndex[0]) return true;
             Waypoint waypoint = group.get(i);
-            // A later main waypoint still wins over the current dungeon trigger.
             boolean reached = i > from
                     ? isWithinReach(group, waypoint, px, py, pz)
                     : isReachedByRadiusOrStand(group, i, waypoint, px, py, pz, nowMillis);

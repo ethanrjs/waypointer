@@ -102,13 +102,11 @@ class CrystalHollowsStructureRouteSyncTest {
         assertTrue(manager.activeGroups().contains(mirror));
         assertFalse(manager.activeGroups().contains(stored));
 
-        // Progress on the mirror survives unrelated data changes.
         mirror.setCurrentIndex(1);
         manager.fireDataChanged();
         assertSame(mirror, manager.get(mirrorId));
         assertEquals(1, manager.get(mirrorId).currentIndex());
 
-        // Editing the saved route rebuilds the mirror and keeps its progress when the shape allows.
         stored.add(Waypoint.at(5, 5, 5));
         manager.fireDataChangedFor(stored);
         WaypointGroup rebuilt = manager.get(mirrorId);
@@ -120,7 +118,6 @@ class CrystalHollowsStructureRouteSyncTest {
         manager.fireDataChangedFor(stored);
         assertSame(rebuilt, manager.get(mirrorId));
 
-        // In-world placement against the saved route converts through the same pivot.
         Waypoint placed = DungeonRoomWaypointPlacement.toStoredWaypoint(stored, Waypoint.at(310, 90, 390));
         assertEquals(10, placed.x());
         assertEquals(-10, placed.y());
@@ -128,7 +125,6 @@ class CrystalHollowsStructureRouteSyncTest {
         assertTrue(DungeonRoomWaypointPlacement.canPlaceInCurrentRoom(stored));
         assertEquals(310, DungeonRoomWaypointPlacement.toActualWaypoint(stored, placed).x());
 
-        // Forgetting the structure prevents world coordinates being mistaken for local offsets.
         var island = new WaypointGroup("island", "Island", "crystal_hollows");
         tracker.clearSightings();
         assertNull(manager.get(mirrorId));
@@ -211,7 +207,6 @@ class CrystalHollowsStructureRouteSyncTest {
         assertEquals(3, mirror.get(0).y());
         assertEquals(4, mirror.get(0).z());
 
-        // Leaving the lobby drops every mirror.
         set(tracker, "active", false);
         sync.sync();
         assertNull(manager.get(CrystalHollowsStructureRouteSync.generatedId("off")));

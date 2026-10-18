@@ -32,7 +32,6 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.colored;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
-/** Edits a published route without changing its share link. */
 final class PublishedRouteEditScreen extends Screen {
     private static final int PANEL_W = 440;
     private static final int PANEL_MARGIN = 12;

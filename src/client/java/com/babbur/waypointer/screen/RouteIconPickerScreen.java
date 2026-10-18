@@ -18,17 +18,12 @@ import java.util.function.Consumer;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/**
- * Picks a route's icon from every Minecraft item, drawn as the inventory shows them. A row of
- * items that suit SkyBlock routes comes first; typing searches item names and ids.
- */
 public final class RouteIconPickerScreen extends Screen {
     private static final int CELL = 20;
     private static final int MAX_W = 372;
     private static final int MAX_H = 320;
     private static final int PREVIEW = 36;
 
-    /** Items that suit common SkyBlock routes, shown first. */
     static final List<String> SUGGESTED = List.of(
             "minecraft:diamond_pickaxe", "minecraft:iron_pickaxe", "minecraft:prismarine_shard",
             "minecraft:amethyst_shard", "minecraft:red_stained_glass", "minecraft:orange_stained_glass",
@@ -133,7 +128,6 @@ public final class RouteIconPickerScreen extends Screen {
         return List.copyOf(list);
     }
 
-    /** With no search, the suggested items lead, then everything else in game order. */
     private void filter() {
         String query = searchBox == null ? "" : searchBox.getValue().strip().toLowerCase(Locale.ROOT);
         List<Entry> result = new ArrayList<>();
@@ -168,7 +162,6 @@ public final class RouteIconPickerScreen extends Screen {
         return searching || suggestedCount == 0 ? 0 : (suggestedCount + cols - 1) / cols;
     }
 
-    /** Grid cell of the i-th shown item; the suggested items fill whole rows of their own. */
     private int cell(int i) {
         int suggested = suggestedRows() > 0 ? suggestedCount : 0;
         return i < suggested ? i : i + suggestedRows() * cols - suggested;
@@ -183,7 +176,6 @@ public final class RouteIconPickerScreen extends Screen {
         return Math.max(0, contentHeight() - gridH);
     }
 
-    /** Screen y of the row; the suggested rows sit above a small gap. */
     private int rowY(int row) {
         int gap = suggestedRows() > 0 && row >= suggestedRows() ? GAP : 0;
         return gridY + row * CELL + gap - scroll;
@@ -203,7 +195,6 @@ public final class RouteIconPickerScreen extends Screen {
         g.fill(0, 0, width, height, 0x80000000);
         g.fill(panelX, panelY, panelX + panelW, panelY + panelH, GuiTokens.panel(SURFACE));
 
-        // Preview: the chosen item large, with its name.
         int inner = panelX + PAD_OUTER;
         int top = panelY + PAD_OUTER;
         String spec = selectedId == null ? RouteIcon.zoneDefault(zoneId) : currentSpec();

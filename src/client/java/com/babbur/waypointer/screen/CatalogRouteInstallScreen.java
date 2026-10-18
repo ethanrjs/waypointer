@@ -39,11 +39,6 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
-/**
- * A catalog route opened from a link or code, unlisted ones included: the same details the
- * community browser shows (map, publisher, installs, age, install state), with Install, Copy code
- * and Copy link.
- */
 public final class CatalogRouteInstallScreen extends Screen {
 
     private static final int PANEL_W = 560;
@@ -105,7 +100,6 @@ public final class CatalogRouteInstallScreen extends Screen {
                 new CatalogRouteInstallScreen(parent, catalogClient, manager, routeId));
     }
 
-    /** Route id when {@code text} is a catalog reference code or share link, else null. */
     public static String referenceRouteId(String text) {
         if (text == null) return null;
         String trimmed = text.trim();
@@ -113,14 +107,12 @@ public final class CatalogRouteInstallScreen extends Screen {
         String candidate = stripMarkdownCodeFence(trimmed);
         if (candidate.length() > MAX_REFERENCE_PROBE_CHARS) return null;
 
-        // Recognize links without decoding arbitrary clipboard text.
         Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(candidate);
         if (linkedRoute.isPresent()) {
             String routeId = linkedRoute.get();
             return RouteCatalogClient.isValidRouteId(routeId) ? routeId : null;
         }
 
-        // Reject non-reference codes before decompression or JSON parsing.
         if (!WaypointCodec.isCodecString(candidate)) return null;
         try {
             UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(candidate);
@@ -192,7 +184,6 @@ public final class CatalogRouteInstallScreen extends Screen {
                     .whenComplete((result, failure) -> runOnClient(() -> onLoaded(
                             generation, result, failure)));
         } catch (RuntimeException failure) {
-            // Show validation and request errors without failing init().
             onLoaded(generation, null, failure);
         }
     }
@@ -306,7 +297,6 @@ public final class CatalogRouteInstallScreen extends Screen {
         CatalogRoutePreview.Point hovered = null;
         CatalogRouteSummary summary = prepared == null ? null : prepared.summary();
         int top = panelY + PAD_OUTER;
-        // The status row is only kept free while there is a status to show.
         boolean statusShown = !status.getString().isBlank();
         int bottom = statusShown ? statusY - GAP : footerY - GAP;
         descriptionMaxScroll = 0;
@@ -336,7 +326,6 @@ public final class CatalogRouteInstallScreen extends Screen {
         }
     }
 
-    /** The route's icon, then beside it the title and Mining Cult badge, zone and publisher, size and age. */
     private int renderHeader(GuiGraphicsExtractor graphics, CatalogRouteSummary summary, int y,
                              int mouseX, int mouseY) {
         int right = contentX + contentW;
@@ -376,7 +365,6 @@ public final class CatalogRouteInstallScreen extends Screen {
         return y + GAP;
     }
 
-    /** The map beside the description on wide panels, above it on narrow ones. */
     private CatalogRoutePreview.Point renderBody(GuiGraphicsExtractor graphics, CatalogRouteSummary summary,
                                                  int top, int bottom, int mouseX, int mouseY) {
         int right = contentX + contentW;
@@ -459,7 +447,6 @@ public final class CatalogRouteInstallScreen extends Screen {
     public void removed() {
         screenActive = false;
         if (phase == Phase.LOADING) {
-            // Retry on return; reject late responses from the abandoned request.
             requested = false;
             fetchGeneration++;
         }

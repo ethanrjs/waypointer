@@ -5,7 +5,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.resources.Identifier;
 
-/** Binds a texture and sampler to a render-pass slot. */
 final class RenderPassTextureBinder {
 
     private RenderPassTextureBinder() {}

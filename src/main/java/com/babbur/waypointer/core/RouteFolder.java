@@ -2,7 +2,6 @@ package com.babbur.waypointer.core;
 
 import java.util.Objects;
 
-/** A single-level folder for saved or session-only routes in one zone. */
 public record RouteFolder(
         String id, String name, String zoneId, boolean collapsed, int color, boolean runtimeOnly) {
 

@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
-/** Opt-in native test: a configured pack must actually render, including after reload/toggle. */
 @SuppressWarnings("UnstableApiUsage")
 final class ShaderCompatibilitySmokeTest {
     private static final boolean ENABLED = Boolean.getBoolean("waypointer.test.shaders");
@@ -88,8 +87,6 @@ final class ShaderCompatibilitySmokeTest {
     }
 
     private static void captureCompletedFrame(ClientGameTestContext context) {
-        // Fabric's screenshot helper renders an extra frame outside Sodium's frame lifecycle.
-        // Read the completed native frame instead, without changing Sodium's uniform state.
         var saved = new CompletableFuture<Void>();
         context.runOnClient(client -> {
             RenderTarget target;
@@ -117,7 +114,6 @@ final class ShaderCompatibilitySmokeTest {
     }
 
     private static void waitForShaderState(ClientGameTestContext context, boolean enabled) {
-        // Check the actual public API too: enabled-on-disk can be true after compilation failed.
         context.waitFor(client -> shaderPackInUse() == enabled, 600);
         context.waitFor(client -> IrisBridge.get().isShaderPackInUse() == enabled, 100);
         context.runOnClient(client -> {
@@ -155,7 +151,6 @@ final class ShaderCompatibilitySmokeTest {
                 || !renderer.options().assignIrisPrograms()) {
             throw new AssertionError("Shader test fell back from the Iris-integrated retained renderer");
         }
-        // Inspect existing GPU data in the test rather than add counters to production frames.
         Map<?, ?> meshes = (Map<?, ?>) field(renderer, "meshes");
         EnumSet<MeshBucket.Kind> populated = EnumSet.noneOf(MeshBucket.Kind.class);
         EnumSet<MeshBucket.Kind> depthPopulated = EnumSet.noneOf(MeshBucket.Kind.class);
@@ -197,7 +192,6 @@ final class ShaderCompatibilitySmokeTest {
             var describe = Class.forName("com.babbur.waypointer.render.gpu.VertexLayoutCompat")
                     .getDeclaredMethod("describe", RenderPipeline.class);
             describe.setAccessible(true);
-            // Iris exposes its expanded format only inside world rendering, not between frames.
             for (var entry : capture.buckets().entrySet()) {
                 var slot = pipelines.slot(entry.getKey());
                 var expected = describe.invoke(null, slot.inWorld());

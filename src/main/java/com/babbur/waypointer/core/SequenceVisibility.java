@@ -3,7 +3,6 @@ package com.babbur.waypointer.core;
 public record SequenceVisibility(int previous, boolean current, int next) {
 
     public static final int MAX_CONTEXT_WAYPOINTS = 32;
-    /** Shows every previous step. */
     public static final int ALL = MAX_CONTEXT_WAYPOINTS + 1;
     public static final SequenceVisibility DEFAULT = new SequenceVisibility(1, true, 1);
 

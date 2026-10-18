@@ -28,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonRouteImporterTest {
 
-    // ---- SecretRoutes ------------------------------------------------------
 
     private static final String SECRET_ROUTES_JSON = """
             {
@@ -374,7 +373,6 @@ class DungeonRouteImporterTest {
                 DungeonRoomShape.ONE_BY_ONE, List.of(coreHashes), List.of(), 0, 0, 0);
     }
 
-    // ---- Odin packs -----------------------------------------------------------
 
     private static final String ODIN_PACK_JSON = """
             {
@@ -564,7 +562,6 @@ class DungeonRouteImporterTest {
         assertEquals(4, result.waypointCount());
     }
 
-    // ---- native + error paths -------------------------------------------------
 
     @Test
     void importsWaypointerNativeRoomJson() {

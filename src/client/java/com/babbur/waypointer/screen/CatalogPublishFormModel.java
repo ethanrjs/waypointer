@@ -146,7 +146,6 @@ final class CatalogPublishFormModel {
         return group().name() == null ? "" : group().name().trim();
     }
 
-    /** World-coordinate Catacombs routes cannot be reused across generated dungeon instances. */
     static boolean unsafeDungeonRoute(WaypointGroup group) {
         return group.routeKind() != WaypointGroup.RouteKind.DUNGEON && dungeonRoute(group);
     }
@@ -159,7 +158,6 @@ final class CatalogPublishFormModel {
                 || zone.startsWith("dungeon_m");
     }
 
-    /** Routes without a real SkyBlock zone would be unfindable in the catalog. */
     static boolean unpublishableZone(String zoneId) {
         String canonical = Zone.canonicalId(zoneId);
         return Zone.UNKNOWN.id().equals(canonical)

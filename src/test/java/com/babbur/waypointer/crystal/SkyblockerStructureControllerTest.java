@@ -109,7 +109,6 @@ class SkyblockerStructureControllerTest {
         assertEquals("deferred_to_skyblocker", controller.diagnostics(2_000).status());
         var tick = SkyblockerStructureController.class.getDeclaredMethod("tick", Minecraft.class);
         tick.setAccessible(true);
-        // The gate runs before any game, key, or network access, so a null client is safe here.
         tick.invoke(controller, new Object[]{null});
         assertEquals("none", controller.diagnostics(2_000).authentication());
         assertFalse(controller.diagnostics(2_000).connected());
@@ -131,7 +130,7 @@ class SkyblockerStructureControllerTest {
         assertSame(actual, SkyblockerStructureController.authenticationKeys(null, actual, true, Object.class));
         assertThrows(SkyblockerAuthentication.SafeFailure.class, () -> SkyblockerStructureController.authenticationKeys(
                 new Object(), ProfileKeyPairManager.EMPTY_KEY_MANAGER, true, Object.class));
-        assertFalse(shared.isDone()); // Merely choosing the manager never requests keys or starts authentication.
+        assertFalse(shared.isDone());
     }
 
     private static final class FakeKeyOwner {

@@ -208,7 +208,6 @@ public final class TracerRenderer implements HudElement {
         }
     }
 
-    /** Shared with the appearance inspector; scratch holds the two-coordinate line start. */
     public static void drawStyledTracer(GuiGraphicsExtractor g, double fromX, double fromY,
                                        double toX, double toY, int argb, WaypointerConfig options,
                                        boolean offscreen, double[] scratch) {
@@ -243,7 +242,6 @@ public final class TracerRenderer implements HudElement {
         dx /= length;
         dy /= length;
         double size = Math.min(7, length / 2);
-        // Inset the tip so both wings remain visible even at viewport corners.
         tipX -= dx * size;
         tipY -= dy * size;
         for (int side = -1; side <= 1; side += 2) {

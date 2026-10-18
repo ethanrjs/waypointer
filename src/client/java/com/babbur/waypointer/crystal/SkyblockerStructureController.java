@@ -20,7 +20,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ProfileKeyPairManager;
 import net.minecraft.network.chat.Component;
 
-/** Optional authenticated Crystal Hollows peer; independent of Waypointer's public relay. */
 public final class SkyblockerStructureController {
     private static volatile SkyblockerStructureController installed;
     private static final URI ENDPOINT = URI.create("wss://ws.hysky.de");
@@ -32,7 +31,6 @@ public final class SkyblockerStructureController {
             .map(mod -> mod.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
     private final StructureRelayConnection connection;
     private final SkyblockerSocketPolicy socketPolicy = new SkyblockerSocketPolicy(HTTP);
-    /** Skyblocker owns the hysky session when it is loaded; a second client would duplicate auth and publishes. */
     private final boolean skyblockerLoaded;
     private final EnumSet<CrystalHollowsStructure> published = EnumSet.noneOf(CrystalHollowsStructure.class);
     private final EnumSet<CrystalHollowsStructure> received = EnumSet.noneOf(CrystalHollowsStructure.class);
@@ -55,7 +53,6 @@ public final class SkyblockerStructureController {
     private FailureCause lastFailureCause = FailureCause.NONE;
     private String lastFailureStage = "none";
 
-    /** Sanitized state only. A queue count of -1 means the transport does not expose it. */
     public record DebugSnapshot(boolean installed, boolean enabled, boolean lobbyActive,
                                 boolean connected, boolean connecting, String authentication,
                                 boolean subscribed, boolean denied, long backoffRemainingMillis, int failures,
@@ -63,7 +60,6 @@ public final class SkyblockerStructureController {
                                 long generation, int lastFailureStatus, String status,
                                 FailureCause lastFailureCause, String lastFailureStage) {}
 
-    /** Read on the client thread; never requests keys, authenticates, sends, or drains peer data. */
     public static DebugSnapshot debugSnapshot() {
         var controller = installed;
         return controller == null
@@ -132,16 +128,12 @@ public final class SkyblockerStructureController {
     }
 
     private String userAgent() {
-        // Resolve game metadata only for network use, after the sharing gate.
-        // Temporary compatibility trial: hysky selects bearer-token handling by User-Agent.
         return "Skyblocker/" + version + " (" + SharedConstants.getCurrentVersion().name() + ")";
     }
 
     private void tick(Minecraft client) {
-        // This gate precedes all profile-key access, network calls, and reads from the game.
         if (!config.crystalHollowsSkyblockerSharing() || !config.crystalHollowsRemoteSharing()
                 || !config.crystalHollowsEnabled()) { reset(); return; }
-        // With Skyblocker present its own client already authenticates and shares for this account.
         if (skyblockerLoaded) { reset(); return; }
         if (client == null || client.level == null || client.getCurrentServer() == null
                 || !tracker.active() || tracker.lobby() == null || tracker.serverId() == null) {
@@ -221,7 +213,6 @@ public final class SkyblockerStructureController {
                 tracker.merge(sighting, false);
             }
         }));
-        // One send per second, once per category per lobby visit. Never bridge either relay.
         for (StructureSighting sighting : lobby.localSightings()) {
             if (!tracker.detectionEnabled(sighting)) continue;
             if (published.contains(sighting.structure()) || received.contains(sighting.structure())) continue;
@@ -237,9 +228,7 @@ public final class SkyblockerStructureController {
         if (authentication == null || !authentication.result.isDone()) return false;
         try {
             token = authentication.result.join();
-            // The authentication timeout must not delay a successful WebSocket handshake.
             nextAttempt = now;
-            // An exchange may have completed while we spent a long time outside the Hollows.
             if (token.needsRefresh(now)) token = null;
         } catch (RuntimeException error) {
             failed(client, status(error), SkyblockerAuthentication.failureCause(error), "authentication", now);
@@ -248,7 +237,6 @@ public final class SkyblockerStructureController {
         return token != null;
     }
 
-    /** Policy revocation uses the same complete cleanup as the user's sharing opt-out. */
     boolean allowRemoteSharing() {
         socketPolicy.refresh();
         if (socketPolicy.allowed()) return true;
@@ -256,7 +244,6 @@ public final class SkyblockerStructureController {
         return false;
     }
 
-    /** Only called after the sharing consent gate. Does not enable chat signing or change any mod setting. */
     private static ProfileKeyPairManager authenticationKeys(Minecraft client) {
         return authenticationKeys(client, client.getProfileKeyPairManager(),
                 FabricLoader.getInstance().isModLoaded("nochatreports"), Minecraft.class);
@@ -265,13 +252,10 @@ public final class SkyblockerStructureController {
     static ProfileKeyPairManager authenticationKeys(Object client, ProfileKeyPairManager exposed,
                                                      boolean noChatReports, Class<?> owner) {
         if (exposed != ProfileKeyPairManager.EMPTY_KEY_MANAGER || !noChatReports) return exposed;
-        // No Chat Reports substitutes EMPTY_KEY_MANAGER for chat signing. Skyblocker uses a field accessor
-        // for its separate API proof. This narrow fallback uses the same field on supported, unobfuscated 26.x.
         try {
             var field = owner.getDeclaredField("profileKeyPairManager");
             if (field.trySetAccessible() && field.get(client) instanceof ProfileKeyPairManager keys) return keys;
         } catch (ReflectiveOperationException | RuntimeException unavailable) {
-            // Fail closed without retaining reflection errors or inspecting any other account field.
         }
         throw new SafeFailure(FailureCause.PROFILE_KEYS_UNAVAILABLE);
     }
@@ -282,7 +266,6 @@ public final class SkyblockerStructureController {
         lastFailureStage = stage;
         disconnect();
         token = null;
-        // A 4xx policy/identity rejection must not trigger identity spoofing or repeated auth probes.
         denied = status >= 400 && status < 500 && status != 408 && status != 429;
         retryLater(now);
         if (!warned && client.player != null) {
@@ -304,7 +287,7 @@ public final class SkyblockerStructureController {
         synchronized (connection) {
             if (!connection.isOpen() && !connection.isConnecting() && !subscribed && handshakeFailure == null) return;
             generation++;
-            connection.close(); // Closing the connection also removes its server-side subscriptions.
+            connection.close();
             subscribed = false;
             handshakeFailure = null;
         }
@@ -312,7 +295,6 @@ public final class SkyblockerStructureController {
 
     private void leaveLobby() {
         disconnect();
-        // Keep same-account authentication across lobby hops; reset cancels it, expiry refreshes tokens.
         if (lobby != null && lobby.clearRemoteSightings(SkyblockerStructureProtocol.SOURCE)
                 && lobby == tracker.lobby()) tracker.rebuildProjection();
         lobby = null;
@@ -347,7 +329,6 @@ public final class SkyblockerStructureController {
 
     private record Failure(long generation, int status, FailureCause cause) {}
 
-    /** Cancellation never cancels Minecraft's shared key future, but prevents any later auth POST. */
     static final class AuthAttempt {
         private boolean cancelled;
         private CompletableFuture<SkyblockerAuthentication.Token> exchange;
@@ -365,7 +346,6 @@ public final class SkyblockerStructureController {
                         exchange = SkyblockerAuthentication.authenticate(proof, userAgent);
                         return exchange;
                     } catch (Exception error) {
-                        // Do not retain an external exception that could include a response body/key.
                         return CompletableFuture.failedFuture(error instanceof SafeFailure safe ? safe
                                 : new SafeFailure(FailureCause.PROOF_FAILED));
                     }

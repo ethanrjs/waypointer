@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Explicit opt-in: creates a temporary public route, unlists it, then deletes it. */
 @EnabledIfEnvironmentVariable(named = "WAYPOINTER_CATALOG_WRITE_LIVE", matches = "true")
 class CatalogLiveUpdateTest {
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;

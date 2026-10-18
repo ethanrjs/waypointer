@@ -165,7 +165,6 @@ public final class SettingsScreen extends Screen {
         return new SettingsScreen(parent, config, dungeonConfig, Objects.requireNonNull(target));
     }
 
-    /** Opens a route's look; false when the route has no editable look (a downloaded room copy). */
     public static boolean openRouteAppearance(com.babbur.waypointer.core.ActiveGroupManager manager,
                                               WaypointerConfig config, WaypointGroup route) {
         AppearanceTarget target = AppearanceTarget.route(manager, config, route, manager::fireDataChanged);
@@ -176,7 +175,6 @@ public final class SettingsScreen extends Screen {
         return true;
     }
 
-    /** Opens one waypoint's look; false when it has no editable look. */
     public static boolean openWaypointAppearance(com.babbur.waypointer.core.ActiveGroupManager manager,
                                                  WaypointerConfig config, WaypointGroup route, int index) {
         AppearanceTarget target = AppearanceTarget.waypoint(manager, config, route, index, manager::fireDataChanged);
@@ -187,14 +185,12 @@ public final class SettingsScreen extends Screen {
         return true;
     }
 
-    /** Opens a zone's look ({@code dwarven_mines}, or a family such as {@code mineshaft}). */
     public static void openZoneAppearance(WaypointerConfig config, String zoneKey) {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> MinecraftCompat.setScreen(client, forAppearance(null, config,
                 WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, zoneKey))));
     }
 
-    /** Opens the Appearance page of the settings, which applies everywhere. */
     public static void openGlobalAppearance(WaypointerConfig config) {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
@@ -207,7 +203,6 @@ public final class SettingsScreen extends Screen {
         });
     }
 
-    /** Zones with a look of their own, as the Editing switcher lists them. */
     public static List<String> appearanceZoneKeys(com.babbur.waypointer.core.ActiveGroupManager manager,
                                                   WaypointerConfig config) {
         List<String> routeZones = manager.allGroups().stream()
@@ -220,7 +215,6 @@ public final class SettingsScreen extends Screen {
         return AppearanceTarget.zoneLabel(zoneKey);
     }
 
-    /** Opens the settings screen. */
     public static void open(WaypointerConfig config) {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> MinecraftCompat.setScreen(client,
@@ -355,7 +349,6 @@ public final class SettingsScreen extends Screen {
         Component label = Component.translatable("waypointer.screen.appearance.editing",
                 zoneScope ? target.name()
                         : Component.translatable("waypointer.screen.appearance.everywhere"));
-        // As wide as its menu, so the list drops straight down from the button.
         int w = Math.max(font.width(label) + BUTTON_TEXT_PADDING + 8,
                 ContextMenuOverlay.naturalWidth(font, scopeMenuItems()));
         w = Math.min(w, (layout.mainRight() - layout.mainLeft()) / 2);
@@ -526,7 +519,6 @@ public final class SettingsScreen extends Screen {
     }
 
     static final int RAIL_W = Icons.SIZE + GAP * 2 + 4;
-    /** Below this settings width the category list folds into an icon rail. */
     static final int MIN_MAIN_WITH_FULL_SIDEBAR = 340;
 
     static int sidebarWidth(int screenWidth) {
@@ -1488,11 +1480,6 @@ public final class SettingsScreen extends Screen {
         }
     }
 
-    /**
-     * "Appearance" and then what is being edited as a tag in its own color, with an icon for a
-     * zone, a route or a waypoint, so a look opened on the wrong one is obvious at a glance.
-     * Returns the width used.
-     */
     private int drawScopedTitle(GuiGraphicsExtractor g, int maxWidth) {
         Component heading = Component.translatable("waypointer.settings.category.appearance");
         g.text(font, heading, PAD_OUTER, PAD_OUTER, TEXT, false);
@@ -1505,8 +1492,6 @@ public final class SettingsScreen extends Screen {
             default -> Icons.Icon.ROUTE;
         };
         int textX = x + 4 + Icons.SIZE;
-        // Color codes in the name would fight the tag's own color. Dungeon room looks lead with
-        // the room, since many rooms have a route with the same name.
         Component room = target.roomName();
         String label = room == null ? target.name().getString()
                 : room.getString() + " \u00b7 " + target.name().getString();
@@ -1555,7 +1540,6 @@ public final class SettingsScreen extends Screen {
         }
     }
 
-    /** Draws the strip above the rows; returns the full text to show when a clipped info line is hovered. */
     private Component renderHeaderStrip(GuiGraphicsExtractor g, Layout layout, int mouseX, int mouseY) {
         Component info;
         if (searchActive()) {

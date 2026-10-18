@@ -117,7 +117,6 @@ public final class AddTempScreen extends Screen {
         return Component.translatable("waypointer.screen.add_temp.mode", tempModeComponent(mode));
     }
 
-    /** What the current choice does; the button cycles through the others. */
     private Tooltip modeTooltip() {
         return Tooltip.create(Component.translatable(switch (Waypoint.normalizeTempMode(mode)) {
             case Waypoint.TEMP_UNTIL_REACHED -> "waypointer.screen.add_temp.mode.tooltip.reach";

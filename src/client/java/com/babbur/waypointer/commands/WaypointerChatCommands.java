@@ -181,7 +181,7 @@ final class WaypointerChatCommands {
         if (mc == null || mc.getWindow() == null) return false;
         var win = mc.getWindow();
         return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+                || InputConstants.isKeyDown(win, 344                           );
     }
 
     String zoneSuffix() {

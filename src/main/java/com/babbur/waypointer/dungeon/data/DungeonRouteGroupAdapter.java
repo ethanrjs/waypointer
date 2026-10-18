@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Converts legacy dungeon room entries into standard Waypointer routes. */
 final class DungeonRouteGroupAdapter {
 
     private static final int SUPPORT_WAYPOINT_COLOR = 0xFFB300;
@@ -65,7 +64,6 @@ final class DungeonRouteGroupAdapter {
             }
             int flags = flagsForTrigger(dungeonWaypoint.trigger());
             if (stageHasMain) flags |= Waypoint.FLAG_SUBWAYPOINT;
-            // Blocks to mine can be dug in any order; the step's secret still ends the step.
             if (stageHasMain && isMining(dungeonWaypoint.trigger())) {
                 flags |= Waypoint.FLAG_STEP_ANY_ORDER;
             }
@@ -114,7 +112,6 @@ final class DungeonRouteGroupAdapter {
     private static void addPathGuides(List<Waypoint> waypoints, List<int[]> path) {
         if (path == null) return;
         for (int[] position : path) {
-            // Breadcrumbs guide the player without becoming required action steps.
             waypoints.add(new Waypoint(position[0], position[1], position[2], "", 0x8AA7BA,
                     Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT
                             | Waypoint.FLAG_FILLED_SUBWAYPOINT | Waypoint.FLAG_HIDE_NAME

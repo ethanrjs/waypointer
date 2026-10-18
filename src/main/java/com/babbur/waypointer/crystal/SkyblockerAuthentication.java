@@ -21,9 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 
-/** hysky proof of profile-key possession. No access tokens or private-key bytes are serialized. */
 public final class SkyblockerAuthentication {
-    // hysky's legacy route redirects here (307). Use the canonical endpoint without forwarding proofs to redirects.
     static final URI ENDPOINT = URI.create("https://api.azureaaron.net/authenticate");
     private static final int MAX_RESPONSE = 16_384;
     private static final HttpClient HTTP = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER)
@@ -31,7 +29,6 @@ public final class SkyblockerAuthentication {
 
     private SkyblockerAuthentication() {}
 
-    /** Fixed, user-safe causes. Never derive diagnostic text from exception messages or response bodies. */
     public enum FailureCause {
         NONE("No failure recorded"),
         PROFILE_KEYS_UNAVAILABLE("Minecraft profile keys are unavailable. Restart Minecraft and sign in again"),
@@ -60,7 +57,6 @@ public final class SkyblockerAuthentication {
 
     public static FailureCause failureCause(Throwable error) {
         FailureCause fallback = FailureCause.UNKNOWN;
-        // Bounded traversal also tolerates malformed exception cause chains.
         for (int depth = 0; error != null && depth < 16; depth++, error = error.getCause()) {
             if (error instanceof SafeFailure safe) return safe.reason();
             if (error instanceof Rejected || error instanceof java.net.http.WebSocketHandshakeException) return FailureCause.HTTP_REJECTED;
@@ -96,7 +92,6 @@ public final class SkyblockerAuthentication {
         JsonObject payload = new JsonObject();
         payload.add("keyPair", key);
         payload.add("signedData", signed);
-        // Temporary compatibility trial: restore waypointer once its service identity is accepted, before publishing.
         payload.addProperty("mod", "skyblocker");
         payload.addProperty("minecraftVersion", minecraft);
         payload.addProperty("modVersion", version);
@@ -125,7 +120,6 @@ public final class SkyblockerAuthentication {
         try {
             return parseTokenBody(body, now);
         } catch (RuntimeException invalid) {
-            // Gson and numeric parsing errors can contain parts of the authentication response.
             throw new SafeFailure(FailureCause.INVALID_RESPONSE);
         }
     }
@@ -135,7 +129,6 @@ public final class SkyblockerAuthentication {
         JsonObject json = JsonParser.parseString(new String(body, StandardCharsets.UTF_8)).getAsJsonObject();
         String token = json.get("token").getAsString();
         long expires = json.get("expiresAt").getAsBigDecimal().longValueExact();
-        // Header-safe, bounded, short-lived. Never put token or response body in an error or log.
         if (token.isEmpty() || token.length() > 8192 || !token.matches("[A-Za-z0-9._~+/=-]+")
                 || expires <= now + 300_000) {
             throw new IllegalArgumentException("Invalid authentication response");

@@ -33,7 +33,6 @@ public final class CatalogPublicationManager {
                 });
     }
 
-    /** Applies an owner edit and refreshes the device's record from the catalog's answer. */
     public static CompletableFuture<CatalogPublication> update(
             RouteCatalogClient client,
             PublisherIdentity identity,

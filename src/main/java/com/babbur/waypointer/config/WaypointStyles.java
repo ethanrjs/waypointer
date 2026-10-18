@@ -112,7 +112,6 @@ public final class WaypointStyles {
         catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
     }
 
-    /** Zone ids map to fixed keys, and styles are resolved for every point of every frame. */
     private static final Map<String, List<String>> ZONE_KEYS = new ConcurrentHashMap<>();
 
     public static List<String> zoneKeys(String zoneId) {

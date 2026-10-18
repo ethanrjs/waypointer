@@ -53,8 +53,6 @@ class WaypointerCommandSuggestionOverrideTest {
 
     @Test
     void serverArgumentsThatAskTheServerCannotStallWaypointerSuggestions() throws Exception {
-        // Hypixel-style tree: the server's own /wp (and aliases) take any text and ask the server
-        // for completions, which may never answer. Fabric merges Waypointer's nodes into it.
         CommandDispatcher<ClientSuggestionProvider> serverSuggestions = new CommandDispatcher<>();
         for (String name : java.util.List.of("wp", "waypointer", "wptr")) {
             serverSuggestions.register(LiteralArgumentBuilder.<ClientSuggestionProvider>literal(name)

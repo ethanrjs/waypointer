@@ -4,7 +4,6 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
-/** A room footprint made from one or more 32x32-block map segments. */
 public enum DungeonRoomShape {
     ONE_BY_ONE,
     ONE_BY_TWO,

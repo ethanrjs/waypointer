@@ -440,7 +440,6 @@ public final class GroupEditScreen extends Screen {
         return compactHeader() ? HEADER_ICON_BTN_W : PUBLISH_BUTTON_W;
     }
 
-    /** True when the route name would be cut off: the header buttons then show only their icons. */
     private boolean compactHeader() {
         int full = PUBLISH_BUTTON_W + GAP + fullAppearanceButtonWidth() + GAP + fullPeekButtonWidth();
         int available = width - PAD_OUTER * 2 - full - HEADER_INFO_BUTTON_SIZE - GAP_TIGHT - GAP_SECTION;
@@ -1398,7 +1397,6 @@ public final class GroupEditScreen extends Screen {
         int textRightX = waypointRowTextRightEdge(x2, subwaypoint,
                 showDungeonWaypointControls, showInlineControls,
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, controlSummary));
-        // The number and coordinates matter most; tags give way when the row is narrow.
         boolean showMetadata = textRightX >= coordinateX + font.width(coordinates);
         if (!showMetadata) {
             controlSummary = "";
@@ -1874,7 +1872,6 @@ public final class GroupEditScreen extends Screen {
         return group != null && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
-    /** Dungeon action controls: room routes, and floor routes built from actions (boss routes). */
     private boolean usesDungeonControls() {
         return group != null && group.usesDungeonSteps();
     }

@@ -3,7 +3,6 @@ package com.babbur.waypointer.crystal;
 import com.babbur.waypointer.crystal.compass.WishingCompassTarget;
 import java.util.List;
 
-/** Structures and points of interest detected in a Crystal Hollows lobby. */
 public enum CrystalHollowsStructure {
     JUNGLE_TEMPLE("jungle_temple", "Jungle Temple", 0x228B22, Kind.MAIN_STRUCTURE, false,
             "Jungle Temple", List.of("[NPC] Kalhuiki Door Guardian:"),

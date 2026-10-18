@@ -1,6 +1,5 @@
 package com.babbur.waypointer.core;
 
-/** Resolves a sequential waypoint's visual role without renderer dependencies. */
 public final class SequenceRoleColor {
 
     public enum Role {

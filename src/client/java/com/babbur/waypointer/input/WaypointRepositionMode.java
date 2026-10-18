@@ -80,14 +80,10 @@ public final class WaypointRepositionMode {
     private static final WaypointEditPicker EDIT_PICKER = new WaypointEditPicker();
     private static Session active;
 
-    /** Never place a waypoint inside the player's own head. */
     static final double MIN_PLACEMENT_DISTANCE = 1.0;
     private static final Object MISS_ANCHOR = new Object();
-    // Wheel steps pulling the target toward the player (negative pushes a mid-air target away).
     private static int placementOffsetSteps;
-    // The block (or open air) the offset was scrolled against; a new target starts from zero again.
     private static Object placementAnchor;
-    // Trackpads and free-spinning wheels report fractions of a notch; only whole notches move the target.
     private static double scrollAccumulator;
     private static ActiveGroupManager editManager;
     private static WaypointerConfig editConfig;
@@ -116,7 +112,6 @@ public final class WaypointRepositionMode {
     public static boolean handleRightClick(Minecraft mc) {
         if (mc == null || mc.player == null || mc.level == null
                 || (active == null && !editModeEnabled)) return false;
-        // Handle the click before vanilla routes it to a block, entity, or nonempty item.
         return handleEditModeRightClick(mc, mc.player.getMainHandItem()) != InteractionResult.PASS;
     }
 
@@ -209,7 +204,6 @@ public final class WaypointRepositionMode {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
 
         Minecraft mc = Minecraft.getInstance();
-        // Reject edits that would disappear on the next room rebuild.
         WaypointGroup editTarget = DungeonRoomRouteLibrary.durableEditTarget(manager, group);
         if (editTarget == null) {
             showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
@@ -460,7 +454,7 @@ public final class WaypointRepositionMode {
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
         return InputConstants.isKeyDown(window, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(window, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+                || InputConstants.isKeyDown(window, 344                           );
     }
 
     private static void playEditSound(Minecraft mc, WaypointerConfig config) {
@@ -691,10 +685,6 @@ public final class WaypointRepositionMode {
                 WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH);
     }
 
-    /**
-     * Moves the edit target one block per notch: down pulls closer, up pushes away.
-     * Shift preserves hotbar scrolling. Returns whether the event was consumed.
-     */
     public static boolean handleScroll(Minecraft mc, double vertical) {
         if (mc == null || mc.player == null || mc.level == null || MinecraftCompat.screen(mc) != null) return false;
         if (!editModeEnabled && active == null) return false;
@@ -729,7 +719,6 @@ public final class WaypointRepositionMode {
         scrollAccumulator = 0;
     }
 
-    /** Looking at a different block (or from a block into open air) discards the scrolled offset. */
     private static void syncPlacementAnchor(BlockHitResult base) {
         Object anchor = base == null ? null
                 : base.getType() == HitResult.Type.BLOCK ? base.getBlockPos() : MISS_ANCHOR;
@@ -757,7 +746,6 @@ public final class WaypointRepositionMode {
         return Math.max(nearest, Math.min(farthest, baseDistance - steps));
     }
 
-    /** Replaces the ray's block hit with a point along the view ray when an offset is active. */
     static BlockHitResult applyPlacementOffset(BlockHitResult base, Vec3 eye, Vec3 direction,
                                                int steps, double maxReach) {
         if (base == null || steps == 0) return base;
@@ -772,7 +760,6 @@ public final class WaypointRepositionMode {
         return editConfig != null ? editConfig : WaypointerClient.config();
     }
 
-    /** The configured reach never shortens the vanilla block reach, so nearby blocks stay targetable. */
     static double placementReach(WaypointerConfig config, double vanillaReach) {
         double configured = config == null
                 ? WaypointerConfig.DEFAULT_EDIT_MODE_PLACEMENT_REACH : config.editModePlacementReach();
@@ -782,7 +769,6 @@ public final class WaypointRepositionMode {
     static BlockHitResult placementHit(BlockGetter level, Vec3 eye, Vec3 direction,
                                        double reach, CollisionContext context) {
         Vec3 end = eye.add(direction.scale(reach));
-        // Outline shapes include non-solid blocks; ignore entities and keep the ray's air endpoint.
         return level.clip(new ClipContext(eye, end,
                 ClipContext.Block.OUTLINE, ClipContext.Fluid.ANY, context));
     }

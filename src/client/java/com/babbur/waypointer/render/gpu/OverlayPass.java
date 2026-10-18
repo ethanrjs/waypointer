@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.PriorityQueue;
 
-/** Draws retained mesh buckets through one render pass. */
 public final class OverlayPass implements AutoCloseable {
 
     public record FrameView(GpuBufferSlice projection, Matrix4f view,
@@ -119,7 +118,6 @@ public final class OverlayPass implements AutoCloseable {
             enqueue(set.staticStream);
         }
 
-        // Resolve texture uploads before opening the pass.
         for (Map.Entry<MeshBucket, MeshSet> entry : ordered) {
             Identifier textureId = entry.getKey().texture();
             if (textureId != null) {
@@ -131,7 +129,6 @@ public final class OverlayPass implements AutoCloseable {
         GpuBufferSlice fog = compositing == OverlayCompositing.POST_WORLD
                 ? noFog()
                 : OverlayPassCompat.currentFog();
-        // Position shaders ignore ModelOffset; use ModelView for the origin.
         modelViewFor(scratchView, view.view(), key,
                 view.cameraX(), view.cameraY(), view.cameraZ());
         scratchOffset.zero();
@@ -140,8 +137,6 @@ public final class OverlayPass implements AutoCloseable {
         GpuTextureView color = OverlayPassCompat.mainColorView();
         GpuTextureView depth = depthOverride != null ? depthOverride : OverlayPassCompat.mainDepthView();
         try (RenderPass pass = OverlayPassCompat.beginPass(() -> "Waypointer overlay", color, depth)) {
-            // Merge retained meshes, rather than letting pipeline or static/dynamic buckets
-            // put distant geometry on top. Consecutive primitives keep a single draw call.
             while (!streams.isEmpty()) {
                 DrawStream stream = streams.remove();
                 MeshBucket bucket = stream.bucket;

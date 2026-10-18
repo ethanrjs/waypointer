@@ -61,7 +61,6 @@ final class GroupEditInputRouter {
     record State(boolean dungeonPickerOpen, int selectedIndex) {
     }
 
-    // Hit tests must not mutate editor state.
     interface Geometry {
         int dungeonPickerTypeAt(double x, double y);
 
@@ -84,7 +83,6 @@ final class GroupEditInputRouter {
         boolean lockedColorAt(int rowIndex);
     }
 
-    // Earlier checks have click precedence; NONE defers to child widgets.
     static Action beforeWidgets(Pointer pointer, State state, Geometry geometry) {
         if (pointer == null || state == null || geometry == null) return Action.NONE;
 
@@ -134,7 +132,6 @@ final class GroupEditInputRouter {
         return Action.NONE;
     }
 
-    // Run only after child widgets decline the click.
     static Action afterWidgets(Pointer pointer, State state, Geometry geometry) {
         if (pointer == null || state == null || geometry == null
                 || pointer.button() != MOUSE_BUTTON_LEFT) {

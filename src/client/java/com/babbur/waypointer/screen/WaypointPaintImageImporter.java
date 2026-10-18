@@ -15,7 +15,6 @@ import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.FileImageInputStream;
 
-/** Converts ordinary images into the painter's fixed 16-color format. */
 final class WaypointPaintImageImporter {
 
     static final int ATLAS_WIDTH = WaypointPaint.SIZE * 4;
@@ -375,7 +374,6 @@ final class WaypointPaintImageImporter {
         return colorDistance(rgb, palette.get(nearestIndex(rgb, palette)));
     }
 
-    // Red-mean distance weights RGB channels without color-space conversion.
     private static int colorDistance(int first, int second) {
         int redMean = (((first >>> 16) & 0xFF) + ((second >>> 16) & 0xFF)) >>> 1;
         int red = ((first >>> 16) & 0xFF) - ((second >>> 16) & 0xFF);

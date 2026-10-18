@@ -9,7 +9,6 @@ import net.minecraft.util.FormattedCharSequence;
 import java.util.List;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/** Read-only view of the exact captured report selected in the feedback form. */
 final class FeedbackReportPreviewScreen extends Screen {
     private final Screen parent;
     private final String report;

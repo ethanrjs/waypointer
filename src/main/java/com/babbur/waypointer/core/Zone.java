@@ -9,11 +9,6 @@ import java.util.Map;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
-/**
- * A reusable SkyBlock area for grouping routes. Resolution accepts either a
- * location ID or display name in either Hypixel packet field. Non-SkyBlock
- * server types resolve to {@code null} so waypoints stay hidden.
- */
 public record Zone(String id, String displayName) {
 
     private static final String DWARVEN_MINES_ZONE_ID = "dwarven_mines";
@@ -67,7 +62,6 @@ public record Zone(String id, String displayName) {
         };
     }
 
-    // Dungeon packets split "dungeon" and the floor between the two fields.
     private static BiPredicate<String, String> dungeonFloor(String floor) {
         return (map, mode) -> {
             boolean isDungeon = equalsIC(map, "dungeon") || equalsIC(mode, "dungeon");
@@ -129,19 +123,15 @@ public record Zone(String id, String displayName) {
             new Def("gold_mine",         "Gold Mine",            tokens("mining_1", "Gold Mine")),
             new Def("deep_caverns",      "Deep Caverns",         tokens("mining_2", "Deep Caverns")),
 
-            // Hypixel reports these connected areas as one mining_3 zone.
             new Def(DWARVEN_MINES_ZONE_ID, DWARVEN_MINES_DISPLAY_NAME,
                     tokens("mining_3", DWARVEN_MINES_DISPLAY_NAME,
                             "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp"),
                     anyDisplay(DWARVEN_MINES_DISPLAY_NAME,
                             "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp")),
             new Def("crystal_hollows",   "Crystal Hollows",      tokens("crystal_hollows", "Crystal Hollows")),
-            // Use a safe fallback when the scoreboard does not identify the layout.
-            // Generic mineshaft routes must not activate across unrelated layouts.
             new Def("mineshaft_unknown", "Unknown Mineshaft",
                     (map, mode) -> false,
                     anyDisplay("Glacite Mineshafts", "Mineshaft", "Unknown Mineshaft")),
-            // Legacy packet value used only as the starting point for refinement.
             new Def("mineshaft",         "Glacite Mineshafts",
                     tokens("mineshaft", "Glacite Mineshafts", "Mineshaft"),
                     name -> false),
@@ -188,8 +178,6 @@ public record Zone(String id, String displayName) {
             new Def("dungeon_m7", "Master Mode M7",   dungeonFloor("M7"))
     );
 
-    // The packet only says "mineshaft". The scoreboard's unique short code
-    // identifies the actual layout.
     private record MineshaftType(String idSuffix, String code, String rawName) {}
 
     private static final List<MineshaftType> MINESHAFT_TYPES = List.of(
@@ -226,7 +214,6 @@ public record Zone(String id, String displayName) {
             new MineshaftType("titanium",       "TITA_1", "Titanium"),
             new MineshaftType("umber",          "UMBE_1", "Umber"),
             new MineshaftType("tungsten",       "TUNG_1", "Tungsten"),
-            // Hypixel uses FAIR_1 for Vanguard.
             new MineshaftType("vanguard",       "FAIR_1", "Vanguard"),
             new MineshaftType("littlefoots_den", "LITT_L", "Littlefoot's Den")
     );
@@ -256,8 +243,6 @@ public record Zone(String id, String displayName) {
         return t.idSuffix().endsWith("_crystal");
     }
 
-    // Do not expose the legacy broad mineshaft bucket as a route target.
-    // Structure zones are route homes only: packets and sidebar text never resolve to them.
     private static final List<Def> KNOWN = withStructureZones(BASE_KNOWN);
     private static final List<Zone> KNOWN_ZONES = buildKnownZones();
 
@@ -284,13 +269,11 @@ public record Zone(String id, String displayName) {
         return List.copyOf(zones.values());
     }
 
-    /** Resolves a Hypixel location packet, or returns {@code null} outside SkyBlock. */
     public static Zone resolve(String serverType, String map, String mode) {
         if (serverType == null || !"SKYBLOCK".equalsIgnoreCase(serverType)) return null;
         for (Def def : KNOWN) {
             if (def.matches.test(map, mode)) return new Zone(def.id, def.displayName);
         }
-        // Prefer the friendly map label when no known zone matches.
         String display = (map != null && !map.isBlank()) ? map
                        : (mode != null && !mode.isBlank()) ? mode
                        : null;
@@ -333,11 +316,9 @@ public record Zone(String id, String displayName) {
         return new Zone(sanitizeId(cleaned), cleaned);
     }
 
-    /** Resolves legacy Dwarven sub-areas while keeping Mineshaft layouts separate. */
     public static Zone tryResolveDwarvenSubAreaFromSidebarBlob(String colorStrippedSidebarText) {
         if (colorStrippedSidebarText == null || colorStrippedSidebarText.isBlank()) return null;
         String b = colorStrippedSidebarText.toLowerCase(Locale.ROOT);
-        // Prefer the Mineshaft signal when the sidebar briefly shows both areas.
         if (b.contains("glacite mineshafts")) return fromId("mineshaft_unknown");
         if (b.contains("great glacite lake")
                 || b.contains("glacite tunnels")
@@ -347,11 +328,9 @@ public record Zone(String id, String displayName) {
         return null;
     }
 
-    /** Finds the unique layout code Hypixel writes on the Mineshaft sidebar. */
     public static Zone tryResolveMineshaftTypeFromSidebarBlob(String colorStrippedSidebarText) {
         if (colorStrippedSidebarText == null || colorStrippedSidebarText.isBlank()) return null;
         for (MineshaftType t : MINESHAFT_TYPES) {
-            // Codes are uppercase; case-sensitive matching avoids usernames.
             if (containsAsToken(colorStrippedSidebarText, t.code())) {
                 return new Zone(canonicalMineshaftId(t), canonicalMineshaftDisplayName(t));
             }
@@ -359,7 +338,6 @@ public record Zone(String id, String displayName) {
         return null;
     }
 
-    /** Rejects a code embedded in a larger alphanumeric token. */
     private static boolean containsAsToken(String haystack, String token) {
         int from = 0;
         while (true) {
@@ -373,7 +351,6 @@ public record Zone(String id, String displayName) {
         }
     }
 
-    /** Refines only Mineshaft layouts; connected surface areas stay grouped. */
     public static Zone refineIfDwarvenMinesContext(Zone packetZone, String colorStrippedSidebarText) {
         if (packetZone == null) return null;
         String id = packetZone.id();
@@ -382,7 +359,6 @@ public record Zone(String id, String displayName) {
         if (mineshaftType != null) return mineshaftType;
         Zone sub = tryResolveDwarvenSubAreaFromSidebarBlob(colorStrippedSidebarText);
         if (sub != null) return sub.equals(packetZone) ? packetZone : sub;
-        // Unknown prevents a route for the wrong Mineshaft layout from activating.
         if ("mineshaft_unknown".equals(id)) return fromId("mineshaft_unknown");
         return packetZone;
     }
@@ -405,13 +381,11 @@ public record Zone(String id, String displayName) {
         return normalized;
     }
 
-    /** The Catacombs as a whole or one of its floors, as opposed to a dungeon room. */
     public static boolean isCatacombsFloor(String id) {
         if (id == null) return false;
         return id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m");
     }
 
-    /** Master Mode floors use the same rooms and boss as their normal floor, so they share routes. */
     public static String routeZoneKey(String id) {
         String canonical = canonicalId(id);
         if (canonical.length() == 10 && canonical.startsWith("dungeon_m")
@@ -421,13 +395,11 @@ public record Zone(String id, String displayName) {
         return canonical;
     }
 
-    /** Whether a route saved for {@code routeZoneId} shows in {@code zoneId}. */
     public static boolean sharesRoutes(String routeZoneId, String zoneId) {
         if (routeZoneId == null || zoneId == null) return false;
         return routeZoneId.equals(zoneId) || routeZoneKey(routeZoneId).equals(routeZoneKey(zoneId));
     }
 
-    /** Whether an imported route with this source zone can safely use the current zone. */
     public static boolean shouldRetargetImportedZone(String sourceZoneId, String currentZoneId) {
         String source = canonicalId(sourceZoneId);
         String current = canonicalId(currentZoneId);
@@ -441,7 +413,6 @@ public record Zone(String id, String displayName) {
         return MINESHAFT_CRYSTAL_ZONE_ID.equals(id) || mineshaftTypeById(id) != null;
     }
 
-    /** A Mineshaft zone whose layout was identified, as opposed to the generic unknown bucket. */
     public static boolean isSpecificMineshaftZone(String id) {
         return id != null && isSpecificMineshaftZoneId(canonicalId(id));
     }

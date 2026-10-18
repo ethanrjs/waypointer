@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Zone names, ordering, and route-target rules used by the main screen. */
 public final class WaypointerZoneCatalog {
 
     static final String TEMPORARY_ZONE_ID = "__temporary__";
@@ -228,7 +227,6 @@ public final class WaypointerZoneCatalog {
                 || isCatacombsOrMasterModeZone(canonicalTarget)
                 || Zone.UNKNOWN.id().equals(canonicalTarget)
                 || Zone.PRIVATE_WORLD.id().equals(canonicalTarget)
-                // Structure routes store structure-relative coordinates; a zone move would not convert them.
                 || CrystalHollowsStructureZones.isStructureZone(canonicalTarget)
                 || CrystalHollowsStructureZones.isStructureZone(group.zoneId())) {
             return false;

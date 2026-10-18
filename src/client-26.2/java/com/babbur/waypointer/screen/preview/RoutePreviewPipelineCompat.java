@@ -6,7 +6,6 @@ import com.mojang.blaze3d.pipeline.DepthStencilState;
 
 import java.util.Optional;
 
-/** Preview pipeline compatibility. */
 final class RoutePreviewPipelineCompat {
 
     private RoutePreviewPipelineCompat() {}

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Read-only service check; installs into an isolated in-memory route manager. */
 @EnabledIfEnvironmentVariable(named = "WAYPOINTER_CATALOG_LIVE", matches = "true")
 class CatalogLiveReadTest {
     @Test void publicRoutesCanBeFetchedDecodedAndInstalled() {

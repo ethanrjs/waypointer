@@ -8,7 +8,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
 
-/** GPU-resident copy of one mesh. */
 public final class GpuMesh implements AutoCloseable {
 
     private final String label;
@@ -43,7 +42,6 @@ public final class GpuMesh implements AutoCloseable {
         return topology.indexCountFor(storedVertices);
     }
 
-    /** Uploads the mesh and returns the byte count. */
     public int upload(MeshBuilder builder, CommandEncoder encoder) {
         Objects.requireNonNull(builder, "builder");
         Objects.requireNonNull(encoder, "encoder");

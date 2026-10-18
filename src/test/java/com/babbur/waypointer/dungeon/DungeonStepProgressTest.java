@@ -20,7 +20,6 @@ class DungeonStepProgressTest {
     private static final int ANY = Waypoint.FLAG_STEP_ANY_ORDER;
     private static final int GUIDE = SUB | Waypoint.FLAG_SMALL_SUBWAYPOINT | Waypoint.FLAG_HIDE_NAME;
 
-    /** Step 1: 0 etherwarp, 1-2 any-order mines, 3 chest. Step 2: 4 etherwarp, 5 chest. Step 3: 6 chest. */
     private static WaypointGroup room() {
         return route(
                 ETHERWARP,

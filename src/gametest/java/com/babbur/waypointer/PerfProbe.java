@@ -17,11 +17,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Plays a real route library as the Crystal Hollows ({@code -PperfProbe=<config dir>}) and writes
- * frame-time percentiles per scenario to build/reports/perf/frames.txt; the Flight Recorder
- * profile of the same run sits beside it.
- */
 @SuppressWarnings("UnstableApiUsage")
 final class PerfProbe {
     private static final int FRAMES = 1500;
@@ -46,7 +41,6 @@ final class PerfProbe {
         context.runOnClient(client -> {
             client.options.framerateLimit().set(260);
             client.options.enableVsync().set(false);
-            // The probe sends no input; keep the idle-player limit from throttling menu frames.
             client.options.inactivityFpsLimit().set(net.minecraft.client.InactivityFpsLimit.MINIMIZED);
         });
         context.waitTicks(60);

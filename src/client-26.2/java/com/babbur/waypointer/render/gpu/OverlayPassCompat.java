@@ -27,7 +27,6 @@ import java.util.OptionalDouble;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Minecraft 26.2 render-pass compatibility. */
 final class OverlayPassCompat {
 
     private static final Matrix4f IDENTITY = new Matrix4f();
@@ -44,7 +43,6 @@ final class OverlayPassCompat {
         return RenderSystem.getProjectionMatrixBuffer();
     }
 
-    /** Uses the level view matrix; RenderSystem's model-view stack stays at identity. */
     static Matrix4f positionMatrix(LevelRenderContext ctx) {
         return new Matrix4f(ctx.levelState().cameraRenderState.viewRotationMatrix);
     }

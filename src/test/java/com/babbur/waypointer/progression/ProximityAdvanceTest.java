@@ -231,7 +231,7 @@ class ProximityAdvanceTest {
     void reaching_a_future_waypoint_skips_ahead() {
         WaypointGroup g = line();
         assertTrue(advanceIfReached(g, 20.5, 0.5, 0.5));
-        assertEquals(3, g.currentIndex()); // jumped from 0 straight past index 2
+        assertEquals(3, g.currentIndex());
     }
 
     @Test
@@ -330,7 +330,7 @@ class ProximityAdvanceTest {
     void ignores_waypoints_before_current() {
         WaypointGroup g = line();
         g.setCurrentIndex(2);
-        assertFalse(advanceIfReached(g, 0.5, 0.5, 0.5)); // index 0 should not count
+        assertFalse(advanceIfReached(g, 0.5, 0.5, 0.5));
         assertEquals(2, g.currentIndex());
     }
 
@@ -345,12 +345,10 @@ class ProximityAdvanceTest {
 
     @Test
     void skip_ahead_disabled_only_advances_current() {
-        // With skip-ahead off, only reaching the current waypoint advances progress.
         WaypointGroup g = line();
         assertFalse(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, false, false));
         assertEquals(0, g.currentIndex());
 
-        // Disabling skip-ahead must preserve normal progression.
         assertTrue(ProximityTracker.advanceIfReached(g, 0.5, 0.5, 0.5, false, false));
         assertEquals(1, g.currentIndex());
     }
@@ -525,8 +523,7 @@ class ProximityAdvanceTest {
         g.add(Waypoint.at(10, 0, 0));
 
         assertTrue(advanceIfReached(g, 0.5, 0.5, 0.5));
-        assertEquals(1, g.size()); // temp was removed
-        // Removing the reached temporary waypoint shifts the next waypoint to index zero.
+        assertEquals(1, g.size());
         assertEquals(Waypoint.TEMP_NONE, g.get(0).tempMode());
     }
 

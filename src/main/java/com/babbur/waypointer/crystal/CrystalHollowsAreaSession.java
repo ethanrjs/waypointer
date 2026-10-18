@@ -1,6 +1,5 @@
 package com.babbur.waypointer.crystal;
 
-/** Bounded player-position envelope used to refine one sidebar rough-area marker. */
 public final class CrystalHollowsAreaSession {
 
     public static final double MAX_AXIS_SPAN = 130.0;

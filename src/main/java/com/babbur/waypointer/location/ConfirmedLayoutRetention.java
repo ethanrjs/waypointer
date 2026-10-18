@@ -2,10 +2,6 @@ package com.babbur.waypointer.location;
 
 import com.babbur.waypointer.core.Zone;
 
-/**
- * Retains a confirmed Mineshaft layout or Catacombs floor during partial sidebar updates.
- * A different marker replaces it; world changes and location packets clear it before refinement.
- */
 public final class ConfirmedLayoutRetention {
 
     private ConfirmedLayoutRetention() {}
@@ -25,7 +21,6 @@ public final class ConfirmedLayoutRetention {
         return next;
     }
 
-    /** The packet zone, or the sidebar's bare area name, before a floor marker refines it. */
     private static boolean isBroadCatacombs(String id) {
         return "dungeon".equals(id) || "the_catacombs".equals(id);
     }

@@ -6,11 +6,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 
-/**
- * Waypointer's GUI icons: one greyscale 16x16 atlas ({@code textures/gui/icons.png}, drawn in
- * {@code tools/icons/icons.txt}) tinted at draw time, so the same icon can follow the text
- * colour, the accent on hover, or a folder's own colour. Resource packs can replace the atlas.
- */
 public final class Icons {
 
     public static final int SIZE = 16;
@@ -18,7 +13,6 @@ public final class Icons {
     private static final Identifier ATLAS = Identifier.fromNamespaceAndPath(
             Waypointer.MOD_ID, "textures/gui/icons.png");
 
-    /** Atlas order; must match {@code tools/icons/icon-names.txt}. */
     public enum Icon {
         SUB_SMALL, SUB_FILLED, SUB_HIDE_AFTER_PARENT,
         SKIP_STAND, SKIP_INTERACT, SKIP_MINE, DEPTH_CHECK,
@@ -39,18 +33,15 @@ public final class Icons {
 
     private Icons() {}
 
-    /** Draws {@code icon} with its top-left corner at (x, y), tinted with {@code argb}. */
     public static void draw(GuiGraphicsExtractor g, Icon icon, int x, int y, int argb) {
         g.blit(RenderPipelines.GUI_TEXTURED, ATLAS, x, y, icon.u(), icon.v(),
                 SIZE, SIZE, ATLAS_WIDTH, ATLAS_HEIGHT, argb);
     }
 
-    /** Draws {@code icon} with its cell centred on (centerX, centerY); glyphs are centred in their cell. */
     public static void drawAt(GuiGraphicsExtractor g, Icon icon, int centerX, int centerY, int argb) {
         draw(g, icon, centerX - SIZE / 2, centerY - SIZE / 2, argb);
     }
 
-    /** Draws {@code icon} centred in the box (x, y, width, height). */
     public static void drawCentered(GuiGraphicsExtractor g, Icon icon,
                                     int x, int y, int width, int height, int argb) {
         draw(g, icon, x + (width - SIZE) / 2, y + (height - SIZE) / 2, argb);

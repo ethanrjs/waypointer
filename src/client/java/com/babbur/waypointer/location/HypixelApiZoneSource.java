@@ -28,7 +28,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
     private String packetMap;
     private String packetMode;
     private Object worldIdentity;
-    // A packet that arrives before the level exists belongs to the next level, not to no level.
     private boolean adoptNextWorld;
     private Instant packetReceivedAt;
     private Zone pendingPlayerListZone;
@@ -57,7 +56,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
     private void handleLocationPacket(ClientboundLocationPacket packet) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
-            // The old level is gone; whichever level appears next is this packet's world.
             worldIdentity = null;
             adoptNextWorld = true;
         } else {
@@ -71,7 +69,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     private void onTick(Minecraft mc) {
         if (mc.level == null || mc.getCurrentServer() == null) {
-            // Keep a packet that is still waiting for its level; disconnects reset through the join events.
             if (!adoptNextWorld || mc.getCurrentServer() == null) resetLocation();
             return;
         }
@@ -83,7 +80,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
         acceptSidebar(SidebarTexts.collectColorStripped(mc), () -> TabListTexts.areaName(mc));
     }
 
-    /** Test hook: the next level adopts the current packet instead of resetting it. */
     void markPacketAwaitingLevel() {
         adoptNextWorld = true;
     }
@@ -123,16 +119,11 @@ public final class HypixelApiZoneSource implements ZoneSource {
                 : hasSidebarRefinement(lastRawPacketZone, sidebarText);
         boolean missingAreaLine =
                 com.babbur.waypointer.crystal.CrystalHollowsSidebar.areaName(sidebarText) == null;
-        // A missing area line is not evidence that a confirmed island/layout changed.
-        // Floor markers and mineshaft codes can refine a packet without an area line.
-        // World changes and new location packets still clear this state immediately.
         if ((lastRawPacketZone != null || lastEmitted != null) && missingAreaLine && !hasPacketRefinement) {
             retainingSidebarZone = true;
             return;
         }
         retainingSidebarZone = false;
-        // Nothing is known yet: a lagging server may deliver the player list long before the
-        // sidebar area line or the location packet, so it stands in until either arrives.
         Zone playerListZone = null;
         if (missingAreaLine && !hasPacketRefinement && usesSidebarFallback()) {
             playerListZone = confirmedPlayerListZone(playerListArea.get());
@@ -142,7 +133,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
         emitRefined(null, null, null, sidebar, playerListZone);
     }
 
-    /** The player list can outlive a world change, so its area must repeat before it counts. */
     private Zone confirmedPlayerListZone(String area) {
         Zone zone = ScoreboardZoneResolver.resolveKnownAreaName(area);
         if (zone == null) {
@@ -207,8 +197,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
                 : ScoreboardZoneResolver.resolveSidebarText(sidebarText);
         if (refined == null) refined = fallback;
         refined = CatacombsFloorRefiner.refine(refined, sidebarText);
-        // A sidebar that momentarily lacks the layout code must not unload a confirmed layout's
-        // routes. A new location packet is a new instance and always starts from its own zone.
         if (serverType == null) refined = ConfirmedLayoutRetention.retain(lastEmitted, refined, sidebarText);
         lastDebugSnapshot = new DebugSnapshot(
                 packetServerType, packetMap, packetMode, lastServerName, lastRawPacketZone, refined,

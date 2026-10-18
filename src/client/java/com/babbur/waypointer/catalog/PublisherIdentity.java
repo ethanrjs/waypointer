@@ -66,7 +66,6 @@ public final class PublisherIdentity {
         return new PublisherIdentity(publicKey, privateKey, createdAt, name);
     }
 
-    /** Retries a rejected name claim with the same signing key. Does not change storage. */
     public PublisherIdentity forNameClaim() {
         return withPublisherName(null);
     }

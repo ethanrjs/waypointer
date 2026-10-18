@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Mutable, client-thread-owned state for one Crystal Hollows server instance. */
 public final class CrystalHollowsLobbyState {
 
     public enum MergeResult {
@@ -24,11 +23,6 @@ public final class CrystalHollowsLobbyState {
     private static final double EQUAL_REFINEMENT_DISTANCE_SQUARED = 2.0 * 2.0;
     private static final int MAX_WISHING_TARGETS = 8;
     private static final double COMPASS_CONFIRM_DISTANCE_SQUARED = 80.0 * 80.0;
-    /**
-     * How far a shared position may sit from the centre of the area the scoreboard puts us in
-     * and still be that structure. The centre is estimated from where the player has walked, so
-     * it can be well off the structure's own centre.
-     */
     private static final double AREA_CONFIRM_DISTANCE_SQUARED = 96.0 * 96.0;
 
     private final String serverId;
@@ -36,7 +30,6 @@ public final class CrystalHollowsLobbyState {
     private long lastSeenMillis;
     private int lastKnownDay;
     private final List<StructureSighting> sightings;
-    // Keep local evidence while a more precise relay location is displayed.
     private final Map<StructureSighting, StructureSighting> localFallbacks = new IdentityHashMap<>();
     private final List<StructureSighting> rejectedSkyblocker = new ArrayList<>();
     private final EnumMap<Crystal, CrystalState> crystals;
@@ -111,7 +104,6 @@ public final class CrystalHollowsLobbyState {
         }
         lastSeenMillis = Math.max(lastSeenMillis, incoming.atMillis());
         if (incoming.structure() == CrystalHollowsStructure.WISHING_TARGET) {
-            // Ambiguous results stay independent, but stale ones never pile up without bound.
             int retained = 0;
             for (int index = sightings.size() - 1; index >= 0; index--) {
                 if (sightings.get(index).structure() != CrystalHollowsStructure.WISHING_TARGET) continue;
@@ -161,7 +153,6 @@ public final class CrystalHollowsLobbyState {
         return sightings.removeIf(sighting -> sighting.structure() == structure);
     }
 
-    /** Suppress a disproved provider coordinate for this lobby, preserving any local observation. */
     public boolean rejectSkyblocker(StructureSighting sighting) {
         if (sighting.confidence() != SightingConfidence.SHARED_REMOTE
                 || !SkyblockerStructureProtocol.SOURCE.equals(sighting.source())) return false;
@@ -181,7 +172,6 @@ public final class CrystalHollowsLobbyState {
         return true;
     }
 
-    /** Reconciles observations collected before the Hypixel server id became available. */
     public static CrystalHollowsLobbyState identify(
             String serverId,
             int currentDay,
@@ -245,7 +235,6 @@ public final class CrystalHollowsLobbyState {
         return expireRemoteSightings(before, null);
     }
 
-    /** Removes only the disconnected provider's observations, retaining local evidence. */
     public boolean clearRemoteSightings(String source) {
         return expireRemoteSightings(Long.MAX_VALUE, Objects.requireNonNull(source));
     }
@@ -274,10 +263,6 @@ public final class CrystalHollowsLobbyState {
         boolean incomingRemote = incoming.confidence() == SightingConfidence.SHARED_REMOTE;
         boolean existingRemote = existing.confidence() == SightingConfidence.SHARED_REMOTE;
         int confidence = Integer.compare(evidenceStrength(incoming), evidenceStrength(existing));
-        // An area-only share is just where its sender stood when their scoreboard changed; our
-        // own estimate, from where we have walked inside the area, is at least as good. A share
-        // near our area confirms the structure, so the marker is no longer called approximate.
-        // A share far from the area we are standing in is wrong for this lobby.
         if (localSidebar(incoming) && existingRemote && existing.remoteEvidence() == null) {
             sightings.set(index, withinArea(existing, incoming)
                     ? incoming.withNote(StructureSighting.CONFIRMED_AREA) : incoming);
@@ -287,7 +272,6 @@ public final class CrystalHollowsLobbyState {
             sightings.set(index, existing.withNote(StructureSighting.CONFIRMED_AREA));
             return MergeResult.REFINED;
         }
-        // A peer's claimed detection cannot displace our own direct observation.
         if (confidence == 0 && incomingRemote != existingRemote) {
             confidence = incomingRemote ? -1 : 1;
         }
@@ -307,7 +291,6 @@ public final class CrystalHollowsLobbyState {
                 if (samePosition(existing, incoming) && incoming.atMillis() <= existing.atMillis()) {
                     return MergeResult.IGNORED;
                 }
-                // A refined estimate keeps the confirmation the earlier one had.
                 sightings.set(index, existing.approximate() ? incoming
                         : incoming.withNote(StructureSighting.CONFIRMED_AREA));
                 return MergeResult.REFINED;

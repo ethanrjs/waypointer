@@ -16,14 +16,8 @@ import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 
-/**
- * A top-down map of a community route: its waypoints seen from above (north up), joined in route
- * order, in the route's own colors. Dungeon room packs use room-relative coordinates that would
- * overlap, so they get a short summary instead of a map.
- */
 final class CatalogRoutePreview {
 
-    /** Path width in GUI pixels. */
     private static final double LINE_WIDTH = 1.25;
 
     record Point(int x, int y, int z, int color, boolean subwaypoint, String label, String name) {}
@@ -78,10 +72,6 @@ final class CatalogRoutePreview {
         return new CatalogRoutePreview(List.copyOf(paths), roomPack && groups.size() > 1, groups.size());
     }
 
-    /**
-     * From the catalog's light preview. When the server thinned the points, editor numbers can't
-     * be rebuilt, so hovering shows only positions.
-     */
     static CatalogRoutePreview of(com.babbur.waypointer.catalog.CatalogRoutePreviewData data) {
         List<List<Point>> paths = new ArrayList<>();
         boolean roomPack = false;
@@ -109,17 +99,11 @@ final class CatalogRoutePreview {
         return waypointCount == 0;
     }
 
-    /** Width and depth of the area the route covers, in blocks. */
     int spanX() { return isEmpty() ? 0 : maxX - minX + 1; }
 
     int spanZ() { return isEmpty() ? 0 : maxZ - minZ + 1; }
 
-    /**
-     * Draws the map into the box and returns the waypoint under the mouse, if any.
-     */
     Point render(GuiGraphicsExtractor g, Font font, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
-        // The GUI checks each element against the overlapping ones in its stratum, so a long route
-        // starts its own and moves to a fresh one every few dozen elements.
         g.nextStratum();
         int[] elements = {0};
         g.fill(x1, y1, x2, y2, 0x40000000);
@@ -145,14 +129,12 @@ final class CatalogRoutePreview {
         double midX = (minX + maxX) / 2.0;
         double midZ = (minZ + maxZ) / 2.0;
 
-        // Smooth lines and round points at sub-pixel positions, so the map stays sharp at any GUI scale.
         double guiScale = Minecraft.getInstance().getWindow().getGuiScale();
         Point hovered = null;
         double hoveredDistance = 26;
         double hoveredX = 0, hoveredY = 0;
         g.enableScissor(x1 + 1, y1 + 1, x2 - 1, y2 - 1);
         for (List<Point> path : paths) {
-            // Segments shorter than a screen pixel are merged into the next one.
             double px = 0, py = 0;
             int previousColor = 0;
             for (int i = 0; i < path.size(); i++) {
@@ -171,7 +153,6 @@ final class CatalogRoutePreview {
                 py = sy;
                 previousColor = point.color();
             }
-            // Earlier waypoints draw on top; a pixel only needs its topmost waypoint drawn.
             it.unimi.dsi.fastutil.longs.LongOpenHashSet seen = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
             it.unimi.dsi.fastutil.ints.IntArrayList shown = new it.unimi.dsi.fastutil.ints.IntArrayList();
             for (int i = 0; i < path.size(); i++) {
@@ -220,7 +201,6 @@ final class CatalogRoutePreview {
         if (++elements[0] % 32 == 0) g.nextStratum();
     }
 
-    /** A waypoint: a colored square in a dark frame, a white frame for the start, smaller for subwaypoints. */
     private static void dot(GuiGraphicsExtractor g, double x, double y, Point point, boolean first, double guiScale) {
         if (point.subwaypoint()) {
             square(g, x, y, 3, 0xE0101216, guiScale);
@@ -231,7 +211,6 @@ final class CatalogRoutePreview {
         square(g, x, y, 3, point.color(), guiScale);
     }
 
-    /** A square of {@code side} GUI pixels centred on (x, y), snapped to whole screen pixels so it stays crisp. */
     private static void square(GuiGraphicsExtractor g, double x, double y, double side, int argb, double guiScale) {
         int pixels = Math.max(1, (int) Math.round(side * guiScale));
         double left = Math.round(x * guiScale - pixels / 2.0) / guiScale;
@@ -257,7 +236,6 @@ final class CatalogRoutePreview {
         g.fill(x2 - 1, y1, x2, y2, color);
     }
 
-    /** Tooltip lines for a waypoint on the map. */
     static List<Component> tooltip(Point point) {
         List<Component> lines = new ArrayList<>();
         String heading = (point.label() + "  " + (point.name() == null ? "" : point.name())).trim();

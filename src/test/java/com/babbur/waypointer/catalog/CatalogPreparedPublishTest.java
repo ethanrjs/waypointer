@@ -140,7 +140,6 @@ class CatalogPreparedPublishTest {
         route.add(new Waypoint(8, 70, 12, "Finish", 0xCC8844, 0, 0.0));
         route.setDefaultRadius(4.25);
         route.setSkipAheadEnabled(false);
-        // Paint must not change the prepared V9 catalog payload.
         route.setPaint(new WaypointPaint(
                 WaypointPaint.defaultPalette(0x44AA66),
                 new byte[WaypointPaint.PIXEL_COUNT]));

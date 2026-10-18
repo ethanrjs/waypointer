@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.stream.IntStream;
 
-/** Render the gallery with device-local synthetic records, without identity or network access. */
 @SuppressWarnings("UnstableApiUsage")
 final class GallerySmokeTest {
     static void run(ClientGameTestContext context) {

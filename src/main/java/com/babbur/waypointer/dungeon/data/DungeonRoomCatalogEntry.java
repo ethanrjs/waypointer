@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Immutable room identity metadata used by Catacombs room detection. */
 public record DungeonRoomCatalogEntry(
         String id,
         String displayName,
@@ -40,7 +39,6 @@ public record DungeonRoomCatalogEntry(
     public boolean hasCryptCount() { return cryptCount >= 0; }
     public boolean hasTrappedChestCount() { return trappedChestCount >= 0; }
 
-    /** Lower case, runs of anything but a-z and 0-9 become one dash, no dash at either end. */
     public static String normalizeId(String id) {
         if (id == null) return "";
         if (isNormalized(id)) return id;

@@ -11,7 +11,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
-/** Bounded socket transport; callers drain messages on the game thread. */
 public final class StructureRelayConnection {
     private static final int MAX_MESSAGE = 16 * 1024;
     private static final int MAX_QUEUED_MESSAGES = 32;
@@ -77,7 +76,6 @@ public final class StructureRelayConnection {
         return messages.poll();
     }
 
-    /** Bound game-thread work even when socket callbacks refill the queue during processing. */
     public void drain(Consumer<String> consumer) {
         for (int i = 0; i < MAX_QUEUED_MESSAGES; i++) {
             String message = poll();

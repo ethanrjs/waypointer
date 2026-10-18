@@ -389,7 +389,6 @@ class ExportScreenTest {
         assertEquals(200, full.columnWidth());
         assertEquals(3, full.rowsPerColumn());
 
-        // 308 is the minimum width for two 150-unit columns and their gap.
         ExportScreen.IncludeGrid snug = ExportScreen.includeGrid(308, 6);
         assertEquals(150, snug.columnWidth());
         assertEquals(3, snug.rowsPerColumn());
@@ -401,15 +400,13 @@ class ExportScreenTest {
 
     @Test
     void theSingleRoutePanelFitsEvenAtTheSmallestUsefulGuiSize() {
-        // Two columns of three include rows, no route picker.
         int includeRowsH = 3 * 24 - 4;
         int fixed = ExportScreen.panelFixedHeight(includeRowsH, 0);
-        int lineH = 10; // Minecraft's 9px font line box plus a pixel of leading.
+        int lineH = 10;
 
         assertEquals(3 * lineH + 12, ExportScreen.previewHeight(540, fixed, lineH));
         assertTrue(fixed + ExportScreen.previewHeight(540, fixed, lineH) <= 540);
 
-        // 1080p at GUI scale 4 provides 270 logical pixels of height.
         int tight = ExportScreen.previewHeight(270, fixed, lineH);
         assertTrue(fixed + tight <= 270,
                 "panel is " + (fixed + tight) + " tall in a 270-unit window");

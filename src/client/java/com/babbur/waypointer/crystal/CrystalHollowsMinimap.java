@@ -17,7 +17,6 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
-/** Schematic region map backed by the tracker's current lobby, never invented terrain. */
 public final class CrystalHollowsMinimap implements HudElement {
     private final CrystalHollowsTracker tracker;
     private final WaypointerConfig config;
@@ -28,7 +27,6 @@ public final class CrystalHollowsMinimap implements HudElement {
     }
 
     public void install() {
-        // Inherit vanilla's F1 HUD visibility on both supported Minecraft versions.
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                 Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "crystal_hollows_minimap"), this);
     }
@@ -59,14 +57,11 @@ public final class CrystalHollowsMinimap implements HudElement {
                             boolean labels, boolean showRough) {
         var font = Minecraft.getInstance().font;
         int x = layout.mapX(), y = layout.mapY(), size = layout.size();
-        // Every GUI element is checked against the overlapping ones already in its stratum, so the
-        // map starts its own and puts the markers in a second one above the static base.
         g.nextStratum();
         panel(g, layout.x(), layout.y(), layout.width(), layout.height(), 0xFF39454D);
         panel(g, layout.x() + 1, layout.y() + 1, layout.width() - 2, layout.height() - 2, 0xF213191F);
         g.fill(layout.x() + 3, layout.y(), layout.x() + layout.width() - 3, layout.y() + 1, 0xFF52616A);
         gem(g, x + 3, layout.y() + CrystalHollowsMinimapLayout.HEADER / 2, GuiTokens.ACCENT);
-        // The seven-pixel gem has five clear pixels to the frame and five to the title.
         int titleX = x + CrystalHollowsMinimapLayout.PADDING * 2;
         int titleWidth = x + size - titleX;
         String title = font.width(text("title")) <= titleWidth ? text("title") : text("short_title");
@@ -178,7 +173,6 @@ public final class CrystalHollowsMinimap implements HudElement {
         if (CrystalHollowsMinimapLayout.contains(playerX, playerZ)) {
             g.pose().pushMatrix();
             g.pose().translate(x + layout.markerCenter(playerX), y + layout.markerCenter(playerZ));
-            // Minecraft yaw zero is south; the arrow is drawn facing north before rotation.
             g.pose().rotate((float) Math.toRadians(yaw + 180));
             g.pose().translate(-0.5f, -0.5f);
             arrow(g);
@@ -224,7 +218,6 @@ public final class CrystalHollowsMinimap implements HudElement {
             }
         }
         if (playerOnHub) return;
-        // Paired center columns on even maps keep the facet centered without half-pixel blur.
         int crystalHeight = Math.min(9, size - 4);
         if ((crystalHeight & 1) != (size & 1)) crystalHeight--;
         int top = y + (size - crystalHeight) / 2;
@@ -262,7 +255,6 @@ public final class CrystalHollowsMinimap implements HudElement {
     private static final java.util.Map<String, String> TEXT = new java.util.HashMap<>();
     private static net.minecraft.locale.Language textLanguage;
 
-    /** Map wording, translated once per language rather than every frame. */
     private static String text(String key) {
         net.minecraft.locale.Language language = net.minecraft.locale.Language.getInstance();
         if (language != textLanguage) {
@@ -273,7 +265,6 @@ public final class CrystalHollowsMinimap implements HudElement {
                 k -> Component.translatable("waypointer.crystal.minimap." + k).getString());
     }
 
-    // Minecraft's bitmap font adds one trailing advance pixel; its eighth row holds descenders.
     private static int inkWidth(String text) {
         return Math.max(0, Minecraft.getInstance().font.width(text) - 1);
     }
@@ -293,7 +284,6 @@ public final class CrystalHollowsMinimap implements HudElement {
         g.pose().popMatrix();
     }
 
-    /** An area name near (x, y): moved up or down within its area when a marker is in the way. */
     private static Rect centered(GuiGraphicsExtractor g, String text, float x, float y, int width, int color,
                                  List<Rect> occupied, Rect area) {
         var font = Minecraft.getInstance().font;

@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Minecraft-free parsing of Crystal Hollows player-list widgets. */
 public final class CrystalHollowsTabList {
 
     private static final Pattern CRYSTAL_LINE = Pattern.compile(
@@ -44,7 +43,6 @@ public final class CrystalHollowsTabList {
         return false;
     }
 
-    /** Tab widget state is authoritative while present; chat history is the fallback. */
     public static Map<Crystal, CrystalState> preferredStates(
             Map<Crystal, CrystalState> tabStates,
             Map<Crystal, CrystalState> chatStates) {

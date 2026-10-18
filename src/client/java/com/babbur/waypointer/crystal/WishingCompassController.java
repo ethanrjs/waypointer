@@ -24,7 +24,6 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 
-/** Feeds compass uses and particles to the solver. */
 public final class WishingCompassController {
 
     private static final String COMPASS_ID = "WISHING_COMPASS";
@@ -94,13 +93,8 @@ public final class WishingCompassController {
         lastEvent = "reset";
     }
 
-    /**
-     * Drop unfinished capture context on region changes without deleting a solved marker.
-     * Walking between the Nucleus and an outer zone keeps an unfinished search alive.
-     */
     void onRegionChanged(CrystalHollowsZone from, CrystalHollowsZone to) {
         if (from != null && to != null && WishingCompassSolver.zonesCompatible(from, to)) return;
-        // Keep a completed result available to diagnostics; onUse starts its next search afresh.
         if (solver.lastResult().isEmpty()) solver.reset();
         lastEvent = "region_changed";
     }
@@ -174,7 +168,6 @@ public final class WishingCompassController {
                 result.gap(), result.targets());
         Set<WishingCompassTarget> targets = result.targets();
         StructureSighting sighting = toSighting(result);
-        // Region-exit tracking needs one search region; a Nucleus + outer-zone pair has none.
         CrystalHollowsZone originRegion = result.firstRay().zone() == result.secondRay().zone()
                 ? result.searchZone() : null;
         if (targets.size() == 1 && targets.contains(WishingCompassTarget.CRYSTAL_NUCLEUS)) {

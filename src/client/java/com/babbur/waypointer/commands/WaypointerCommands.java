@@ -94,7 +94,6 @@ public final class WaypointerCommands {
                                 .suggests(WaypointerCommandHelp.suggestions())
                                 .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root,
                                         StringArgumentType.getString(ctx, "topic")))))
-                // Screens
                 .then(literal("gui")
                         .executes(ctx -> { scheduleOpenGui(); return 1; })
                         .then(literal("dungeon")
@@ -120,28 +119,23 @@ public final class WaypointerCommands {
                     return 1;
                 }))
                 .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
-                // Which route commands act on
                 .then(routeCommands.listCommand())
                 .then(routeCommands.targetCommand())
                 .then(waypointCommands.waypointsCommand())
-                // Routes and folders
                 .then(routeCommands.routeCommand())
                 .then(routeCommands.folderCommand())
                 .then(routeCommands.visibilityCommand("show", true))
                 .then(routeCommands.visibilityCommand("hide", false))
                 .then(routeCommands.clearCommand())
-                // Waypoints
                 .then(waypointCommands.addCommand())
                 .then(waypointCommands.insertCommand())
                 .then(waypointCommands.removeCommand())
                 .then(waypointCommands.moveCommand())
                 .then(waypointCommands.waypointCommand())
-                // Progress
                 .then(waypointCommands.skipCommand())
                 .then(waypointCommands.unskipCommand())
                 .then(waypointCommands.skipToCommand())
                 .then(waypointCommands.resetCommand())
-                // Temporary waypoints and chat
                 .then(literal("addtemp")
                         .executes(ctx -> chatCommands.runAddTempHere(ctx.getSource()))
                         .then(literal("at")
@@ -184,7 +178,6 @@ public final class WaypointerCommands {
                                 .then(argument("name", StringArgumentType.word())
                                         .executes(ctx -> chatCommands.runChatCoordBlacklistRemove(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"))))))
-                // Sharing
                 .then(literal("export")
                         .executes(ctx -> shareCommands.runExport(ctx.getSource(), exportOptionsFromConfig()))
                         .then(literal("routes")

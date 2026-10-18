@@ -2,7 +2,6 @@ package com.babbur.waypointer.crystal;
 
 import java.util.Objects;
 
-/** Classifies a newly resolved server id without depending on Minecraft client state. */
 public final class CrystalHollowsLobbyTransition {
 
     public enum Kind {

@@ -15,11 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Which local routes each of the player's published routes came from, so My routes can tell
- * when a route changed since it was published and send the changes in one step. Kept apart from
- * the publication records so older versions read those unchanged.
- */
 public final class PublishedSources {
     private static final int SCHEMA = 1;
     private static final int MAX_ROUTES = 500;
@@ -38,7 +33,6 @@ public final class PublishedSources {
         active = new PublishedSources(file);
     }
 
-    /** The installed store, or null before the client starts (tests). */
     public static PublishedSources active() {
         return active;
     }

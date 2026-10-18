@@ -3,7 +3,6 @@ package com.babbur.waypointer.render.gpu;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 
-/** Level-depth copy used by post-world compositing. */
 public final class DepthSnapshot implements AutoCloseable {
 
     private GpuTexture texture;

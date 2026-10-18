@@ -21,7 +21,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-// Keeps one publish flow alive across screen navigation.
 final class CatalogPublishSession {
     private final Supplier<PublisherIdentity> identityLoader;
     private final Supplier<PublisherIdentity> knownIdentityLoader;
@@ -185,7 +184,6 @@ final class CatalogPublishSession {
         }
         notifyListeners(snapshot());
 
-        // Resend the stored claim so a reset catalog can re-register it.
         String claimedName = requestedName != null
                 ? requestedName : signer.publisherName();
         CompletableFuture.supplyAsync(
@@ -208,7 +206,6 @@ final class CatalogPublishSession {
             if (token != attempt || phase != Phase.PUBLISHING) return;
             if (publishFailure != null) {
                 if (publisherNameNeedsEntry(publishFailure) && identity != null) {
-                    // A new attempt lets the view reopen the name prompt after a rejected claim.
                     ++attempt;
                     phase = Phase.NEEDS_PUBLISHER_NAME;
                     failure = publishFailure;

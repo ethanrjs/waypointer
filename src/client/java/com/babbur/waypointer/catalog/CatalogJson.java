@@ -34,7 +34,6 @@ final class CatalogJson {
         List<CatalogRouteSummary> routes = new ArrayList<>(values.size());
         Set<String> ids = new HashSet<>();
         int rejectedRoutes = 0;
-        // Preserve wire order and the first occurrence of each route ID.
         for (JsonElement value : values) {
             try {
                 CatalogRouteSummary route = parseSummary(object(value, "route"));
@@ -75,7 +74,6 @@ final class CatalogJson {
     private static final int MAX_PREVIEW_POINTS = 5_000;
     private static final int MAX_COORDINATE = 30_000_000;
 
-    /** {"version", "totalPoints", "truncated", "groups": [{"kind", "points": [[x, y, z, rgb, isSub]]}]}. */
     static CatalogRoutePreviewData parsePreview(String json) {
         JsonObject root = object(JsonParser.parseString(json), "preview response");
         JsonArray groupValues = array(root.get("groups"), "groups");
@@ -128,7 +126,6 @@ final class CatalogJson {
         return new CatalogPublishResult(route, manageToken);
     }
 
-    /** Parses an owner-update response: the refreshed public summary of the same route. */
     static CatalogRouteSummary parseRouteResponse(String json) {
         JsonObject root = object(JsonParser.parseString(json), "route response");
         return parseSummary(object(root.get("route"), "route"));
@@ -205,7 +202,6 @@ final class CatalogJson {
             throw new IllegalArgumentException("Catalog route is empty");
         }
 
-        // Shared text is shown in the browser and in chat, so it is cleaned like waypoint names.
         String title = SafeText.line(requiredString(route, "title", 80));
         if (title.isEmpty()) throw new IllegalArgumentException("title has an invalid length");
         String zoneId = requiredString(route, "zoneId", 64);
@@ -232,7 +228,6 @@ final class CatalogJson {
                 optionalIcon(route));
     }
 
-    /** The publisher's chosen item icon; anything that isn't an item id reads as none. */
     private static String optionalIcon(JsonObject route) {
         JsonElement value = route.get("icon");
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "";
@@ -241,7 +236,6 @@ final class CatalogJson {
 
     private static final Pattern TAG = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");
 
-    /** Optional server-assigned tags such as {@code mining-cult}; unknown or malformed ones are ignored. */
     private static List<String> optionalTags(JsonObject route) {
         JsonElement value = route.get("tags");
         if (value == null || !value.isJsonArray()) return List.of();

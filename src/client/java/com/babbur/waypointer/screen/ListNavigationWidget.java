@@ -20,7 +20,6 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 
-/** Keyboard and narration layer for a fixed-row list */
 final class ListNavigationWidget extends AbstractButton {
 
     private final IntSupplier itemCount;

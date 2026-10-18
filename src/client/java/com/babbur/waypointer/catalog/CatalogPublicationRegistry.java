@@ -86,10 +86,6 @@ public final class CatalogPublicationRegistry {
         return record;
     }
 
-    /**
-     * Refreshes a stored record from the catalog's response to an owner edit. Returns the
-     * new record, or {@code null} when this device holds no record for the route.
-     */
     public CatalogPublication recordUpdate(
             String routeId, String publisherId, CatalogRouteSummary route, String payloadSha256) {
         requireRouteId(routeId);
@@ -224,7 +220,6 @@ public final class CatalogPublicationRegistry {
         String payloadSha256 = requireMatch(
                 string(object, "payloadSha256"), "payload hash", PAYLOAD_HASH);
         Instant recordedAt = Instant.parse(string(object, "recordedAt"));
-        // Optional: records written before descriptions were kept omit the key.
         String description = optionalString(object, "description");
         return new CatalogPublication(
                 routeId, publisherId, publisherName, title, description,

@@ -58,7 +58,6 @@ class CoordScannerTest {
 
     @Test
     void rejects_y_out_of_minecraft_range() {
-        // Reject score triples whose middle value exceeds the Y limit.
         assertTrue(CoordScanner.scan("Score: 5000 9999 250").isEmpty(),
                 "y=9999 must be rejected as out of Minecraft Y range");
         assertTrue(CoordScanner.scan("Players online: 50 500 75").isEmpty(),
@@ -112,7 +111,6 @@ class CoordScannerTest {
 
     @Test
     void rejects_thousands_separated_coin_amounts() {
-        // Bank amounts such as 1,145,926 must not parse as (1, 145, 926).
         assertTrue(
                 CoordScanner.scan("You have just received 1,145,926 coins as interest in your co-op bank account!").isEmpty(),
                 "bank-interest coin counts must not be decorated as coordinates");
@@ -122,7 +120,6 @@ class CoordScannerTest {
 
     @Test
     void still_accepts_comma_space_coords_near_thousands_shape() {
-        // Comma-space triples overlap with thousands-grouped amounts but remain valid coordinates.
         List<CoordScanner.Coord> coords = CoordScanner.scan("Meet at 100, 145, 926");
         assertEquals(1, coords.size());
         assertEquals(new CoordScanner.Coord(100, 145, 926), coords.get(0));
@@ -163,7 +160,6 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_returns_match_spanning_full_callout() {
-        // The highlighted range must cover the entire labeled coordinate callout.
         List<CoordScanner.Match> matches = CoordScanner.scanWithPositions("see x: 100, y: 64, z: -200 ok");
         assertEquals(1, matches.size());
         CoordScanner.Match match = matches.get(0);
@@ -173,7 +169,6 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_rejects_decimals() {
-        // Reject decimals on every axis instead of accepting an integer prefix.
         assertTrue(CoordScanner.scan("x: 100.5, y: 64, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("x: 100, y: 64.0, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("x: 100, y: 64, z: -200.5").isEmpty());
@@ -181,7 +176,6 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_rejects_thousands_separated_x_value() {
-        // Reject thousands-separated axis values rather than misreading their magnitude.
         assertTrue(CoordScanner.scan("x: 1,000, y: 64, z: 0").isEmpty());
     }
 
@@ -198,7 +192,6 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_does_not_match_when_axis_letter_is_inside_a_word() {
-        // Axis labels must not match word endings such as "Trax:".
         assertTrue(CoordScanner.scan("Trax: 100, y: 64, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("max: 100, y: 64, z: -200").isEmpty());
     }

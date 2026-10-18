@@ -1,10 +1,5 @@
 package com.babbur.waypointer.catalog;
 
-/**
- * An owner edit of a published route. Every field is optional; {@code null} leaves the
- * server's value untouched. A payload replaces the route's waypoints while the route id,
- * downloads and share link stay the same.
- */
 public record CatalogRouteUpdate(
         String title,
         String description,

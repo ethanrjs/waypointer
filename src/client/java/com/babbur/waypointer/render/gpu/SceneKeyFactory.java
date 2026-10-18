@@ -13,10 +13,8 @@ import java.util.Objects;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
-/** Builds the static-geometry key from renderer inputs. */
 public final class SceneKeyFactory {
 
-    /** Maximum camera offset from the retained origin before geometry is rebased. */
     static final double REBASE_DISTANCE_BLOCKS = 128.0;
 
     private final OverlayRendererOptions options;
@@ -65,7 +63,6 @@ public final class SceneKeyFactory {
         return key.finish();
     }
 
-    /** Forgets the retained origin after a world/session reset. */
     public void reset() {
         hasOrigin = false;
         originLevelIdentity = null;

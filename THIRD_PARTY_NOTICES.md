@@ -127,3 +127,23 @@ MetalDetector.java. The distance filter is independently implemented.
 - Project: https://github.com/SkyblockerMod/Skyblocker
 - Source file: `src/main/java/de/hysky/skyblocker/skyblock/dwarven/MetalDetector.java`
 - License: GNU Lesser General Public License v3.0
+
+## Gradle wrapper startup scripts
+
+`gradlew` and `gradlew.bat` are distributed under the Apache License, Version 2.0.
+Their explanatory comments have been removed.
+
+Copyright © 2015-2021 the original authors.
+Copyright 2015 the original author or authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

@@ -21,7 +21,6 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 public final class EtherwarpAlignmentCue {
-    // Prevent aim flicker from replaying the cue.
     private static final long JITTER_GUARD_MILLIS = 350L;
 
     private final ActiveGroupManager manager;

@@ -11,11 +11,9 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Detects SkyBlock zones from the sidebar every two ticks. */
 public final class ScoreboardZoneResolver implements ZoneSource {
 
     private static final int POLL_INTERVAL_TICKS = 2;
-    /** Sidebar polls (two ticks each) an unchanged player-list area must survive before it loads routes. */
     static final int PLAYER_LIST_CONFIRM_POLLS = 10;
 
     private Consumer<Zone> listener;
@@ -54,12 +52,10 @@ public final class ScoreboardZoneResolver implements ZoneSource {
 
     void acceptSidebar(String sidebar, Supplier<String> playerListArea) {
         Zone z = resolveSidebarText(sidebar);
-        // A delayed/partial scoreboard is not a zone transition. Keep same-world evidence.
         retainingZone = lastEmitted != null
                 && z == null
                 && CrystalHollowsSidebar.areaName(sidebar == null ? "" : sidebar) == null;
         if (retainingZone) return;
-        // A lagging server can send the player list before the sidebar; use it until the sidebar arrives.
         if (z == null && lastEmitted == null) z = confirmedPlayerListZone(playerListArea.get());
         else clearPlayerListZone();
         z = ConfirmedLayoutRetention.retain(lastEmitted, z, sidebar == null ? "" : sidebar);
@@ -70,7 +66,6 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         }
     }
 
-    /** The player list can outlive a world change, so its area must repeat before it counts. */
     private Zone confirmedPlayerListZone(String area) {
         Zone zone = resolveKnownAreaName(area);
         if (zone == null) {
@@ -109,7 +104,6 @@ public final class ScoreboardZoneResolver implements ZoneSource {
 
     static Zone resolveSidebarText(String blob) {
         if (blob == null || blob.isBlank()) return null;
-        // A layout code identifies the shaft even while its decorative area line is missing.
         Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
         if (mineshaftType != null) return mineshaftType;
         String area = CrystalHollowsSidebar.areaName(blob);
@@ -123,13 +117,11 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         return resolveAreaName(area);
     }
 
-    /** Like {@link #resolveAreaName} but never synthesizes a zone the mod does not know. */
     static Zone resolveKnownAreaName(String area) {
         Zone zone = resolveAreaName(area);
         return zone != null && Zone.knownZones().contains(zone) ? zone : null;
     }
 
-    /** Resolves a bare area name, such as the sidebar's area line or the player list's Area widget. */
     static Zone resolveAreaName(String area) {
         if (area == null || area.isBlank()) return null;
         String cleaned = area.trim().replaceFirst(",\\s*$", "");

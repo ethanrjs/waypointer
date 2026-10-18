@@ -4,7 +4,6 @@ import net.minecraft.resources.Identifier;
 
 import java.util.Objects;
 
-/** Pipeline, depth mode, and optional texture for one mesh pair. */
 public record MeshBucket(Kind kind, boolean depthTested, Identifier texture) {
 
     public enum Kind {

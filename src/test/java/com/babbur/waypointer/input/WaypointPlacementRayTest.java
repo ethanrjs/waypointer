@@ -71,10 +71,8 @@ class WaypointPlacementRayTest {
         assertEquals(HitResult.Type.MISS, closer.getType());
         assertEquals(new Vec3(0.5, 80.0, 4.0), closer.getLocation());
         assertEquals(new BlockPos(0, 80, 4), WaypointRepositionMode.placementBlock(closer));
-        // Scrolling up against a block never passes through it.
         assertEquals(new Vec3(0.5, 80.0, 5.0),
                 WaypointRepositionMode.applyPlacementOffset(block, eye, direction, -3, 64.0).getLocation());
-        // Scrolling down never reaches the player's head.
         assertEquals(new Vec3(0.5, 80.0, 1.5),
                 WaypointRepositionMode.applyPlacementOffset(block, eye, direction, 40, 64.0).getLocation());
 

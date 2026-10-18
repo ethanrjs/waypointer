@@ -223,7 +223,6 @@ class WaypointerScreenTest {
             assertNull(config.waypoints());
             assertNull(config.dungeonRoutes());
             assertNull(config.error());
-            // Decoding never mutates settings; the confirmation screen applies them.
             assertNotNull(config.config());
             assertEquals(7.5, config.config().defaultReachRadius());
         }

@@ -12,7 +12,6 @@ import static com.babbur.waypointer.screen.GuiTokens.HOVER;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 
-/** A small on/off filter: outlined when off, filled with its color when on. */
 final class CatalogFilterChip extends AbstractButton {
     static final int HEIGHT = 14;
     private static final int PAD = 6;
@@ -60,7 +59,6 @@ final class CatalogFilterChip extends AbstractButton {
         int textX = x1 + PAD;
         int tint = on ? TEXT : TEXT_DIM;
         if (icon != null) {
-            // The 8 px badge glyph sits 4 px into its cell: centre the cell 4 px right of the glyph's edge.
             Icons.drawAt(g, icon, textX + 4, y1 + 7, on ? TEXT : color);
             textX += ICON_W + 4;
         }

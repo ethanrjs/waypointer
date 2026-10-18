@@ -33,7 +33,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
-/** Tracks lobby structures from visible game signals; never scans blocks or chunks. */
 public final class CrystalHollowsTracker {
 
     private static final String SESSION_SERVER_ID = "session-only";
@@ -119,7 +118,6 @@ public final class CrystalHollowsTracker {
 
     void observeCaveInWarning(String text, long now) {
         if (!active || lobby == null || !CrystalHollowsChatParser.isCaveInWarning(text)) return;
-        // Warning timing is approximate. Later warnings must not extend the first estimate.
         long deadline = now + 60_000;
         caveInDeadline = caveInDeadline == 0 ? deadline : Math.min(caveInDeadline, deadline);
     }
@@ -133,7 +131,6 @@ public final class CrystalHollowsTracker {
         compassController = controller;
     }
 
-    /** Runs after sightings change, the projection rebuilds, or a lobby starts or ends. */
     public void addDetectionListener(Runnable listener) {
         if (listener != null) detectionListeners.add(listener);
     }
@@ -241,7 +238,6 @@ public final class CrystalHollowsTracker {
         manager.fireTransientDataChanged();
     }
 
-    /** Reentry never resumes navigation. Only a new compass solution starts it again. */
     void observeCompassPosition(double x, double y, double z) {
         CrystalHollowsZone nextRegion = CrystalHollowsGeometry.zoneAt(x, y, z);
         if (compassCurrentRegionKnown && nextRegion != compassCurrentRegion && compassController != null) {
@@ -270,8 +266,6 @@ public final class CrystalHollowsTracker {
 
     public enum CompassNavigationState { NONE, ACTIVE, ARRIVED, REGION_EXITED, DEFOCUSED, MARKER_REMOVED }
 
-    /** Region values are known enums; null currentRegion with currentRegionKnown means outside the bounds.
-     * Navigation enabled is lifecycle state, independent of the user's tracer and auto-focus settings. */
     public record CompassNavigationSnapshot(CrystalHollowsZone originRegion,
             CrystalHollowsZone currentRegion, boolean currentRegionKnown,
             CompassNavigationState state, boolean navigationEnabled,
@@ -303,7 +297,6 @@ public final class CrystalHollowsTracker {
         StructureSighting resolved = target;
         for (StructureSighting candidate : lobby.sightings()) {
             if (!refinesCompassTarget(target, candidate)) continue;
-            // Do not choose arbitrarily between nearby structures or separate instances.
             if (resolved != target) {
                 return target;
             }
@@ -626,7 +619,6 @@ public final class CrystalHollowsTracker {
         }
     }
 
-    /** Called every two ticks; require three continuous seconds of contradictory arrival evidence. */
     List<CrystalHollowsStructure> checkIncorrectStructures(String area, double x, double y, double z, boolean ready) {
         if (!ready || !java.util.Objects.equals(verificationArea, area)) incorrectStructureTicks.clear();
         verificationArea = area;

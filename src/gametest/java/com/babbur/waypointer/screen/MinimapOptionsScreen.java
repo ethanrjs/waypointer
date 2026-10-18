@@ -14,7 +14,6 @@ import java.util.List;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/** Gallery-only: the current Crystal Hollows map beside two redesign options, on one lobby. */
 final class MinimapOptionsScreen extends Screen {
     private static final double PLAYER_X = 590, PLAYER_Y = 101, PLAYER_Z = 455;
     private static final float YAW = 135;
@@ -28,7 +27,6 @@ final class MinimapOptionsScreen extends Screen {
             sighting(CrystalHollowsStructure.ODAWA, 255, 100, 430, SightingConfidence.NPC_CHAT),
             sighting(CrystalHollowsStructure.KHAZAD_DUM, 420, 40, 560, SightingConfidence.ENTITY));
 
-    /** Quadrant colors, toned to sit on the dark panel. */
     private static final int JUNGLE = 0x46B56E, MITHRIL = 0x45A7BD, GOBLIN = 0xC9975A, PRECURSOR = 0x7A8AD0;
 
     MinimapOptionsScreen() {
@@ -59,7 +57,6 @@ final class MinimapOptionsScreen extends Screen {
         }
     }
 
-    // ---- Option A: a Waypointer menu panel ------------------------------------------------------
 
     private void optionA(GuiGraphicsExtractor g, int x, int y, int size) {
         int w = size + PAD * 2, h = HEADER + size + PAD + FOOTER;
@@ -81,7 +78,6 @@ final class MinimapOptionsScreen extends Screen {
         footer(g, x, my + size + 3, w, "Mithril Deposits");
     }
 
-    // ---- Option B: the community route map ----------------------------------------------------
 
     private void optionB(GuiGraphicsExtractor g, int x, int y, int size) {
         int w = size + PAD * 2, h = HEADER + size + PAD + FOOTER;
@@ -105,7 +101,6 @@ final class MinimapOptionsScreen extends Screen {
         footer(g, x, my + size + 3, w, "Mithril Deposits");
     }
 
-    // ---- Shared pieces ----------------------------------------------------------------------
 
     private static void frame(GuiGraphicsExtractor g, int x, int y, int w, int h) {
         g.fill(x, y, x + w, y + h, 0xE6101216);
@@ -125,7 +120,6 @@ final class MinimapOptionsScreen extends Screen {
         g.text(font, height, x + w - PAD - font.width(height), y + 4, TEXT_MUTED, false);
     }
 
-    /** Zone names tucked into the outer corners, so the middle stays free for markers. */
     private void zoneCorners(GuiGraphicsExtractor g, int mx, int my, int size, boolean colored) {
         String[] names = {"Jungle", "Mithril", "Goblin", "Precursor"};
         int[] colors = {JUNGLE, MITHRIL, GOBLIN, PRECURSOR};
@@ -188,7 +182,6 @@ final class MinimapOptionsScreen extends Screen {
         };
     }
 
-    /** The player: a white arrow with a dark edge, pointing where they look. */
     private static void player(GuiGraphicsExtractor g, int mx, int my, int size) {
         g.pose().pushMatrix();
         g.pose().translate(mx + project(PLAYER_X, size) + 0.5f, my + project(PLAYER_Z, size) + 0.5f);

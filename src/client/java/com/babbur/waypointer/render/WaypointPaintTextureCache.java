@@ -134,7 +134,6 @@ public final class WaypointPaintTextureCache {
         return 0xFF000000 | (b << 16) | (g << 8) | r;
     }
 
-    /** Selects the oldest unreserved entry, or null when every entry is reserved. */
     static <K, V> Map.Entry<K, V> selectEvictionEntry(
             Map<K, V> entries, Set<K> reserved) {
         for (Map.Entry<K, V> entry : entries.entrySet()) {

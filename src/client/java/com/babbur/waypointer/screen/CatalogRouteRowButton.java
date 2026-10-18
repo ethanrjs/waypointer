@@ -21,15 +21,12 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 
-/** One community route in the list: title and badges, then zone, publisher and size. */
 final class CatalogRouteRowButton extends AbstractButton {
     static final int HEIGHT = 32;
     private static final int TITLE_TOP = 6;
     private static final int META_TOP = 18;
-    /** The route's item icon sits in a slot at the start of the row. */
     static final int ICON_SLOT = 22;
 
-    /** Mining Cult purple. */
     static final int MINING_CULT = 0xFF9B6BFF;
     private static final int MINING_CULT_FILL = 0xFF3A2470;
     private static final int MINING_CULT_TEXT = 0xFFEADFFF;
@@ -74,7 +71,6 @@ final class CatalogRouteRowButton extends AbstractButton {
         int textX = x1 + GAP + ICON_SLOT + GAP;
         int right = x2 - GAP;
 
-        // Line 1: title, Mining Cult badge, install state on the right.
         int stateW = drawInstallState(graphics, font, installAction, right, y1 + TITLE_TOP, true);
         int titleRight = right - (stateW > 0 ? stateW + GAP : 0);
         int badgeW = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT) ? miningCultWidth(font) + GAP_TIGHT : 0;
@@ -86,7 +82,6 @@ final class CatalogRouteRowButton extends AbstractButton {
             miningCultTooltip(graphics, font, pillX, y1 + TITLE_TOP, mouseX, mouseY);
         }
 
-        // Line 2: zone · publisher (✓), size on the right.
         String stats = Component.translatable("waypointer.screen.route_catalog.row.stats",
                 compactWaypoints(route.waypointCount()), compactInstalls(route.downloads())).getString();
         int statsW = font.width(stats);
@@ -100,7 +95,6 @@ final class CatalogRouteRowButton extends AbstractButton {
         drawZoneAndPublisher(graphics, font, route, textX, y1 + META_TOP, metaRight - textX);
     }
 
-    /** Zone in the accent color, then "by publisher" and a check for verified publishers. */
     static void drawZoneAndPublisher(GuiGraphicsExtractor graphics, Font font, CatalogRouteSummary route,
                                      int x, int y, int maxWidth) {
         String zone = GuiTokens.ellipsize(font, route.zoneLabel(), Math.max(20, maxWidth * 3 / 5));
@@ -130,7 +124,6 @@ final class CatalogRouteRowButton extends AbstractButton {
                 "waypointer.screen.route_catalog.tag.mining_cult.short")) + PILL_PAD;
     }
 
-    /** The purple Mining Cult pill: a gem and "MC", sitting on a text baseline at (x, y). */
     static int drawMiningCult(GuiGraphicsExtractor graphics, Font font, int x, int y) {
         String label = Component.translatable("waypointer.screen.route_catalog.tag.mining_cult.short").getString();
         int w = miningCultWidth(font);
@@ -139,23 +132,17 @@ final class CatalogRouteRowButton extends AbstractButton {
         graphics.fill(x, y + 8, x + w, y + 9, MINING_CULT);
         graphics.fill(x, y - 2, x + 1, y + 9, MINING_CULT);
         graphics.fill(x + w - 1, y - 2, x + w, y + 9, MINING_CULT);
-        // The 8x6 gem sits 4 px into its 16 px cell, so its cell centre is 4 px right of its left edge.
         Icons.drawAt(graphics, Icons.Icon.BADGE_GEM, x + PILL_PAD + 4, y + 4, MINING_CULT_TEXT);
         graphics.text(font, label, x + PILL_PAD + LOGO_W + PILL_PAD, y, MINING_CULT_TEXT, false);
         return w;
     }
 
-    /** Shows where Mining Cult routes come from when the pointer is on the pill. */
     static void miningCultTooltip(GuiGraphicsExtractor graphics, Font font, int pillX, int y, int mouseX, int mouseY) {
         if (mouseX < pillX || mouseX >= pillX + miningCultWidth(font) || mouseY < y - 2 || mouseY >= y + 9) return;
         graphics.setTooltipForNextFrame(font, font.split(Component.translatable(
                 "waypointer.screen.route_catalog.tag.mining_cult.hover"), 200), mouseX, mouseY);
     }
 
-    /**
-     * Draws the install state right-aligned at {@code right} and returns its width:
-     * a check for installed routes, "Update" when the catalog has a newer version.
-     */
     static int drawInstallState(GuiGraphicsExtractor graphics, Font font, CatalogInstallState.Action action,
                                 int right, int y, boolean compact) {
         if (action == null) return 0;
@@ -189,7 +176,6 @@ final class CatalogRouteRowButton extends AbstractButton {
         return w;
     }
 
-    /** Row copy stays compact: full numbers below 1000, then 1.2k / 3M. */
     static String compactCount(long value, LocalizedNumberFormatter numbers) {
         if (value < 1_000) return numbers.integer(Math.max(0, value));
         if (value < 1_000_000) return scaledCount(value, 1_000, "k", numbers);

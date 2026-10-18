@@ -14,7 +14,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Active preview route's paint atlas; disposes of old atlases after 2 frames. */
 final class RoutePreviewPaintResource {
 
     static final int PADDING = 1;

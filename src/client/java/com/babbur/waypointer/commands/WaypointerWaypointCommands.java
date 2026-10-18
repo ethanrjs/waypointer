@@ -34,14 +34,8 @@ import static com.babbur.waypointer.commands.CommandHelpers.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
-/**
- * Waypoint commands: adding, removing and reordering waypoints, route progress, and every action
- * the route editor's waypoint menu and row buttons offer. Each acts on the target route, and
- * names waypoints by the labels the editor shows ({@code 3}, {@code 2.1}).
- */
 final class WaypointerWaypointCommands {
 
-    /** A per-waypoint toggle from the editor's row buttons. */
     enum Flag {
         TINY("tiny", Waypoint.FLAG_SMALL_SUBWAYPOINT, Scope.SUBWAYPOINT,
                 "waypointer.screen.group_edit.control.subwaypoint.tiny"),
@@ -104,7 +98,6 @@ final class WaypointerWaypointCommands {
         this.routes = routes;
     }
 
-    // ---- Command tree -----------------------------------------------------------------------
 
     LiteralArgumentBuilder<FabricClientCommandSource> waypointsCommand() {
         return literal("waypoints").executes(ctx -> runListWaypoints(ctx.getSource()));
@@ -243,7 +236,6 @@ final class WaypointerWaypointCommands {
         int run(CommandContext<FabricClientCommandSource> ctx, String name) throws com.mojang.brigadier.exceptions.CommandSyntaxException;
     }
 
-    /** {@code at <x> <y> <z> [name]}. */
     private LiteralArgumentBuilder<FabricClientCommandSource> atCoordinates(NamedAction action) {
         return literal("at").then(coordinates(z -> z
                 .executes(ctx -> action.run(ctx, ""))
@@ -251,7 +243,6 @@ final class WaypointerWaypointCommands {
                         .executes(ctx -> action.run(ctx, StringArgumentType.getString(ctx, "name"))))));
     }
 
-    /** {@code <x> <y> <z>}, suggesting the player's position; {@code finish} completes the z node. */
     private RequiredArgumentBuilder<FabricClientCommandSource, Integer> coordinates(
             UnaryOperator<RequiredArgumentBuilder<FabricClientCommandSource, Integer>> finish) {
         RequiredArgumentBuilder<FabricClientCommandSource, Integer> z = finish.apply(
@@ -264,7 +255,6 @@ final class WaypointerWaypointCommands {
                         .then(z));
     }
 
-    // ---- Listing ------------------------------------------------------------------------------
 
     int runListWaypoints(FabricClientCommandSource src) {
         WaypointGroup route = routes.targetOrError(src);
@@ -312,7 +302,6 @@ final class WaypointerWaypointCommands {
         return 1;
     }
 
-    // ---- Adding and removing ----------------------------------------------------------------
 
     int runAdd(FabricClientCommandSource src, String name) {
         int[] pos = playerPosition(src);
@@ -406,7 +395,6 @@ final class WaypointerWaypointCommands {
         return 1;
     }
 
-    // ---- Order and position -------------------------------------------------------------------
 
     int runMoveTo(FabricClientCommandSource src, String label, String toLabel) {
         Found found = find(src, label);
@@ -459,7 +447,6 @@ final class WaypointerWaypointCommands {
         return 1;
     }
 
-    // ---- Waypoint settings ------------------------------------------------------------------
 
     int runRename(FabricClientCommandSource src, String label, String rawName) {
         Found found = find(src, label);
@@ -637,7 +624,6 @@ final class WaypointerWaypointCommands {
         return 1;
     }
 
-    // ---- Progress -----------------------------------------------------------------------------
 
     int runSetCurrent(FabricClientCommandSource src, String label) {
         Found found = find(src, label);
@@ -703,7 +689,6 @@ final class WaypointerWaypointCommands {
         }
     }
 
-    // ---- Shared -------------------------------------------------------------------------------
 
     private record Found(WaypointGroup route, int index) {}
 

@@ -47,7 +47,6 @@ public final class RemoteLocales {
 
     private RemoteLocales() {}
 
-    /** Observes existing state without reading caches, downloading, or requesting a reload. */
     public static DebugSnapshot debugSnapshot(String locale) {
         locale = Objects.requireNonNullElse(locale, "");
         RemoteLocaleManifest.Entry entry = MANIFEST == null ? null : MANIFEST.entry(locale);

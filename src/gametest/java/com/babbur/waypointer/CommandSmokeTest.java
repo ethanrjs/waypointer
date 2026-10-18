@@ -10,10 +10,6 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
 
-/**
- * Runs the {@code /wp} commands in a real world: a route is built, edited and cleaned up only
- * through commands, and every step must land on the target route.
- */
 @SuppressWarnings("UnstableApiUsage")
 final class CommandSmokeTest {
 

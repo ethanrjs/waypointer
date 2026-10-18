@@ -7,7 +7,6 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.network.chat.Component;
 
-/** Icon-only undo/redo control; the accessible name also supplies its tooltip. */
 final class HistoryButton extends AbstractButton {
     private final boolean redo;
     private final Runnable action;

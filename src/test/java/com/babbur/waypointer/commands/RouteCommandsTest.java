@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The target route, how commands name routes and waypoints, and that every command acts on the target. */
 class RouteCommandsTest {
 
     private final ActiveGroupManager manager = new ActiveGroupManager();

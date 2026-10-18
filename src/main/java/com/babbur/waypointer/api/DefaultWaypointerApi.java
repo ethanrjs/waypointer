@@ -22,13 +22,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * Default implementation backed by Waypointer's in-memory group manager.
- *
- * <p>Constructed by Waypointer after storage has loaded. Consumers receive this
- * as the {@link WaypointerApi} interface, not as a mutable state owner.
- * Third-party integrations must not construct or cast to this implementation.
- */
 @SuppressWarnings("deprecation")
 public final class DefaultWaypointerApi implements WaypointerApi {
 

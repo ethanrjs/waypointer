@@ -14,7 +14,6 @@ import net.minecraft.client.Minecraft;
 public final class StructureRelayController {
     private static volatile StructureRelayController installed;
     private static final String ENDPOINT = "wss://waypointer-structures.ethanmrettinger.workers.dev/v1/structures";
-    // Live updates arrive immediately; snapshots only reconcile lobby age and missed state.
     private static final long SYNC_INTERVAL_MILLIS = 5 * 60_000L;
     private final CrystalHollowsTracker tracker;
     private final WaypointerConfig config;
@@ -34,14 +33,12 @@ public final class StructureRelayController {
     private boolean reportedClosing;
     private long diagnosticGeneration;
 
-    /** Sanitized controller state. A queue count of -1 means the transport does not expose it. */
     public record DebugSnapshot(boolean installed, boolean enabled, boolean lobbyActive,
                                 boolean connected, boolean connecting, String authentication,
                                 boolean subscribed, long backoffRemainingMillis, int failures,
                                 int inboundQueueCount, int sentCacheCount, int publicationWindowCount,
                                 long generation, String status) {}
 
-    /** Read on the client thread; does not connect, send, poll, or change retry state. */
     public static DebugSnapshot debugSnapshot() {
         var controller = installed;
         return controller == null
@@ -61,7 +58,6 @@ public final class StructureRelayController {
         long backoff = !open && !connecting ? Math.max(0, nextConnect - now) : 0;
         String status = !enabled ? "disabled" : lobby == null ? "idle" : open ? "connected"
                 : connecting ? "connecting" : backoff > 0 ? "backoff" : "disconnected";
-        // The relay joins its room during the socket handshake, without a separate subscription message.
         return new DebugSnapshot(true, enabled, lobby != null, open, connecting, "not_required",
                 open && lobby != null, backoff, failures, -1, sent.size(), publications.size(),
                 diagnosticGeneration, status);
@@ -108,7 +104,6 @@ public final class StructureRelayController {
         int day = CrystalHollowsLobbyIdentity.currentDay(client.level);
         long dayTicks = CrystalHollowsLobbyIdentity.currentDayTicks(client.level);
         int closingInSeconds = tracker.closingInSeconds(SidebarTexts.collectColorStripped(client), now);
-        // Relay observations are retained by the room. Other providers keep their own expiry.
         if (lobby.expireRemoteSightings(now - 1_800_000, SkyblockerStructureProtocol.SOURCE)) {
             tracker.rebuildProjection();
         }
@@ -135,7 +130,6 @@ public final class StructureRelayController {
             openedAt = now;
             nextSync = now + SYNC_INTERVAL_MILLIS;
         }
-        // A socket the server accepts and then drops must keep backing off; only a stable session resets.
         if (failures > 0 && now - openedAt >= STABLE_SESSION_MILLIS) failures = 0;
         tracker.batchDetections(() -> connection.drain(message ->
                 tracker.applyRelayUpdate(StructureRelayProtocol.decodeUpdate(message, age, now))));
@@ -174,7 +168,6 @@ public final class StructureRelayController {
     }
 
     boolean syncDue(long now, long age, int closingInSeconds) {
-        // Resync early when a lagging server approaches the relay's 60-second age tolerance.
         return closingInSeconds >= 0 && !reportedClosing || now - lastSyncAt >= 55_000 && (now >= nextSync
                 || Math.abs(age - lastSyncAge - (now - lastSyncAt) / 50) >= 900);
     }

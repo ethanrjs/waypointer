@@ -188,8 +188,6 @@ public final class WaypointPainterScreen extends Screen {
         int left = layout.gridLeft() + faceColumn * WaypointPaint.SIZE * layout.cell();
         int top = layout.gridTop() + faceRow * WaypointPaint.SIZE * layout.cell();
         int faceSize = WaypointPaint.SIZE * layout.cell();
-        // Each face is its own stratum and same-colour runs are one rectangle: every GUI element is
-        // checked against the overlapping ones already in its stratum.
         g.nextStratum();
         g.fill(left - 1, top - 1, left + faceSize + 1, top + faceSize + 1, BORDER);
         for (int y = 0; y < WaypointPaint.SIZE; y++) {
@@ -739,12 +737,10 @@ public final class WaypointPainterScreen extends Screen {
 
         @Override
         public void onPress(InputWithModifiers input) {
-            // Focus is the action; painting is handled by the screen with pixel coordinates.
         }
 
         @Override
         protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-            // Focus is shown on the keyboard cursor cell, not around the pane.
         }
 
         @Override

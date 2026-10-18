@@ -1,6 +1,5 @@
 package com.babbur.waypointer.render.gpu;
 
-/** Fingerprint and local origin for retained static geometry. */
 public record SceneKey(long hash, int originX, int originY, int originZ,
                        Object levelIdentity) {
 

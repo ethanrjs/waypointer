@@ -123,8 +123,6 @@ class RenderHelpersTest {
                 0, 0, 0, 1, 1, 1, 1,
                 0.5, 0.5, 2.0, width, height, padding);
 
-        // Sample near both edges of each screen-space painted column. Center-only
-        // samples would miss the old half-texel inset compressing the border columns.
         float left = consumer.textureUs.get(2);
         float right = consumer.textureUs.get(0);
         for (int column = 0; column < 16; column++) {

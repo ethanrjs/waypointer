@@ -2,7 +2,6 @@ package com.babbur.waypointer.crystal;
 
 import java.util.List;
 
-/** Authoritative Crystal Hollows bounds and fixed locations. */
 public final class CrystalHollowsGeometry {
 
     public static final int MIN_XZ = 201;

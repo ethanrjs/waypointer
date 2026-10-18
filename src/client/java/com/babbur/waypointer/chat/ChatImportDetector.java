@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** Replaces share codes in chat with clickable import text. */
 public final class ChatImportDetector {
 
     private static final ChatFormatting PILL_COLOR = ChatFormatting.AQUA;
@@ -62,7 +61,6 @@ public final class ChatImportDetector {
         return runs;
     }
 
-    /** Preserves the original styling outside each matched share code. */
     private MutableComponent spliceMatches(List<StyledRun> runs, List<CodecScanner.Match> matches) {
         MutableComponent out = Component.empty();
         int flatPos = 0;
@@ -174,7 +172,6 @@ public final class ChatImportDetector {
                 })
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
 
-        // For route shares, decode only the label here; full decoding follows the click.
         String label = type == UniversalShareCodec.Type.WAYPOINTS
                 ? peekLabelSafely(match.text())
                 : "";

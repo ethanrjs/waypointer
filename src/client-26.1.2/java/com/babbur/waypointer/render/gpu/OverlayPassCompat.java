@@ -26,7 +26,6 @@ import java.util.OptionalInt;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Minecraft 26.1.2 render-pass compatibility. */
 final class OverlayPassCompat {
 
     private static final Matrix4f IDENTITY = new Matrix4f();
@@ -43,7 +42,6 @@ final class OverlayPassCompat {
         return RenderSystem.getProjectionMatrixBuffer();
     }
 
-    /** Uses the level view matrix; RenderSystem's model-view stack stays at identity. */
     static Matrix4f positionMatrix(LevelRenderContext ctx) {
         return new Matrix4f(ctx.levelState().cameraRenderState.viewRotationMatrix);
     }
@@ -107,9 +105,9 @@ final class OverlayPassCompat {
             float far = Float.MAX_VALUE;
             ByteBuffer bytes = Std140Builder.onStack(stack, FOG_UBO_BYTES)
                     .putVec4(0.0f, 0.0f, 0.0f, 0.0f)
-                    .putFloat(far).putFloat(far)   // environmental start/end
-                    .putFloat(far).putFloat(far)   // render-distance start/end
-                    .putFloat(far).putFloat(far)   // sky end / clouds end
+                    .putFloat(far).putFloat(far)
+                    .putFloat(far).putFloat(far)
+                    .putFloat(far).putFloat(far)
                     .get();
             GpuBuffer buffer = createUniformBuffer(label, FOG_UBO_BYTES);
             encoder().writeToBuffer(buffer.slice(), bytes);

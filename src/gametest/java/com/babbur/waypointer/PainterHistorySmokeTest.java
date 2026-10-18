@@ -13,7 +13,6 @@ import net.minecraft.client.input.MouseButtonInfo;
 import java.util.Arrays;
 import static org.lwjgl.glfw.GLFW.*;
 
-/** Actual client mouse strokes, keyboard shortcuts, and undo/redo controls. */
 @SuppressWarnings("UnstableApiUsage")
 final class PainterHistorySmokeTest {
     static void run(ClientGameTestContext context) {
@@ -36,7 +35,6 @@ final class PainterHistorySmokeTest {
                 check(Arrays.equals(initial, pixels), "Texture undo did not undo the whole stroke");
                 click(painter, (AbstractWidget) field(painter, "redoButton"));
                 check(Arrays.equals(painted, pixels), "Texture redo button did not restore stroke");
-                // Repainting the same cells is a no-op and must not add an undo step.
                 stroke(painter, x, y, x + cell, y);
                 click(painter, (AbstractWidget) field(painter, "undoButton"));
                 check(Arrays.equals(initial, pixels), "No-op stroke added an undo step");

@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Passive server-clock estimates. Arrival timing cannot prove server processing time. */
 public final class ServerTickEstimator {
     private static final long SECOND = 1_000_000_000L;
     private static final int CAPACITY = 256;
@@ -58,7 +57,6 @@ public final class ServerTickEstimator {
                 }
                 return;
             }
-            // Clock rewrites are not TPS; keep normal lag gaps and catch-up bursts in the window.
             if (ticks < previous.ticks || ticks - previous.ticks > 12_000
                     || now - previous.at > 180 * SECOND) {
                 samples.clear();
@@ -140,8 +138,6 @@ public final class ServerTickEstimator {
         Sample first = points.getFirst(), last = points.getLast();
         double elapsed = (last.at - first.at) / (double) SECOND;
         double observed = (last.ticks - first.ticks) / elapsed;
-        // Long-span median slopes reduce endpoint jitter without discarding slow samples from observed TPS.
-        // ponytail: bounded 256-sample pairwise fit on debug capture; streaming fit if used in a per-frame HUD.
         ArrayList<Double> slopes = new ArrayList<>();
         for (int i = 0; i < points.size(); i++) for (int j = i + 1; j < points.size(); j++) {
             Sample a = points.get(i), b = points.get(j);

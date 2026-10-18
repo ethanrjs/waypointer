@@ -44,7 +44,6 @@ public final class ActiveGroupManager {
         return currentZone;
     }
 
-    /** Boss routes only show once the player is in the boss arena. */
     public void setInDungeonBoss(boolean inBoss) {
         if (inDungeonBoss == inBoss) return;
         inDungeonBoss = inBoss;
@@ -121,7 +120,6 @@ public final class ActiveGroupManager {
                 && (inDungeonBoss || !isBossRoute(group));
     }
 
-    /** A floor route made of dungeon actions; it has fixed coordinates, so it is a boss route. */
     private static boolean isBossRoute(WaypointGroup group) {
         return group.routeKind() == WaypointGroup.RouteKind.REGULAR && group.usesDungeonSteps();
     }
@@ -567,10 +565,6 @@ public final class ActiveGroupManager {
         return firstActiveRouteGroup();
     }
 
-    /**
-     * The route that new waypoints, keybinds and {@code /wp} commands act on in the current zone:
-     * the pinned route, else the route last edited here, else the first shown route. Never creates one.
-     */
     public WaypointGroup targetRoute() {
         return firstActiveRouteGroup();
     }

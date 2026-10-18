@@ -47,16 +47,13 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
 public final class RoutePublishScreen extends Screen implements RoutePickerHost {
     private static final int PANEL_MARGIN = 16;
     private static final int LINE_H = 10;
-    /** A label line and the gap below it, above its field. */
     private static final int LABEL_H = LINE_H + GAP_TIGHT;
-    /** Space between one field and the next field's label. */
     private static final int FIELD_GAP = 12;
     private static final int FIELD_STRIDE = LABEL_H + BTN_H + FIELD_GAP;
     private static final int DESCRIPTION_H = 64;
     private static final int MIN_DESCRIPTION_H = 26;
     private static final int FORM_FIELDS_H = FIELD_STRIDE + LABEL_H + DESCRIPTION_H + FIELD_GAP
             + LABEL_H + BTN_H;
-    /** The description box gives up height first when the window is short. */
     private int descriptionH = DESCRIPTION_H;
 
     private static final int TIGHT_HEIGHT = 340;
@@ -192,7 +189,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 .build(font, formW, descriptionH,
                         Component.translatable(
                                 "waypointer.screen.route_publish.field.description"));
-        // The listener enforces the code-point limit; Minecraft counts UTF-16 units.
         descriptionBox.setValue(form.description());
         descriptionBox.setValueListener(value -> {
             if (initializing || normalizingDescription) return;
@@ -321,7 +317,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                         "waypointer.screen.route_publish.action.manage.tooltip")));
         addRenderableWidget(manageButton);
 
-        // Adding routes, or copying the link once published, sits beside the summary it changes.
         Component addLabel = Component.translatable(
                 form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON
                         ? "waypointer.screen.route_publish.action.add_room_routes"
@@ -513,7 +508,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 session::confirmPublisherName);
     }
 
-    /** Reuse the stored name if a catalog reset erased its registration. */
     private String promptedPublisherName(CatalogPublishSession.Snapshot state) {
         PublisherIdentity identity = state.identity();
         return identity != null && identity.publisherName() != null
@@ -521,7 +515,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 : defaultPublisherName();
     }
 
-    /** Copies the catalog reference code, including for unlisted routes. */
     private void copyPublishedCode() {
         if (publishState.publishedPayload() == null || minecraft == null) return;
         String code = publishState.result() != null && publishState.result().route() != null
@@ -617,7 +610,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         renderVisibilitySelection(graphics);
     }
 
-    /** The header text stops short of the button beside it. */
     private int headerTextWidth() {
         Button beside = copyButton != null && copyButton.visible ? copyButton : addRoutesButton;
         int buttonW = beside == null || !beside.visible ? 0 : beside.getWidth() + GAP;
@@ -635,10 +627,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 GuiTokens.ACCENT);
     }
 
-    /**
-     * A field's label, with a quiet count on the right: towards the minimum while the
-     * text is too short, and towards the maximum once it gets close to it.
-     */
     private void drawFieldLabel(GuiGraphicsExtractor graphics, Component label, int y,
                                 String value, int minimum, int maximum) {
         int labelMaxW = formW;
@@ -680,7 +668,6 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         }
     }
 
-    /** Problems with what is being typed; the field's counter shows them, not a red line. */
     private static boolean fieldProblem(CatalogPublishFormModel.Validation validation) {
         return validation == CatalogPublishFormModel.Validation.TITLE_REQUIRED
                 || validation == CatalogPublishFormModel.Validation.DESCRIPTION_TOO_SHORT

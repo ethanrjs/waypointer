@@ -88,7 +88,6 @@ public final class PublisherIdentityStore {
         return file;
     }
 
-    /** Public metadata only; inspection never creates, synchronizes, or repairs identity files. */
     public record IdentityStatus(String status, String publisherId, String publisherName) { }
 
     public record Diagnostics(IdentityStatus profile, IdentityStatus shared, String comparison) { }
@@ -221,7 +220,6 @@ public final class PublisherIdentityStore {
         return savePublisherName(identity, name, false);
     }
 
-    // Only a validated successful publish receipt may replace a rejected local name claim.
     PublisherIdentity saveConfirmedPublisherName(CatalogPublishReceipt receipt) {
         return savePublisherName(receipt.identity(), receipt.expectedPublisherName(), true);
     }
@@ -257,7 +255,6 @@ public final class PublisherIdentityStore {
                         PublisherIdentity sharedIdentity = sharedIdentity(stored);
                         if (sharedIdentity != null
                                 && sharedIdentity.publisherId().equals(named.publisherId())) {
-                            // Claim the shared name under its cross-process lock before updating the profile.
                             shared.savePublisherName(sharedIdentity, validName, confirmed);
                         }
                     }
@@ -276,7 +273,6 @@ public final class PublisherIdentityStore {
         try {
             return new PublisherIdentityStore(sharedFile).loadOrCreate(local);
         } catch (CatalogStorageException failure) {
-            // A damaged backup must not lock a player out of a valid profile key.
             Waypointer.LOGGER.warn("Could not synchronize the shared publisher identity; "
                     + "the current profile identity is still available", failure);
             return null;

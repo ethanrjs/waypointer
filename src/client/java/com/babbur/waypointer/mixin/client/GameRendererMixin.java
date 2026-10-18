@@ -7,7 +7,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Runs the optional post-world overlay after level rendering. */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
 

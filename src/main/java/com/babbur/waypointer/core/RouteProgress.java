@@ -5,7 +5,6 @@ import com.babbur.waypointer.util.MathUtil;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Counts and formats route progress. */
 public final class RouteProgress {
 
     private RouteProgress() {}

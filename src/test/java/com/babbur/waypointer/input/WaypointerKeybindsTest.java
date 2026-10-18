@@ -116,12 +116,10 @@ class WaypointerKeybindsTest {
 
         assertEquals(0, manager.activeGroups().size());
 
-        // Retreat can restore progress on a completed stored route.
         assertEquals(1, WaypointerKeybinds.retreatPreviousWaypointTargets(manager));
         manager.fireDataChanged();
         assertEquals(1, group.currentIndex());
 
-        // Stored dungeon routes render through projected mirrors; see DungeonRoomRouteSyncTest.
         assertEquals(0, manager.activeGroups().size());
     }
 

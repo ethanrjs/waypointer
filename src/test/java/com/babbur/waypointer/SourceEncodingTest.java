@@ -19,22 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Guards shipped Java sources against text that was saved through the wrong
- * charset. UTF-8 read back as Windows-1252 turns a middle dot (U+00B7) into
- * U+00C2 U+00B7, an accented letter such as U+00E9 into U+00C3 U+00A9, and an
- * em dash into U+00E2 U+20AC U+201D; those strings then render verbatim in
- * game (issue #153).
- */
 class SourceEncodingTest {
 
     private static final Path SOURCE_DIR = Path.of("src");
 
-    /**
-     * Lead characters of UTF-8 decoded as Windows-1252 or Latin-1 (U+00C2,
-     * U+00C3, U+00E2 U+20AC), the replacement character U+FFFD left by a lossy
-     * decode, and C1 controls left by a Latin-1 decode.
-     */
     private static final Pattern MOJIBAKE = Pattern.compile(
             "[ÂÃ�\u0080-\u009f]|â€");
 
@@ -67,12 +55,10 @@ class SourceEncodingTest {
         assertTrue(hasMojibake("Secret Route â€” A"));
         assertTrue(hasMojibake("broken � text"));
         assertTrue(hasMojibake("latin-1 \u0092 quote"));
-        // Unicode escapes are part of the source text the compiler sees.
         assertTrue(hasMojibake("\" \\u00C2\\u00B7 \""));
 
         assertFalse(hasMojibake("Secret · Item — Khazad-dûm §c ✓"));
         assertFalse(hasMojibake("\" \\u00b7 \\u00a7 \""));
-        // An escaped backslash does not start a Unicode escape.
         assertFalse(hasMojibake("\"\\\\u00c3\""));
     }
 
@@ -125,7 +111,6 @@ class SourceEncodingTest {
         return matcher.find();
     }
 
-    /** Applies JLS 3.3 Unicode escape translation to one line of source. */
     private static String decodeUnicodeEscapes(String line) {
         StringBuilder out = new StringBuilder(line.length());
         int i = 0;
@@ -140,8 +125,6 @@ class SourceEncodingTest {
             while (i + backslashes < line.length() && line.charAt(i + backslashes) == '\\') {
                 backslashes++;
             }
-            // A backslash starts a Unicode escape only when an even number of
-            // backslashes precede it, i.e. only the last of an odd-length run.
             if (backslashes % 2 == 0) {
                 out.append("\\".repeat(backslashes));
                 i += backslashes;

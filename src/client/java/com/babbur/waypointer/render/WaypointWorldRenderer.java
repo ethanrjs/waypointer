@@ -674,11 +674,6 @@ class WaypointWorldRenderer {
         }
     }
 
-    /**
-     * Draws the path that ends the current step (its trailing subwaypoints with no action,
-     * as imported routes store it) as one line. Returns false when there is no such path
-     * of two or more points, so the plain segment is drawn instead.
-     */
     static boolean forEachStepPathSegment(WaypointGroup group, boolean depthCheckedPass,
                                           Predicate<Waypoint> lineOfSight,
                                           IntPredicate endpointVisible,
@@ -811,7 +806,6 @@ class WaypointWorldRenderer {
         return true;
     }
 
-    /** Whether any waypoint draws only in line of sight; points without their own style share one lookup. */
     boolean anyLineOfSight(Iterable<WaypointGroup> groups) {
         for (WaypointGroup group : groups) {
             for (Waypoint waypoint : group.waypoints()) {
@@ -822,7 +816,6 @@ class WaypointWorldRenderer {
         return false;
     }
 
-    /** Whether any waypoint draws through walls. */
     boolean anyThroughWall(Iterable<WaypointGroup> groups) {
         for (WaypointGroup group : groups) {
             Boolean shared = null;
@@ -1874,7 +1867,6 @@ class WaypointWorldRenderer {
         return WaypointStyles.resolve(config, group, waypoint);
     }
 
-    /** The waypoint's own line-of-sight flag, or Line of sight only from its appearance. */
     boolean lineOfSight(WaypointGroup group, Waypoint waypoint) {
         return waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED) || styleFor(group, waypoint).lineOfSightOnly();
     }
@@ -1888,11 +1880,6 @@ class WaypointWorldRenderer {
         return false;
     }
 
-    /**
-     * Whether any waypoint of the route resolves to a matching style. Points without their own
-     * override all share the route's style, so it is resolved once rather than per point: these
-     * checks run several times a frame and a long route has thousands of points.
-     */
     private boolean anyWaypointStyle(WaypointGroup group, Predicate<WaypointerConfig> predicate) {
         boolean sharedChecked = false;
         for (Waypoint waypoint : group.waypoints()) {

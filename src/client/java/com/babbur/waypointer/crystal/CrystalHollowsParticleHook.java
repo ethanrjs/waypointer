@@ -3,7 +3,6 @@ package com.babbur.waypointer.crystal;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.ParticleTypes;
 
-/** Filters compass particles without allocations. */
 public final class CrystalHollowsParticleHook {
 
     @FunctionalInterface

@@ -13,7 +13,6 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Privacy filtering of captured report sections; never reads game state, files, or the clipboard. */
 public final class DebugReportAnonymizer {
     private static final String OMITTED = "[Omitted: raw text can contain player names and account data; structured diagnostics are retained.]";
     private static final Pattern UUID = Pattern.compile("(?i)(?<![\\da-f])(?:[\\da-f]{8}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{4}-[\\da-f]{12}|[\\da-f]{32})(?![\\da-f])");
@@ -33,7 +32,6 @@ public final class DebugReportAnonymizer {
 
     private DebugReportAnonymizer() { }
 
-    /** Removes labeled credentials only, retaining personal information explicitly shared by the user. */
     public static String removeSecrets(String report) {
         if (report == null) return "";
         String result = SECRET.matcher(report).replaceAll("$1[Secret omitted]");
@@ -41,11 +39,6 @@ public final class DebugReportAnonymizer {
         return URL_CREDENTIALS.matcher(result).replaceAll("$1[Credentials omitted]@");
     }
 
-    /**
-     * Replaces identifiers with report-local aliases. The caller supplies player/profile names and
-     * local OS identity values. Coordinates, hardware, versions and technical diagnostics remain.
-     * This does not make arbitrary free text or attached images anonymous; callers must explain this.
-     */
     public static String anonymize(List<DebugReportExport.Section> sections, Collection<String> sensitiveValues) {
         Filter filter = new Filter(sensitiveValues);
         List<DebugReportExport.Section> result = new ArrayList<>();
@@ -54,7 +47,6 @@ public final class DebugReportAnonymizer {
                         + "such as exact coordinates, route geometry, PC specs, mods, settings, and other diagnostics. "
                         + "You SHOULD review before sending.")));
         if (sections == null) return DebugReportExport.format(result, null);
-        // Discover user-controlled fields before filtering: an earlier log may repeat a later route name.
         for (var section : sections) {
             if (section == null || section.heading().equals("Codec Clipboard")) continue;
             for (String line : section.lines()) filter.sectionLine(section.heading(), flat(line));
@@ -107,7 +99,6 @@ public final class DebugReportAnonymizer {
 
         private String remember(String value) {
             String replacement = alias(value);
-            // Numeric labels must never replace coordinates, dimensions, flags or version parts.
             if (!EMPTY.contains(value) && !value.matches("[\\d\\W]+")) {
                 known.put(value, replacement);
                 String normalized = flat(value).trim();
@@ -171,7 +162,6 @@ public final class DebugReportAnonymizer {
             if (heading.equals("Active Routes and Waypoints")) {
                 Matcher m = WAYPOINT_NAME.matcher(line);
                 if (m.find()) return line.substring(0, m.start(2)) + remember(m.group(2)) + line.substring(m.end(2));
-                // A truncated name has no closing delimiter. Keep the geometry before it.
                 int name = line.indexOf(" name=\"");
                 if (name >= 0) return line.substring(0, name) + " name=" + remember(line.substring(name + 7));
             }
@@ -209,7 +199,6 @@ public final class DebugReportAnonymizer {
             result = replaceMatches(result, EMAIL);
             result = replaceMatches(result, PATH);
             result = replaceMatches(result, UUID);
-            // GPU driver and mod versions often have four numeric components, like IPv4 addresses.
             if (!technical) {
                 result = replaceMatches(result, IPV4);
                 result = replaceMatches(result, IPV6);
@@ -222,7 +211,6 @@ public final class DebugReportAnonymizer {
         }
     }
 
-    /** Frozen once after discovery. Aliases are protected from matching user text such as 'private'. */
     private static final class Replacement {
         private final Pattern pattern;
         private final Map<String, String> values = new LinkedHashMap<>();

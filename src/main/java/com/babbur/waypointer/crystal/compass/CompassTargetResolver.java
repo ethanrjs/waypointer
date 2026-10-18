@@ -6,7 +6,6 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 
-/** Resolves a triangulated point against the server's Wishing Compass target rules. */
 public final class CompassTargetResolver {
 
     private CompassTargetResolver() {}

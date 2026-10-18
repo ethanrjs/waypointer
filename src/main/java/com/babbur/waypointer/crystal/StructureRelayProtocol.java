@@ -80,7 +80,6 @@ public final class StructureRelayProtocol {
         return update == null ? List.of() : update.sightings();
     }
 
-    /** A null result is invalid; a valid empty snapshot must still clear stale relay data. */
     public static Update decodeUpdate(String message, long age, long now) {
         if (message == null || message.length() > MAX_MESSAGE || age < 0 || age > MAX_AGE) return null;
         try {

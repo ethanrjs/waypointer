@@ -5,7 +5,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-/** Pure planner for the session-only Structures folder and its generated route groups. */
 public final class CrystalHollowsStructureFolder {
 
     public static final String FOLDER_ID = "crystal_hollows:structures";

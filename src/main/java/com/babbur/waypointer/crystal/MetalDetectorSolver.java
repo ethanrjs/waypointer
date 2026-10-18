@@ -71,7 +71,6 @@ public final class MetalDetectorSolver {
             }
         }
         Reading reading = new Reading(x, y, z, distance);
-        // A fresh packet after observed standstill need not wait for another packet.
         boolean stable = positionStable || previous != null && reading.stableWith(previous);
         previous = reading;
         if (!stable) return;
@@ -80,15 +79,12 @@ public final class MetalDetectorSolver {
             if (reading.matches(candidate)) matches.add(candidate);
         }
         if (matches.isEmpty()) {
-            // A contradictory reading starts the next treasure search.
             readings.clear();
             for (CrystalHollowsPosition position : knownPositions) {
                 if (reading.matches(position)) matches.add(position);
             }
             if (matches.isEmpty()) addDistanceShell(reading, matches);
         }
-        // After 64 readings, narrow existing candidates; reset starts a fresh search.
-        // Keeping every retained reading prevents a newly visible chest undoing earlier evidence.
         if (readings.size() < 64) {
             for (CrystalHollowsPosition chest : visibleChests) {
                 if (chest != null && reading.matches(chest)
@@ -99,8 +95,6 @@ public final class MetalDetectorSolver {
         candidates = List.copyOf(matches);
     }
 
-    // Divan treasure occupies Y 65..75. Search the rounded-distance shell, not the
-    // entire volume, when no keeper anchor is loaded (or its template does not match).
     private static void addDistanceShell(Reading reading, Collection<CrystalHollowsPosition> matches) {
         double lower = Math.max(0, reading.distance - 0.05);
         double upper = reading.distance + 0.05;

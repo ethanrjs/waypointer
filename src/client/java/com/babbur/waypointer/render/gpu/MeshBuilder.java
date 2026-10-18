@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
 
-/** CPU vertex buffer that follows the active pipeline layout. */
 public final class MeshBuilder implements VertexConsumer, AutoCloseable {
 
     private static final int INITIAL_VERTICES = 256;
@@ -70,7 +69,6 @@ public final class MeshBuilder implements VertexConsumer, AutoCloseable {
         return storedVertexCount() * layout.stride();
     }
 
-    /** Returns the current vertex bytes. */
     public ByteBuffer bytes() {
         finishVertex();
         ByteBuffer view = buffer.duplicate().order(ByteOrder.nativeOrder());

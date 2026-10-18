@@ -165,7 +165,6 @@ public final class Setting {
         return this;
     }
 
-    /** Local consent must not be changed by a settings code from another player. */
     public Setting localOnly() {
         localOnly = true;
         return this;
@@ -194,7 +193,6 @@ public final class Setting {
         return this;
     }
 
-    // Maps a numeric sentinel to a localized label.
     public Setting numberDisplay(
             double value, String translationKey, String fallback) {
         if (kind != Kind.NUMBER || !Double.isFinite(value)

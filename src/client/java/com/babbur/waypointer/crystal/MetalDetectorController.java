@@ -64,7 +64,6 @@ public final class MetalDetectorController {
         });
     }
 
-    /** Dedicated action-bar packets bypass Fabric's game-message event. */
     public static Component onActionBarPacket(Component message) {
         return installed == null ? message : installed.onMessage(message, true);
     }
@@ -172,8 +171,6 @@ public final class MetalDetectorController {
         group.setLoadMode(solved ? WaypointGroup.LoadMode.SEQUENCE : WaypointGroup.LoadMode.STATIC);
         group.setSkipAheadEnabled(false);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        // A first distance shell can contain hundreds of positions; keep its full
-        // evidence in the solver while bounding temporary render geometry.
         for (CrystalHollowsPosition position : positions.stream().limit(128).toList()) {
             group.add(Waypoint.at(position.x(), position.y(), position.z()).withName(name)
                     .withColor(solved ? 0xFFD54F : 0xC0C0C0)

@@ -16,9 +16,6 @@ public final class DungeonRoomWaypointPlacement {
 
     private DungeonRoomWaypointPlacement() {}
 
-    /**
-     * Returns null when a world position cannot be converted to the route's local coordinates.
-     */
     public static Waypoint toStoredWaypoint(WaypointGroup group, Waypoint actualWaypoint) {
         if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
             CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(group);
@@ -36,7 +33,6 @@ public final class DungeonRoomWaypointPlacement {
         return canPlaceInRoom(group, currentRoomFor(group));
     }
 
-    /** The editor starts unlocated structure waypoints at their NPC-relative origin. */
     public static Waypoint editorDefaultWaypoint(WaypointGroup group, Waypoint playerWaypoint) {
         if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
             CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(group);
@@ -50,7 +46,6 @@ public final class DungeonRoomWaypointPlacement {
         return group != null && (group.routeKind() != WaypointGroup.RouteKind.DUNGEON || room != null);
     }
 
-    /** Why a placement on this route is unavailable; the dungeon-room reason when the route is unknown. */
     public static Component unavailableMessage(WaypointGroup group) {
         if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
             return CrystalHollowsStructureRoutes.unavailableMessage();
@@ -100,7 +95,6 @@ public final class DungeonRoomWaypointPlacement {
                 actual[2]).withStyleOverride(storedWaypoint.styleOverride());
     }
 
-    /** Returns null when the route's room or structure anchor is unavailable. */
     public static int[] toStoredPrecisePosition(WaypointGroup group,
                                                 int actualPreciseX,
                                                 int actualPreciseY,

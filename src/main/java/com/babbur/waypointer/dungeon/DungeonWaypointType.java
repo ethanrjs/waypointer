@@ -5,7 +5,6 @@ import com.babbur.waypointer.core.Waypoint;
 import java.util.ArrayList;
 import java.util.List;
 
-/** User-editable dungeon waypoint labels stored in the existing metadata flags. */
 public enum DungeonWaypointType {
     SECRET("Secret", "S", Waypoint.FLAG_DUNGEON_SECRET),
     ETHERWARP("Etherwarp", "E", Waypoint.FLAG_DUNGEON_ETHERWARP),
@@ -42,10 +41,6 @@ public enum DungeonWaypointType {
         return waypoint != null && waypoint.hasFlag(flag);
     }
 
-    /**
-     * Select only this label for a manual edit. Imported waypoints can still carry
-     * combined metadata until a user changes their type.
-     */
     public Waypoint selectExclusive(Waypoint waypoint) {
         if (waypoint == null) return null;
         int flags = waypoint.flags() & ~Waypoint.DUNGEON_METADATA_FLAGS;

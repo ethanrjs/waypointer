@@ -3,7 +3,6 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.*;
 import java.util.List;
 
-/** Editor state, deliberately independent of the sharing codec. */
 record RouteEditState(String name, String zoneId, boolean enabled, WaypointGroup.LoadMode loadMode,
                       WaypointGroup.GradientMode gradientMode, int staticColor,
                       int startColor, int endColor, double radius, boolean skipAhead,

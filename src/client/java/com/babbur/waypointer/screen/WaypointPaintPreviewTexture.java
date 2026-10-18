@@ -111,7 +111,6 @@ final class WaypointPaintPreviewTexture {
                 FaceQuad face = FACES[faceIndex];
                 double nz = -face.nx * sy + face.nz * cy;
                 double nzz = face.ny * sp + nz * cp;
-                // Perspective facing depends on the camera-to-face vector, not just its normal.
                 visibleFaces[faceIndex] = 4.2 * nzz > 1.0;
                 if (!visibleFaces[faceIndex]) continue;
                 drawTriangle(face.face,

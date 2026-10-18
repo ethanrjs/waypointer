@@ -1,6 +1,5 @@
 package com.babbur.waypointer.crystal;
 
-/** North-up projection of the whole lobby; X runs right and Z runs down. */
 public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean navigation) {
     public static final int PADDING = 6;
     public static final int HEADER = 20;
@@ -64,7 +63,6 @@ public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean naviga
     public int width() { return size + PADDING * 2; }
     public int height() { return size + HEADER + (navigation ? FOOTER : PADDING); }
 
-    /** Match the map's odd/even size so the schematic platform shares its exact center. */
     public Rect nucleus() {
         int cx = project(CrystalHollowsGeometry.NUCLEUS_CENTRE_X);
         int cy = project(CrystalHollowsGeometry.NUCLEUS_CENTRE_Z);
@@ -84,7 +82,6 @@ public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean naviga
 
     public int marker(double coordinate) { return Math.round(markerCenter(coordinate) - 0.5f); }
 
-    /** Schematic quadrants meet at the Nucleus; retain its exact center for moving markers. */
     public float markerCenter(double coordinate) {
         if (!Double.isFinite(coordinate)) throw new IllegalArgumentException("Non-finite map coordinate");
         double center = CrystalHollowsGeometry.NUCLEUS_CENTRE_X;
@@ -94,7 +91,6 @@ public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean naviga
         return (float) Math.clamp(0.5 + fraction * (size - 1) / 2.0, 5.5, size - 5.5);
     }
 
-    /** Try each side of a marker; crowded labels yield to the map's symbols. */
     public Rect label(int markerX, int markerY, int width, java.util.List<Rect> occupied) {
         return label(markerX, markerY, width, occupied, 8);
     }

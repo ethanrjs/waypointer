@@ -84,26 +84,20 @@ class HypixelApiZoneSourceTest {
         HypixelApiZoneSource source = new HypixelApiZoneSource(manager::onZoneChanged);
         try {
             source.updateWorld(new Object());
-            // Cold entry on a lagging server: the sidebar has no area line yet. The player list
-            // must repeat the same area for a second before it is trusted.
             for (int poll = 1; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
                 source.acceptSidebar("Purse: 10", () -> "Dwarven Mines");
                 assertNull(manager.currentZone());
             }
             source.acceptSidebar("Purse: 10", () -> "Dwarven Mines");
             assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
-            // The player list never overrides a known zone while the sidebar is incomplete.
             source.acceptSidebar("", () -> "Hub");
             assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
-            // The sidebar remains authoritative once it carries an area line.
             source.acceptSidebar("\u23e3 Hub", () -> "Dwarven Mines");
             assertEquals(Zone.fromId("hub"), manager.currentZone());
-            // A location packet wins over both.
             source.acceptLocation("SKYBLOCK", "Dwarven Mines", "mining_3", "mini1A", "");
             assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
             source.acceptSidebar("", () -> "Hub");
             assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
-            // A new world starts over and the player list can answer first again.
             source.updateWorld(new Object());
             assertNull(manager.currentZone());
             source.acceptSidebar(null, () -> null);
@@ -112,7 +106,6 @@ class HypixelApiZoneSourceTest {
                 source.acceptSidebar(null, () -> "Crystal Hollows");
             }
             assertEquals(Zone.fromId("crystal_hollows"), manager.currentZone());
-            // Areas the mod does not know never synthesize a zone from the player list.
             source.updateWorld(new Object());
             for (int poll = 0; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS + 2; poll++) {
                 source.acceptSidebar(null, () -> "Center");
@@ -138,20 +131,16 @@ class HypixelApiZoneSourceTest {
             source.acceptSidebar("\u23e3 Glacite Mineshafts\n07/15/26 m197CD UMBE_1");
             assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
             assertEquals(List.of(umber), manager.activeGroups());
-            // The area line is present but the code line was rewritten: routes stay loaded.
             source.acceptSidebar("\u23e3 Glacite Mineshafts\nCold: 12");
             assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
             assertEquals(List.of(umber), manager.activeGroups());
             source.acceptSidebar("");
             assertEquals(List.of(umber), manager.activeGroups());
-            // A different code is real evidence and replaces the layout.
             source.acceptSidebar("\u23e3 Glacite Mineshafts\nTOPA_2");
             assertEquals(Zone.fromId("mineshaft_topaz_2"), manager.currentZone());
             assertTrue(manager.activeGroups().isEmpty());
-            // Leaving to the surface arrives as a new packet zone and is never retained.
             source.acceptLocation("SKYBLOCK", "Dwarven Mines", "mining_3", "mini1A", "\u23e3 Dwarven Mines");
             assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
-            // A new world starts from scratch.
             source.acceptSidebar("\u23e3 Glacite Mineshafts\nUMBE_1");
             source.updateWorld(new Object());
             assertNull(manager.currentZone());
@@ -169,7 +158,6 @@ class HypixelApiZoneSourceTest {
             source.acceptLocation("SKYBLOCK", "Hub", "hub", "mini1A", "");
             assertEquals(Zone.fromId("hub"), manager.currentZone());
             assertNotNull(HypixelApiZoneSource.debugSnapshot().packetReceivedAt());
-            // Without adoption the first level would have wiped the packet.
             source.markPacketAwaitingLevel();
             Object level = new Object();
             source.updateWorld(level);
@@ -234,7 +222,6 @@ class HypixelApiZoneSourceTest {
             source.acceptSidebar(null);
             assertNull(manager.currentZone());
 
-            // No API packet arrives, but the visible mining area can activate saved routes.
             source.acceptSidebar("\uE067 Mithril Deposits");
             assertEquals(List.of(route), manager.activeGroups());
             source.acceptSidebar("\uE067 Jungle");
@@ -261,7 +248,6 @@ class HypixelApiZoneSourceTest {
             source.acceptSidebar("⏣ Hub");
             assertEquals(Zone.fromId("hub"), manager.currentZone());
 
-            // A packet explicitly outside SkyBlock must override even a leftover sidebar.
             source.acceptLocation("BEDWARS", null, null, "mini2B", "⏣ Jungle");
             source.acceptSidebar("⏣ Jungle");
             assertNull(manager.currentZone());

@@ -35,9 +35,9 @@ public final class ColorPickerScreen extends Screen {
     private final IntConsumer onPicked;
     private final WaypointColorPickerState waypointState;
 
-    private float hue;       // [0, 360)
-    private float sat;       // [0, 1]
-    private float value;     // [0, 1]
+    private float hue;
+    private float sat;
+    private float value;
 
     private EditBox hexBox;
     private int svX, svY, hueX, hueY, swatchX, swatchY;
@@ -46,7 +46,7 @@ public final class ColorPickerScreen extends Screen {
     private DynamicTexture hueTex;
     private Identifier svTexId;
     private Identifier hueTexId;
-    private float svTexBakedHue = -1f; // Re-upload the texture when hue changes.
+    private float svTexBakedHue = -1f;
 
     private enum Drag { NONE, SV, HUE }
     private Drag drag = Drag.NONE;

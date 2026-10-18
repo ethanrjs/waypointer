@@ -3,7 +3,6 @@ package com.babbur.waypointer.screen;
 import java.util.ArrayList;
 import java.util.Objects;
 
-/** Bounded, screen-local history of immutable editor states. */
 final class EditHistory<T> {
     private final ArrayList<T> states = new ArrayList<>();
     private int index;

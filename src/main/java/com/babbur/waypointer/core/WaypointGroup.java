@@ -113,7 +113,6 @@ public final class WaypointGroup {
         return copy;
     }
 
-    /** The chosen icon ({@link RouteIcon} form), or empty for the zone's default. */
     public String icon() { return icon; }
     public void setIcon(String spec) { icon = RouteIcon.normalize(spec); }
     public String stylePresetId() { return stylePresetId; }
@@ -314,7 +313,6 @@ public final class WaypointGroup {
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
     public void setVisibleMainSteps(int count)           { this.visibleMainSteps = Math.max(0, count); }
-    /** Shows every enabled waypoint whatever the progress; used while editing a room route in the world. */
     public boolean showAllWaypoints()                    { return showAllWaypoints; }
     public void setShowAllWaypoints(boolean on)          { this.showAllWaypoints = on; }
     public void setRuntimeSourceGroupId(String id)       { this.runtimeSourceGroupId = id; }
@@ -417,7 +415,6 @@ public final class WaypointGroup {
         }
 
         if (cursor >= n) {
-            // A finished floor step route (an imported boss route) clears away.
             if (routeKind != RouteKind.DUNGEON && usesDungeonSteps()) return;
             int lastMain = activeParent >= 0 ? activeParent : lastMainIndex();
             emitPreviousMainContext(lastMain, visibility.previousLimit(n), activeParent,
@@ -476,7 +473,6 @@ public final class WaypointGroup {
         }
     }
 
-    /** The current step's remaining actions and its secret, shown alongside the cursor. */
     private void emitRestOfStep(int main, int cursor, IntConsumer action) {
         int end = childEndExclusive(main);
         for (int i = Math.max(main, cursor) + 1; i < end; i++) {
@@ -552,11 +548,6 @@ public final class WaypointGroup {
         return routeKind == RouteKind.DUNGEON;
     }
 
-    /**
-     * Room routes go step by step, and so do Catacombs floor routes built from dungeon
-     * actions (an imported boss route): routes on a floor whose waypoints are mined,
-     * clicked or stood on. Hand-made floor routes have no actions and stay plain.
-     */
     public boolean usesDungeonSteps() {
         if (routeKind == RouteKind.DUNGEON) return true;
         if (temp) return false;
@@ -575,7 +566,6 @@ public final class WaypointGroup {
         return false;
     }
 
-    /** Steps shown at once: the room setting for room copies, one for floor step routes. */
     public int visibleStepCount() {
         if (routeKind == RouteKind.DUNGEON) return visibleMainSteps;
         return usesDungeonSteps() ? Math.max(1, visibleMainSteps) : 0;
@@ -867,14 +857,12 @@ public final class WaypointGroup {
         return -1;
     }
 
-    /** A child the route cursor visits in order: completable, not any-order, not already done. */
     private boolean isOrderedTarget(int index) {
         if (!isWaypointEnabled(index) || !hasDungeonCompletion(waypoints.get(index))) return false;
         if (!usesDungeonSteps()) return true;
         return !isAnyOrderStepMember(index) && !isStepMemberDone(index);
     }
 
-    /** A dungeon subwaypoint that can be done in any order while its step is active. */
     public boolean isAnyOrderStepMember(int index) {
         return index > 0 && index < waypoints.size()
                 && usesDungeonSteps()
@@ -882,7 +870,6 @@ public final class WaypointGroup {
                 && waypoints.get(index).hasFlag(Waypoint.FLAG_STEP_ANY_ORDER);
     }
 
-    /** The main waypoint that heads the dungeon step the cursor is in, or -1 when complete. */
     public int currentStepStart() {
         if (currentIndex < 0 || currentIndex >= waypoints.size()) return -1;
         return mainIndexAt(currentIndex);
@@ -892,7 +879,6 @@ public final class WaypointGroup {
         return stepDone != null && index >= 0 && index < stepDone.length && stepDone[index];
     }
 
-    /** Remembers a step member done out of order; the cursor skips it later. */
     public boolean markStepMemberDone(int index) {
         if (index < 0 || index >= waypoints.size() || isStepMemberDone(index)) return false;
         if (stepDone == null || stepDone.length != waypoints.size()) {
@@ -911,7 +897,6 @@ public final class WaypointGroup {
                 ? null : snapshot.clone();
     }
 
-    /** Moves the cursor past dungeon targets, and whole steps, whose secret was already done. */
     private void skipDoneDungeonTargets() {
         if (stepDone == null || !usesDungeonSteps()) return;
         while (currentIndex >= 0 && currentIndex < waypoints.size()) {
@@ -1126,7 +1111,6 @@ public final class WaypointGroup {
         clearStandSkipHold();
     }
 
-    /** A manual jump redoes the route from there, so later early secrets count again. */
     private void forgetStepDoneFrom(int index) {
         if (stepDone == null) return;
         for (int i = Math.max(0, index); i < stepDone.length; i++) stepDone[i] = false;

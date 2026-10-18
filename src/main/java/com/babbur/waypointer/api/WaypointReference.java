@@ -2,7 +2,6 @@ package com.babbur.waypointer.api;
 
 import java.util.Objects;
 
-/** A waypoint reference valid only while its captured index still holds the expected snapshot. */
 public record WaypointReference(String groupId, int index, WaypointSnapshot expected) {
 
     public WaypointReference {

@@ -4,7 +4,6 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.ClickEvent;
 
-/** Chat share buttons and route actions send structure coordinates when clicked. */
 public final class CrystalHollowsShare {
     private CrystalHollowsShare() {}
 

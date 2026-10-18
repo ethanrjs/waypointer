@@ -234,7 +234,6 @@ public final class RoutePreviewRenderCore {
                 marker, state.scale(), state.guiScale());
     }
 
-    /** Uses a filled ribbon because the line shader measures against the main framebuffer. */
     private static void emitRibbon(VertexConsumer vertices, PoseStack ps, Basis basis,
                                    double x1, double y1, double z1,
                                    double x2, double y2, double z2,

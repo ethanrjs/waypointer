@@ -4,7 +4,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Minecraft-free name matching and placement offsets for visible NPC anchors. */
 public final class CrystalHollowsEntityAnchor {
 
     public record Match(CrystalHollowsStructure structure, int offsetX, int offsetY, int offsetZ,
@@ -57,7 +56,6 @@ public final class CrystalHollowsEntityAnchor {
         return Optional.empty();
     }
 
-    /** The NPC profile name is shared by grunts; only Corleone has this base maximum health. */
     public static boolean isCorleoneProfile(String rawName, double baseMaxHealth) {
         return "Team Treasurite".equals(
                 CrystalHollowsSidebar.stripFormatting(rawName == null ? "" : rawName).trim())

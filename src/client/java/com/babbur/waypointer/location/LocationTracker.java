@@ -10,7 +10,6 @@ import net.minecraft.client.Minecraft;
 
 import java.util.function.BooleanSupplier;
 
-/** Prefers the Hypixel Mod API, with sidebar detection while location packets are unavailable. */
 public final class LocationTracker {
     private static LocationTracker installed;
 
@@ -52,7 +51,6 @@ public final class LocationTracker {
                 current, minecraft.level != null, minecraft.getCurrentServer() != null));
     }
 
-    /** Singleplayer is a private world; the performance probe stands it in for another zone. */
     private static final Zone SINGLEPLAYER_ZONE = Zone.fromId(
             System.getProperty("waypointer.test.singleplayerZone", Zone.PRIVATE_WORLD.id()));
 

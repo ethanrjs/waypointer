@@ -30,7 +30,6 @@ class GradientColorizerTest {
     void apply_singleWaypointUsesStartHue() {
         WaypointGroup g = WaypointGroup.create("one", "z");
         g.add(Waypoint.at(0, 0, 0));
-        // gradient with one element -> t=0 -> HUE_START (cyan-ish)
         int rgb = g.get(0).color();
         int r = (rgb >> 16) & 0xFF;
         int b = rgb & 0xFF;
@@ -51,7 +50,6 @@ class GradientColorizerTest {
     void apply_spreadsColorsMonotonicallyInHue() {
         WaypointGroup g = WaypointGroup.create("g", "z");
         for (int i = 0; i < 5; i++) g.add(Waypoint.at(i, 0, 0));
-        // With HUE_START=180 and HUE_END=360, later waypoints should shift toward red.
         int firstR = (g.get(0).color() >> 16) & 0xFF;
         int lastR  = (g.get(4).color() >> 16) & 0xFF;
         assertTrue(lastR > firstR, "red channel should grow from start to end of gradient");
@@ -81,19 +79,14 @@ class GradientColorizerTest {
 
     @Test
     void reorder_recomputesGradient() {
-        // The plan promises "recomputes on reorder" -- verify the colors of positions
-        // 0 and N-1 stay anchored to the gradient endpoints regardless of which
-        // waypoints physically occupy them.
         WaypointGroup g = WaypointGroup.create("g", "z");
         for (int i = 0; i < 4; i++) g.add(Waypoint.at(i, 0, 0));
 
         int frontBefore = g.get(0).color();
         int backBefore  = g.get(3).color();
 
-        g.move(0, 3); // swap front to back
+        g.move(0, 3);
 
-        // The front slot is now occupied by a different waypoint, but its color
-        // must equal what the front-of-gradient color was before.
         assertEquals(frontBefore, g.get(0).color(),
                 "front slot color must follow the gradient, not the moved waypoint");
         assertEquals(backBefore, g.get(3).color(),

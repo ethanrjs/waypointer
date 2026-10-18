@@ -11,7 +11,6 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
-/** Projects labels with the same camera effects as the world renderer. */
 public final class WorldScreenProjector {
 
     private final Matrix4f viewProjection = new Matrix4f();
@@ -25,7 +24,6 @@ public final class WorldScreenProjector {
     private float forwardZ;
     private float fovDegrees = 70.0f;
 
-    /** Uses this frame's camera state; world-pass matrices lag behind HUD extraction. */
     public void prepare(GameRenderer renderer, Camera camera) {
         prepare(renderer, camera, true);
     }

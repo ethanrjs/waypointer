@@ -38,7 +38,6 @@ public final class WaypointAddFlow {
                 group.name(), group.displayIndexLabel(waypointIndex), waypoint, showChatShareButtons));
     }
 
-    /** {@code label} is the number the route editor shows, such as {@code #3} or {@code #2.1}. */
     static Component waypointAddedMessage(String groupName, String label, Waypoint waypoint,
                                           boolean showChatShareButtons) {
         String coordinates = waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z();

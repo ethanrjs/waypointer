@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Owns retained world geometry for one client session. */
 public final class OverlayRenderer implements AutoCloseable {
 
     private static volatile OverlayRenderer active;
@@ -132,7 +131,7 @@ public final class OverlayRenderer implements AutoCloseable {
             close();
         } catch (RuntimeException | LinkageError ignored) {
         }
-        active = this; // Preserve diagnostics after failure.
+        active = this;
     }
 
     private void renderFrame(LevelRenderContext ctx) {
@@ -265,7 +264,6 @@ public final class OverlayRenderer implements AutoCloseable {
             throw new IllegalStateException(
                     "Iris shader pack is active but pipeline assignment is disabled");
         }
-        // Painted buckets can appear after the first Iris assignment.
         if (!pipelines.assignIrisPrograms(iris)) {
             throw new IllegalStateException("Iris did not accept every active overlay pipeline");
         }

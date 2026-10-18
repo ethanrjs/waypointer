@@ -3,7 +3,6 @@ package com.babbur.waypointer.crystal.compass;
 import com.babbur.waypointer.crystal.CrystalHollowsZone;
 import java.util.Objects;
 
-/** A fitted Wishing Compass particle ray and the use that produced it. */
 public record CompassRay(
         Vec3d origin,
         Vec3d direction,

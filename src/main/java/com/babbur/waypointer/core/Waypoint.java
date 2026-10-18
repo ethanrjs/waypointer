@@ -1,24 +1,5 @@
 package com.babbur.waypointer.core;
 
-/**
- * A single point in the world rendered by the mod.
- *
- * <p>Edits replace this immutable value; snapshots retain the previous waypoint.
- *
- * <p>Color is 0xRRGGBB; alpha is controlled per-render by the renderer based on state
- * (completed / current / upcoming).
- *
- * <p>customRadius is in blocks. 0 means "use the group's defaultRadius".
- *
- * <p>Temporary waypoints carry a {@code tempMode} + {@code expiresAtMillis}:
- * <ul>
- *   <li>{@link #TEMP_NONE} -- a normal, persisted waypoint.
- *   <li>{@link #TEMP_TIME} -- removed once {@link System#currentTimeMillis()} passes {@code expiresAtMillis}.
- *   <li>{@link #TEMP_UNTIL_REACHED} -- removed by the proximity tracker when it advances past this waypoint.
- *   <li>{@link #TEMP_UNTIL_LEAVE} -- removed when the player leaves the server.
- * </ul>
- * Temporary waypoints are cleared on disconnect and never saved.
- */
 public record Waypoint(
         int x,
         int y,
@@ -37,48 +18,28 @@ public record Waypoint(
     public static final int FLAG_HIDE_BEACON  = 1;
     public static final int FLAG_HIDE_NAME    = 1 << 1;
     public static final int FLAG_THROUGH_WALL = 1 << 2;
-    public static final int FLAG_LOCKED_COLOR = 1 << 3; // excluded from gradient auto-recolor
-    /** Structural flag: this waypoint is a one-level child of the nearest previous main waypoint. */
+    public static final int FLAG_LOCKED_COLOR = 1 << 3;
     public static final int FLAG_SUBWAYPOINT  = 1 << 4;
-    /** Visual flag: subwaypoint renders as a 1/16 block cube centered in its block. */
     public static final int FLAG_SMALL_SUBWAYPOINT = 1 << 5;
-    /** Visual flag: subwaypoint renders filled even when the global box style is outlined. */
     public static final int FLAG_FILLED_SUBWAYPOINT = 1 << 6;
-    /** Visibility flag: subwaypoint hides once its parent main waypoint has been activated. */
     public static final int FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED = 1 << 7;
-    /** Visual flag: this waypoint renders only through the normal depth buffer when it is in view. */
     public static final int FLAG_DEPTH_CHECKED = 1 << 8;
-    /** Dungeon-room behavior flag: standing on this waypoint's block explicitly advances/skips it. */
     public static final int FLAG_SKIP_ON_STAND = 1 << 9;
-    /** Dungeon-room behavior flag: interacting with this waypoint's block explicitly advances/skips it. */
     public static final int FLAG_SKIP_ON_INTERACT = 1 << 10;
-    /** Dungeon-room behavior flag: mining this waypoint's block explicitly advances/skips it. */
     public static final int FLAG_SKIP_ON_MINE = 1 << 11;
-    /** Dungeon metadata: completing this action completes one secret stage. */
     public static final int FLAG_DUNGEON_SECRET = 1 << 12;
-    /** Dungeon metadata: this action is an Etherwarp landing. */
     public static final int FLAG_DUNGEON_ETHERWARP = 1 << 13;
-    /** Dungeon metadata: this action is a Dungeonbreaker block. */
     public static final int FLAG_DUNGEON_DUNGEONBREAKER = 1 << 14;
-    /** Dungeon metadata: this action uses Superboom TNT. */
     public static final int FLAG_DUNGEON_SUPERBOOM = 1 << 15;
-    /** Dungeon metadata: this action launches an Ender Pearl. */
     public static final int FLAG_DUNGEON_PEARL = 1 << 16;
-    /** Render-only helper paired with the previous pearl action as its landing target. */
     public static final int FLAG_DUNGEON_PEARL_TARGET = 1 << 17;
-    /** Dungeon metadata: this secret completes when its item is picked up. */
     public static final int FLAG_DUNGEON_ITEM = 1 << 18;
-    /** Dungeon metadata: this secret completes when its bat dies. */
     public static final int FLAG_DUNGEON_BAT = 1 << 19;
-    /** Persistent state: keep this waypoint in the editor, but exclude it from the active route. */
     public static final int FLAG_DISABLED = 1 << 20;
-    /** Dungeon step member that can be done in any order while its step is active. */
     public static final int FLAG_STEP_ANY_ORDER = 1 << 21;
-    /** Any event-driven completion flag used by sequential dungeon actions. */
     public static final int DUNGEON_COMPLETION_FLAGS = FLAG_SKIP_ON_STAND
             | FLAG_SKIP_ON_INTERACT
             | FLAG_SKIP_ON_MINE;
-    /** Dungeon flags that must survive route sharing and persistence. */
     public static final int DUNGEON_METADATA_FLAGS = FLAG_DUNGEON_SECRET
             | FLAG_DUNGEON_ETHERWARP
             | FLAG_DUNGEON_DUNGEONBREAKER
@@ -87,11 +48,9 @@ public record Waypoint(
             | FLAG_DUNGEON_PEARL_TARGET
             | FLAG_DUNGEON_ITEM
             | FLAG_DUNGEON_BAT;
-    /** Visual flags that only make sense while {@link #FLAG_SUBWAYPOINT} is present. */
     public static final int SUBWAYPOINT_STYLE_FLAGS = FLAG_SMALL_SUBWAYPOINT
             | FLAG_FILLED_SUBWAYPOINT
             | FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED;
-    /** Flags that define route structure and must survive even when visual flags are stripped from exports. */
     public static final int STRUCTURAL_FLAGS  = FLAG_SUBWAYPOINT;
     public static final int PERSISTENT_BEHAVIOR_FLAGS = STRUCTURAL_FLAGS
             | DUNGEON_METADATA_FLAGS
@@ -103,13 +62,12 @@ public record Waypoint(
     public static final int TEMP_UNTIL_REACHED = 2;
     public static final int TEMP_UNTIL_LEAVE = 3;
 
-    public static final int DEFAULT_COLOR = 0x4FE05A; // bright green -- reads clearly against most biomes
+    public static final int DEFAULT_COLOR = 0x4FE05A;
     public static final double MIN_REACH_RADIUS = 0.5;
     public static final double DEFAULT_REACH_RADIUS = 3.0;
     public static final double MAX_REACH_RADIUS = 100.0;
     public static final int PRECISE_SCALE = 16;
     private static final int PRECISE_BLOCK_CENTER_OFFSET = PRECISE_SCALE / 2;
-    /** Block range whose centered sixteenth-block representation fits in a signed int. */
     public static final int MIN_BLOCK_COORDINATE = -134_217_728;
     public static final int MAX_BLOCK_COORDINATE = 134_217_727;
 
@@ -122,7 +80,6 @@ public record Waypoint(
         z = blockCoordinateFromPrecise(preciseZ);
     }
 
-    /** Creates a permanent waypoint. */
     public Waypoint(int x, int y, int z, String name, int color, int flags, double customRadius) {
         this(x, y, z, name, color, flags, customRadius, TEMP_NONE, 0L);
     }
@@ -179,12 +136,10 @@ public record Waypoint(
         return hasFlag(FLAG_DISABLED);
     }
 
-    /** True iff this is a time-based temp and the deadline has passed. */
     public boolean isExpired(long nowMillis) {
         return tempMode == TEMP_TIME && expiresAtMillis > 0 && nowMillis >= expiresAtMillis;
     }
 
-    /** Invalid temporary modes fall back to removal on reach. */
     public static int normalizeTempMode(int mode) {
         if (mode < TEMP_TIME || mode > TEMP_UNTIL_LEAVE) return TEMP_UNTIL_REACHED;
         return mode;
@@ -269,13 +224,11 @@ public record Waypoint(
         return withFlags(nextFlags);
     }
 
-    /** Flip a waypoint's temp mode. Typically used to build a brand-new temp waypoint from {@link #at}. */
     public Waypoint withTemp(int mode, long expiresAt) {
         return new Waypoint(x, y, z, name, color, flags, customRadius, mode, expiresAt,
                 preciseX, preciseY, preciseZ, styleOverride);
     }
 
-    /** Convert a block coordinate to its center in sixteenth-block units. */
     public static int preciseBlockCenter(int blockCoordinate) {
         if (!isRepresentableBlockCoordinate(blockCoordinate)) {
             throw new IllegalArgumentException("block coordinate is outside the precise range");
@@ -288,7 +241,6 @@ public record Waypoint(
                 && blockCoordinate <= MAX_BLOCK_COORDINATE;
     }
 
-    /** Convert a sixteenth-block coordinate to its containing block. */
     public static int blockCoordinateFromPrecise(int preciseCoordinate) {
         return Math.floorDiv(preciseCoordinate, PRECISE_SCALE);
     }

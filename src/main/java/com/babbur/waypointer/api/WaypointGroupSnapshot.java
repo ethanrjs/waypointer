@@ -5,12 +5,6 @@ import com.babbur.waypointer.core.WaypointGroup;
 
 import java.util.List;
 
-/**
- * Immutable view of a Waypointer route or overlay group.
- *
- * <p>The waypoint list is copied at snapshot time so other mods can iterate it
- * without racing Waypointer's UI or tick handlers.
- */
 public record WaypointGroupSnapshot(
         String id,
         String name,
@@ -43,10 +37,6 @@ public record WaypointGroupSnapshot(
         return waypoints.get(currentIndex);
     }
 
-    /**
-     * Optimistic references for safely updating or removing waypoints from this
-     * exact snapshot of a saved route.
-     */
     public List<WaypointReference> waypointReferences() {
         return java.util.stream.IntStream.range(0, waypoints.size())
                 .mapToObj(index -> new WaypointReference(id, index, waypoints.get(index)))

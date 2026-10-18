@@ -736,7 +736,6 @@ public final class WaypointerConfig {
         public boolean hideWaypointLabelsNearPlayer() { return hideWaypointLabelsNearPlayer; }
         public double hideWaypointLabelsNearRadius() { return Math.max(0.5, hideWaypointLabelsNearRadius); }
     public boolean showLabels() { return showLabels; }
-    /** Labels farther than this are hidden while their boxes stay; 0 means no extra limit. */
     public double labelMaxDistance() { return Double.isFinite(labelMaxDistance) ? Math.max(0.0, labelMaxDistance) : 0.0; }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean skipAheadOnlyVisibleWaypoints() { return skipAheadOnlyVisibleWaypoints; }
@@ -765,7 +764,6 @@ public final class WaypointerConfig {
     public boolean useBeaconBeamTextures() { return useBeaconBeamTextures; }
     public boolean editSounds() { return editSounds; }
     public boolean showEditModeSubtitle() { return showEditModeSubtitle; }
-    /** How opaque Waypointer's menus are (0.2-1). Local to this PC; config codes leave it alone. */
     public double menuOpacity() { return Double.isFinite(menuOpacity) ? clamp(menuOpacity, 0.2, 1.0) : 1.0; }
     public void setMenuOpacity(double value) { if (!Double.isFinite(value)) return; menuOpacity = clamp(value, 0.2, 1.0); save(); }
     public boolean showChatCoordBlockButton() { return showChatCoordBlockButton; }

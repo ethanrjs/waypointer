@@ -33,7 +33,6 @@ class CatalogBrowserModelTest {
         model.applyPage(new CatalogPage(List.of(installed, missing, update, repair), true, "next"), false);
         model.select(installed);
         model.filterInstalled(API_ROOT, manager, true);
-        // Recommended: routes with an update or repair waiting lead.
         assertEquals(List.of(repair, update, missing), model.routes());
         assertNull(model.selectedRoute());
         assertEquals("next", model.nextCursor());

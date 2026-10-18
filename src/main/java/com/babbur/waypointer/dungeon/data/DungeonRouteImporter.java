@@ -31,40 +31,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
 
-/**
- * Imports third-party dungeon secret routes into room-local waypoint groups.
- *
- * <p>Supported formats, sniffed from the payload shape:
- *
- * <ul>
- *   <li><b>Waypointer</b> -- a {@code WPD:} share payload or the native
- *       {@code {"schema":…,"rooms":[…]}} JSON.</li>
- *   <li><b>SecretRoutes</b> ({@code routes.json}) -- a map of DungeonRoomsMod
- *       room names to ordered route steps. Each step becomes a main waypoint
- *       with colored action SubWPs, a secret, and passive path guides.</li>
- *   <li><b>Odin waypoint packs</b> -- a map of room names to waypoint lists,
- *       either as the pack file JSON or the Base64+GZIP string Odin's share
- *       command produces. {@code SECRET}/{@code ETHERWARP} waypoints become
- *       ordered progress waypoints; the rest import as persistent markers.</li>
- * </ul>
- *
- * <p>Both external formats use the same room-local frame as Waypointer:
- * SecretRoutes inherits Skyblocker/DRM's NW-corner convention outright, and
- * Odin's clay-relative "north" frame shares the origin block and axes with the
- * NW-corner frame (verified against Odin's {@code rotateToNorth} and clay
- * probe offsets), so coordinates copy over 1:1 with no rotation math.
- */
 public final class DungeonRouteImporter {
 
     public enum Format { WAYPOINTER, SECRET_ROUTES, ODIN_PACK }
 
-    /**
-     * @param groups          room-local dungeon routes ready for normal storage
-     * @param waypointCount   total imported waypoints across all rooms
-     * @param unmatchedRooms  source room names that matched no catalog room
-     * @param skippedVariants retained for payload/report compatibility; current
-     *                        imports preserve all SecretRoutes variants
-     */
     public record Result(List<WaypointGroup> groups,
                          int waypointCount,
                          List<String> unmatchedRooms,
@@ -73,7 +43,6 @@ public final class DungeonRouteImporter {
 
     private static final int MAX_PAYLOAD_CHARS = 16 * 1024 * 1024;
     private static final int MAX_DECOMPRESSED_BYTES = 32 * 1024 * 1024;
-    /** Room-local coordinates live in [0, 4*32); anything far outside is world data. */
     private static final int MAX_ROOM_LOCAL_ABS = 512;
     private static final String SECRET_ROUTES_ROOM_CORES_RESOURCE =
             "/assets/waypointer/dungeons/catacombs/secret-routes-room-cores.json";
@@ -134,7 +103,6 @@ public final class DungeonRouteImporter {
                 throw new IllegalArgumentException("route import payload is not valid JSON", e);
             }
         }
-        // Odin's share command emits Base64(GZIP(pack json)).
         String gunzipped = tryBase64Gunzip(payload);
         if (gunzipped != null && gunzipped.startsWith("{")) {
             return parseRootObject(gunzipped);
@@ -177,7 +145,6 @@ public final class DungeonRouteImporter {
         return out.toString();
     }
 
-    // ---- format sniffing ---------------------------------------------------
 
     private static boolean looksLikeSecretRoutes(JsonObject root) {
         JsonObject step = firstArrayElementObject(root);
@@ -202,9 +169,7 @@ public final class DungeonRouteImporter {
         return null;
     }
 
-    // ---- room-name matching --------------------------------------------------
 
-    /** Established external name aliases retained for Odin waypoint packs. */
     private static final Map<String, String> DRM_NAME_ALIASES = Map.ofEntries(
             Map.entry("silvers-sword", "silver-sword"),
             Map.entry("lava-skulls", "lava-pit"),
@@ -228,10 +193,6 @@ public final class DungeonRouteImporter {
         return index;
     }
 
-    /**
-     * DRM-lineage names carry a trailing secret count ({@code "Arrow-Trap-1"});
-     * try the exact normalized name first, then with that suffix stripped.
-     */
     private static DungeonRoomCatalogEntry matchRoom(Map<String, DungeonRoomCatalogEntry> index,
                                                      String rawName) {
         String norm = DungeonRoomCatalogEntry.normalizeId(rawName);
@@ -264,7 +225,6 @@ public final class DungeonRouteImporter {
                     }
                     String normalizedName = DungeonRoomCatalogEntry.normalizeId(entry.getKey());
                     if (loaded.putIfAbsent(normalizedName, List.copyOf(coreHashes)) != null) {
-                        // A normalized source-name collision is not safe to guess through.
                         loaded.put(normalizedName, List.of());
                     }
                 }
@@ -284,7 +244,6 @@ public final class DungeonRouteImporter {
         return matchUniqueCoreRoom(DungeonRoomData.allEntries(), coreHashes);
     }
 
-    /** Keeps suffix-free aliases from the pinned table. Combined hashes reject ambiguous names such as Waterfall. */
     private static Map<String, List<Integer>> buildSecretRoutesSuffixFreeCores(
             Map<String, List<Integer>> sourceRooms) {
         Map<String, List<Integer>> aliases = new LinkedHashMap<>();
@@ -302,7 +261,6 @@ public final class DungeonRouteImporter {
         return Map.copyOf(aliases);
     }
 
-    /** Returns a room only when the supplied core hashes identify one catalog entry. */
     static DungeonRoomCatalogEntry matchUniqueCoreRoom(
             Collection<DungeonRoomCatalogEntry> entries, List<Integer> coreHashes) {
         if (entries == null || coreHashes == null || coreHashes.isEmpty()) return null;
@@ -322,7 +280,6 @@ public final class DungeonRouteImporter {
         return matched;
     }
 
-    // ---- SecretRoutes -----------------------------------------------------------
 
     private static Result parseSecretRoutes(JsonObject root) {
         List<WaypointGroup> imported = new ArrayList<>();
@@ -351,7 +308,6 @@ public final class DungeonRouteImporter {
             if (waypoints.isEmpty()) continue;
 
             if (bossFloor != null) {
-                // Boss arenas are not generated, so their routes keep world coordinates.
                 WaypointGroup boss = DungeonRouteGroupAdapter.fromWaypoints(bossFloor,
                         "F" + bossFloor.charAt(bossFloor.length() - 1) + " Boss, route "
                                 + routeNumber, waypoints, pathGuides);
@@ -368,7 +324,6 @@ public final class DungeonRouteImporter {
                 List.copyOf(unmatched), 0, Format.SECRET_ROUTES);
     }
 
-    /** SecretRoutes names boss routes {@code f7boss}; returns that floor's zone, or null. */
     static String secretRoutesBossFloor(String rawName) {
         if (rawName == null) return null;
         String name = rawName.trim().toLowerCase(Locale.ROOT).replaceAll("[\\s_-]", "");
@@ -419,12 +374,10 @@ public final class DungeonRouteImporter {
                         highlights));
             }
 
-            // A boss step has no secret; it ends where its path ends.
             String missingType = boss ? "exit" : "interact";
             String secretType = step.has("secret") && step.get("secret").isJsonObject()
                     ? string(step.getAsJsonObject("secret"), "type", missingType)
                     : missingType;
-            // A dummy has no collectible; some packs leave its placeholder at the origin.
             if (secretType.equalsIgnoreCase("dummy") && !actions.isEmpty()) continue;
             int[] position = secretType.equalsIgnoreCase("dummy")
                     ? (path.isEmpty() ? null : path.getLast()) : secretRoutesStepPosition(step);
@@ -444,7 +397,6 @@ public final class DungeonRouteImporter {
         return waypoints;
     }
 
-    /** The step's secret position, or its last path point when no secret is recorded. */
     private static int[] secretRoutesStepPosition(JsonObject step) {
         if (step.has("secret") && step.get("secret").isJsonObject()) {
             JsonObject secret = step.getAsJsonObject("secret");
@@ -551,15 +503,12 @@ public final class DungeonRouteImporter {
         return switch (type.toLowerCase(Locale.ROOT)) {
             case "bat" -> DungeonWaypointTrigger.KILL_BAT;
             case "item" -> DungeonWaypointTrigger.PICKUP_ITEM;
-            // The room-exit marker has no collectible; the player walks past it.
             case "exit", "exitroute" -> DungeonWaypointTrigger.MANUAL;
             case "dummy", "prince" -> DungeonWaypointTrigger.MANUAL;
-            // "interact" covers chests, levers, and essence without saying which.
             default -> DungeonWaypointTrigger.ANY_SECRET;
         };
     }
 
-    // ---- Odin waypoint packs -------------------------------------------------
 
     private static Result parseOdinPack(JsonObject root) {
         Map<String, DungeonRoomCatalogEntry> index = catalogIndex();
@@ -688,12 +637,6 @@ public final class DungeonRouteImporter {
                 && y >= -64 && y <= 320;
     }
 
-    /**
-     * Odin serializes color as {@code "#RRGGBBAA"}. The previous importer
-     * documented {@code "#AARRGGBB"}, so the common old opaque-leading form
-     * with a zero trailing byte remains accepted. Older configs also
-     * used raw HSB field objects. Unparseable colors use the category default.
-     */
     private static int odinColor(JsonElement element) {
         if (element == null) return DungeonWaypoint.INHERIT_COLOR;
         if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
@@ -750,7 +693,6 @@ public final class DungeonRouteImporter {
     }
 
     private static int hsbToRgb(float hue, float saturation, float brightness) {
-        // Odin stores hue in degrees; java.awt expects [0,1).
         int rgb = java.awt.Color.HSBtoRGB(hue / 360.0f, clamp01(saturation), clamp01(brightness));
         return rgb & 0xFFFFFF;
     }
@@ -759,7 +701,6 @@ public final class DungeonRouteImporter {
         return Math.max(0.0f, Math.min(1.0f, value));
     }
 
-    // ---- shared helpers ---------------------------------------------------------
 
     private static boolean isDigits(String text) {
         if (text.isEmpty()) return false;

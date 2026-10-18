@@ -74,7 +74,6 @@ public final class DebugInspectScreen extends Screen {
         record BitNote(String text) implements Row {}
         record PoolEntry(int index, String text) implements Row {}
         record WP(DecodeDebug.WaypointDebug wp) implements Row {}
-        /** A share code: shortened on screen, whole in the copied report. */
         record Code(String key, String code) implements Row {}
         record Blank() implements Row {}
     }
@@ -148,7 +147,6 @@ public final class DebugInspectScreen extends Screen {
                 new DebugInspectScreen(parent, manager, config));
     }
 
-    /** Captures on the client thread, without opening a screen or reading the clipboard. */
     public static FeedbackSnapshot captureFeedbackSnapshot(ActiveGroupManager manager,
                                                             WaypointerConfig config) {
         Minecraft client = Minecraft.getInstance();
@@ -178,7 +176,6 @@ public final class DebugInspectScreen extends Screen {
                 DebugReportAnonymizer.anonymize(sections, sensitiveValues));
     }
 
-    /** Both variants describe the same instant; a privacy toggle does not recapture live data. */
     public record FeedbackSnapshot(String fullReport, String anonymizedReport) {
         public String report(boolean anonymize) {
             return anonymize ? anonymizedReport : fullReport;
@@ -808,7 +805,6 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    /** The whole route as its share code: small, and pasting it back gives the exact route. */
     private static Row routeCode(WaypointGroup group) {
         try {
             return new Row.Code("Route code", WaypointCodec.encode(List.of(group)));

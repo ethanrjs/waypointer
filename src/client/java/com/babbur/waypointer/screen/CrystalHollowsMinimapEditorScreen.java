@@ -20,7 +20,6 @@ import net.minecraft.network.chat.Component;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.*;
 
-/** Edits a draft HUD placement over the actual minimap renderer. */
 public final class CrystalHollowsMinimapEditorScreen extends Screen {
     private final Screen parent;
     private final WaypointerConfig config;

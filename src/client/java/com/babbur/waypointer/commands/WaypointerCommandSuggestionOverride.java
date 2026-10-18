@@ -10,7 +10,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 
-/** Keeps /wp suggestions available when the server registers its own /wp command. */
 public final class WaypointerCommandSuggestionOverride {
 
     private static final String ROOT = "wp";
@@ -73,18 +72,9 @@ public final class WaypointerCommandSuggestionOverride {
 
     static boolean isWaypointerRoot(CommandNode<?> node) {
         if (node == null) return false;
-        // These two children distinguish Waypointer from common server-side /wp trees.
         return node.getChild("importchat") != null && node.getChild("importfile") != null;
     }
 
-    /**
-     * Makes {@code /wp} and its aliases suggest Waypointer's commands on any server. A server that
-     * registers its own {@code /wp} (Hypixel does) usually gives it a catch-all argument that asks
-     * the server for completions; merged with Waypointer's nodes, the client then waits on a reply
-     * that may never come and shows no suggestions at all. Server arguments under these roots are
-     * dropped; the server's plain subcommand words stay. Waypointer's own commands run client-side
-     * either way.
-     */
     boolean installWpSuggestionRoot(CommandNode<ClientSuggestionProvider> targetRoot,
                                     CommandNode<FabricClientCommandSource> clientRoot) {
         try {
@@ -128,7 +118,6 @@ public final class WaypointerCommandSuggestionOverride {
         return installed;
     }
 
-    /** Brigadier has no public removal; its three child maps are package-private fields. */
     private static void removeChild(CommandNode<?> parent, String name) throws ReflectiveOperationException {
         for (String field : new String[]{"children", "literals", "arguments"}) {
             java.lang.reflect.Field map = CommandNode.class.getDeclaredField(field);

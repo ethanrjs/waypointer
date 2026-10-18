@@ -23,7 +23,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Adds coordinate actions to chat; {@link CoordScanner} handles false-positive filtering. */
 public final class ChatCoordDetector {
 
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]"); 
@@ -45,7 +44,6 @@ public final class ChatCoordDetector {
     }
 
     private Component onMessage(Component msg, boolean overlay) {
-        // Ephemeral overlays do not need coordinate actions.
         if (overlay) return msg;
         if (WaypointerChatFeedback.consumeIfSuppressed(msg)) return msg;
         if (!config.chatCoordDetection()) return msg;
@@ -117,11 +115,10 @@ public final class ChatCoordDetector {
         return builder.build();
     }
 
-    /** Tracks absolute offsets across styled text segments. */
     private static final class Builder {
         private final List<CoordScanner.Match> matches;
         private final String flatText;
-        private int cursor;        // absolute offset in flat text
+        private int cursor;
         private int matchIdx;
         private final MutableComponent out = Component.empty();
         private final boolean chatTempAlreadyAutoAdded;
@@ -397,7 +394,6 @@ public final class ChatCoordDetector {
 
     private record SenderSpan(int start, int end) {}
 
-    /** Skips axis labels so a preceding coordinate triple cannot be mistaken for the sender. */
     private static int indexOfLastSenderColon(String flatText, int beforeIndex) {
         for (int i = beforeIndex - 1; i >= 0; i--) {
             if (flatText.charAt(i) != ':') continue;

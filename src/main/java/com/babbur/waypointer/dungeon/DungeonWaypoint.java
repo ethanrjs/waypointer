@@ -3,10 +3,6 @@ package com.babbur.waypointer.dungeon;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * An immutable room-local dungeon waypoint. {@code customColor} is
- * {@code 0xRRGGBB}, or {@link #INHERIT_COLOR} to use the category color.
- */
 public record DungeonWaypoint(
         String id,
         int secretIndex,
@@ -74,7 +70,6 @@ public record DungeonWaypoint(
                 nextColor);
     }
 
-    /** True when this action finishes a secret rather than moving toward it. */
     public boolean completesSecret() {
         return switch (trigger) {
             case PICKUP_ITEM, KILL_BAT, OPEN_CHEST, ANY_SECRET, CHAT_MESSAGE -> true;

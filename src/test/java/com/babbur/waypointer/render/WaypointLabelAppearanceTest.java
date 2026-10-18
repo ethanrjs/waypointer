@@ -19,7 +19,6 @@ class WaypointLabelAppearanceTest {
         assertEquals(java.util.List.of(near), selected);
         WaypointRenderer.selectLabelsForDrawing(candidates, 2, 2, true, selected);
         assertEquals(java.util.List.of(near), selected);
-        // Existing focused/current-route priority still controls collision acceptance.
         WaypointRenderer.selectLabelsForDrawing(java.util.List.of(far, near), 2, 2, true, selected);
         assertEquals(java.util.List.of(far), selected);
         far.left = 11;

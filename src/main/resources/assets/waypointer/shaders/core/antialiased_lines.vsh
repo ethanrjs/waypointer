@@ -14,7 +14,6 @@ noperspective out float edgeDistance;
 flat out float halfWidth;
 
 void main() {
-    // Match vanilla's slight view-space shrink to avoid surface z-fighting.
     mat4 viewScale = mat4(1.0);
     viewScale[0][0] = viewScale[1][1] = viewScale[2][2] = 1.0 - 1.0 / 256.0;
     vec4 start = ProjMat * viewScale * ModelViewMat * vec4(Position, 1.0);

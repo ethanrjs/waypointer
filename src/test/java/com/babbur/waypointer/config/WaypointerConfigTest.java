@@ -1747,7 +1747,6 @@ class WaypointerConfigTest {
         for (byte value : new byte[]{0, 1}) {
             WaypointerConfig legacy = WaypointerConfigCodec.decode(configCodeForRawPayload(
                     (byte) 6, (byte) 108, value, (byte) 109, (byte) 0, (byte) 110, (byte) 0, (byte) 0));
-            // v10 tag delta 108, then delta 1 twice, all one-byte booleans.
             WaypointerConfig current = V10ConfigBodyCodec.decode(new byte[]{
                     0x3A, (byte) 0xB0, 0x03, value, 0x04, 0, 0x04, 0});
             for (WaypointerConfig decoded : List.of(legacy, current)) {

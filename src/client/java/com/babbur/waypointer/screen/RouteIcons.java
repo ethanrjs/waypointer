@@ -14,13 +14,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Draws route icons: Minecraft items as the inventory shows them, in a dark slot. */
 final class RouteIcons {
     private static final Map<String, ItemStack> STACKS = new HashMap<>();
 
     private RouteIcons() {}
 
-    /** The stack for an icon; an unknown item id (say, from a newer game version) shows a compass. */
     static ItemStack stack(String spec) {
         String key = spec == null ? "" : spec;
         return STACKS.computeIfAbsent(key, RouteIcons::build);
@@ -44,10 +42,6 @@ final class RouteIcons {
         return item(RouteIcon.itemId(spec)) != null;
     }
 
-    /**
-     * Every item a route can use: in creative inventory order when a world is loaded (so tools sit
-     * with tools and ores with ores), then anything the tabs leave out in registry order.
-     */
     static List<Item> allItems() {
         java.util.LinkedHashSet<Item> items = new java.util.LinkedHashSet<>();
         var level = net.minecraft.client.Minecraft.getInstance().level;
@@ -64,7 +58,6 @@ final class RouteIcons {
                     for (ItemStack stack : tab.getDisplayItems()) items.add(stack.getItem());
                 }
             } catch (RuntimeException ignored) {
-                // Registry order below still lists everything.
             }
         }
         for (Item item : BuiltInRegistries.ITEM) items.add(item);
@@ -72,7 +65,6 @@ final class RouteIcons {
         return new ArrayList<>(items);
     }
 
-    /** Tools, materials and nature suit routes better than building blocks, so they come first. */
     private static final List<String> TAB_ORDER = List.of("tools_and_utilities", "ingredients",
             "natural_blocks", "combat", "food_and_drinks", "functional_blocks", "redstone_blocks",
             "colored_blocks", "building_blocks", "spawn_eggs");
@@ -87,7 +79,6 @@ final class RouteIcons {
         return BuiltInRegistries.ITEM.getKey(item).toString();
     }
 
-    /** Draws the item with its top-left corner at (x, y), {@code size} pixels square. */
     static void draw(GuiGraphicsExtractor g, String spec, int x, int y, int size) {
         ItemStack stack = stack(spec);
         if (size == 16) {
@@ -102,7 +93,6 @@ final class RouteIcons {
         pose.popMatrix();
     }
 
-    /** An inventory slot in the dark theme: sunken edge on the top and left, a faint light edge below. */
     static void slot(GuiGraphicsExtractor g, int x, int y, int size) {
         g.fill(x, y, x + size, y + size, 0x50000000);
         g.fill(x, y, x + size, y + 1, 0x70000000);
@@ -111,7 +101,6 @@ final class RouteIcons {
         g.fill(x + size - 1, y + 1, x + size, y + size - 1, 0x14FFFFFF);
     }
 
-    /** A slot with the item centred in it. */
     static void slotted(GuiGraphicsExtractor g, String spec, int x, int y, int size, int itemSize) {
         slot(g, x, y, size);
         int inset = (size - itemSize) / 2;

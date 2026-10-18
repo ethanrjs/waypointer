@@ -47,8 +47,6 @@ public final class EtherwarpTargetResolver {
         if (supportBlock.getX() != waypoint.x() || supportBlock.getZ() != waypoint.z()) {
             return false;
         }
-        // Floor-placed waypoints (placeNewWaypointsBelowPlayer, the default) store
-        // the support block itself; feet-placed waypoints store the landing block.
         return supportBlock.getY() == waypoint.y()
                 || supportBlock.getY() == waypoint.y() - 1;
     }

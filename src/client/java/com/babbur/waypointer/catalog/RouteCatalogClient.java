@@ -75,11 +75,6 @@ public final class RouteCatalogClient {
         return listRoutes(query, zone, null, null, cursor);
     }
 
-    /**
-     * One page of public routes. {@code tag} keeps only routes with that server tag;
-     * {@code sort} is one of {@link #SORTS} (the catalog's own order when null or
-     * {@code recommended}). A cursor only continues the query it came from.
-     */
     public CompletableFuture<CatalogPage> listRoutes(
             String query, String zone, String tag, String sort, String cursor) {
         StringBuilder relative = new StringBuilder("routes?limit=50");
@@ -92,14 +87,9 @@ public final class RouteCatalogClient {
         return sendJson(request, MAX_LIST_BYTES, 200).thenApply(CatalogJson::parsePage);
     }
 
-    /** Sort orders the catalog understands; servers ignore ones they do not know. */
     public static final java.util.List<String> SORTS =
             java.util.List.of("recommended", "popular", "newest", "updated", "waypoints", "name");
 
-    /**
-     * A light, thinned list of a route's waypoint positions for drawing its map. Older
-     * catalogs lack this endpoint; callers fall back to {@link #getRoute}.
-     */
     public CompletableFuture<CatalogRoutePreviewData> getRoutePreview(String routeId) {
         if (!isValidRouteId(routeId)) {
             return CompletableFuture.failedFuture(
@@ -188,7 +178,6 @@ public final class RouteCatalogClient {
         return sendEmpty(builder.build(), MAX_LIST_BYTES, 204);
     }
 
-    /** Signed owner edit; resolves to the route's refreshed catalog summary. */
     public CompletableFuture<CatalogRouteSummary> updateRoute(
             String routeId, CatalogRouteUpdate update, PublisherIdentity identity) {
         requireRouteId(routeId);
@@ -242,7 +231,6 @@ public final class RouteCatalogClient {
         HttpRequest.Builder builder = request("routes/" + routeId + "/install")
                 .POST(HttpRequest.BodyPublishers.noBody());
         if (installToken != null && !installToken.isBlank()) {
-            // Anonymous per-route dedupe mark; the server counts each token once.
             builder.header("x-waypointer-install-token", installToken);
         }
         if (identity != null) {
@@ -357,7 +345,6 @@ public final class RouteCatalogClient {
         return trimmed;
     }
 
-    /** Omits the default order so a plain listing keeps its old URL. */
     private static String normalizeSort(String value) {
         if (value == null || value.isBlank()) return null;
         String trimmed = value.trim().toLowerCase(java.util.Locale.ROOT);
@@ -390,7 +377,6 @@ public final class RouteCatalogClient {
         return audience;
     }
 
-    /** True for route IDs accepted by the catalog detail/install API. */
     public static boolean isValidRouteId(String routeId) {
         return routeId != null && ROUTE_ID.matcher(routeId).matches();
     }

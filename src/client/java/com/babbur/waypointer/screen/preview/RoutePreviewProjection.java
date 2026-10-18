@@ -193,7 +193,6 @@ public final class RoutePreviewProjection {
                     (MIN_HOVER_TARGET_PIXELS - (maxScreenX - minScreenX)) * 0.5);
             double expandY = Math.max(0.0,
                     (MIN_HOVER_TARGET_PIXELS - (maxScreenY - minScreenY)) * 0.5);
-            // Cubes use exact ray tests; only billboard markers use rectangular hitboxes.
             if (!scene.simplified() && expandX == 0.0 && expandY == 0.0) continue;
             if (mouseX >= minScreenX - expandX && mouseX <= maxScreenX + expandX
                     && mouseY >= minScreenY - expandY && mouseY <= maxScreenY + expandY

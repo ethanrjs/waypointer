@@ -27,7 +27,6 @@ class OverlayPipelinesTest {
         field.setAccessible(true);
         var slots = (java.util.Map<Object, OverlayPipelines.Slot>) field.get(pipelines);
         var entry = slots.entrySet().iterator().next();
-        // Reproduce the cached expanded Iris layout after the native pipeline returns to vanilla.
         var expanded = new MeshLayout(original.layout().stride() + 16, original.layout().attributes());
         entry.setValue(new OverlayPipelines.Slot(original.inWorld(), original.postWorld(), expanded, new Object()));
         assertTrue(pipelines.refreshVertexLayouts());
@@ -52,8 +51,6 @@ class OverlayPipelinesTest {
                     var retained = pipelines.slot(MeshBucket.untextured(MeshBucket.Kind.LINES, depth));
                     var expectedDepth = new DepthStencilState(
                             depth ? DepthStencilState.DEFAULT.depthTest() : CompareOp.ALWAYS_PASS, false);
-                    // #137 must stay fixed for legacy, retained world, and post-world drawing.
-                    // Removing fog must not remove occlusion or enable depth writes.
                     for (var pipeline : new com.mojang.blaze3d.pipeline.RenderPipeline[]{
                             legacy, retained.inWorld(), retained.postWorld()}) {
                         assertEquals("waypointer:core/screen_line", pipeline.getFragmentShader().toString());
@@ -111,7 +108,6 @@ class OverlayPipelinesTest {
                 "/assets/waypointer/shaders/core/screen_line.fsh")) {
             assertNotNull(stream);
             String shader = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-            // Regression #137: apply_fog replaces distant outline RGB with the sky's FogColor.
             assertFalse(shader.contains("fog.glsl"));
             assertFalse(shader.contains("apply_fog"));
             assertTrue(shader.contains("vertexColor * ColorModulator"));

@@ -23,7 +23,6 @@ public final class SettingsPresets {
         return out;
     }
 
-    /** Disable every behavior toggle while retaining the user's stored values. */
     public static void applyDisableAll(WaypointerConfig live, DungeonConfig dungeon) {
         if (live != null) live.disableAllSettings(dungeon);
     }

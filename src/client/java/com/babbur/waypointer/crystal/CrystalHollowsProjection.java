@@ -13,7 +13,6 @@ import java.util.Map;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
-/** Builds runtime-only groups for the Structures folder. */
 public final class CrystalHollowsProjection {
 
     private static final int WAYPOINT_FLAGS =

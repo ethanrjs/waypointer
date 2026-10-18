@@ -13,7 +13,6 @@ import net.minecraft.network.protocol.game.ClientboundTickingStatePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import java.util.UUID;
 
-/** Passive observations; never sends probes or touches Minecraft state from the network thread. */
 public final class ServerTimingDiagnostics {
     private static final ServerTickEstimator ESTIMATOR = new ServerTickEstimator();
     private static Connection connection;
@@ -91,7 +90,6 @@ public final class ServerTimingDiagnostics {
             reset("server respawn/world transfer");
         } else if (packet instanceof ClientboundPlayerInfoUpdatePacket info
                 && info.actions().contains(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY)) {
-            // Timestamp actual server latency updates; polling PlayerInfo would keep stale values falsely fresh.
             for (var entry : info.entries()) {
                 if (entry.profileId().equals(playerId)) ESTIMATOR.recordPing(entry.latency(), receivedNanos);
             }

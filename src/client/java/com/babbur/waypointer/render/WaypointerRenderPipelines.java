@@ -118,7 +118,6 @@ public final class WaypointerRenderPipelines {
         var builder = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
                 .withLocation(location)
                 .withDepthStencilState(depth)
-                // Navigation markers keep their configured color beyond the world's fog distance.
                 .withFragmentShader(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/screen_line"));
         if (smooth) {
             Identifier shader = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/antialiased_lines");
