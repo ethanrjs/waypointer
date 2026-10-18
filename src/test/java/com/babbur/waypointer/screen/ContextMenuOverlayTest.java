@@ -41,7 +41,7 @@ class ContextMenuOverlayTest {
         assertEquals(270, ContextMenuOverlay.clampedX(390.0, 16, 400, 130));
 
         assertEquals(100, ContextMenuOverlay.openY(100.0, 68, 16, 300));
-        assertEquals(232, ContextMenuOverlay.openY(290.0, 58, 16, 300));
+        assertEquals(242, ContextMenuOverlay.openY(290.0, 58, 16, 300));
         assertEquals(16, ContextMenuOverlay.openY(20.0, 500, 16, 300));
     }
 

@@ -189,12 +189,9 @@ final class ContextMenuOverlay {
         return (int) Math.max(minX, Math.min(anchorX, maxRight - width));
     }
 
-    /** Prefers opening below the anchor; flips above when it would clip the bottom. */
+    /** Opens below the anchor; slides up only as far as needed to keep the bottom on screen. */
     static int openY(double anchorY, int height, int minY, int maxBottom) {
-        int below = (int) anchorY;
-        return below + height <= maxBottom
-                ? Math.max(minY, below)
-                : Math.max(minY, below - height);
+        return Math.max(minY, Math.min((int) anchorY, maxBottom - height));
     }
 
     void render(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY) {
