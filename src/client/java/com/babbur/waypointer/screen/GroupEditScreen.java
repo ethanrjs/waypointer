@@ -37,6 +37,7 @@ import net.minecraft.sounds.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static com.babbur.waypointer.screen.GroupEditGeometry.*;
@@ -1387,7 +1388,7 @@ public final class GroupEditScreen extends Screen {
                 : index < group.currentIndex() ? TEXT_MUTED
                 : subwaypoint ? TEXT_DIM
                 : TEXT;
-        boolean showDungeonWaypointControls = isDungeonRoomGroup();
+        boolean showDungeonWaypointControls = usesDungeonControls();
         int textX = sx + 20;
         boolean showInlineControls = shouldShowWaypointControls(index, selectedIndex);
         String controlSummary = showInlineControls
@@ -1626,11 +1627,13 @@ public final class GroupEditScreen extends Screen {
 
         Waypoint waypoint = group.get(dungeonTypePickerIndex);
         DungeonWaypointType[] types = DungeonWaypointType.values();
+        DungeonWaypointType hoveredType = null;
         for (int i = 0; i < types.length; i++) {
             DungeonTypePickerCell cell = dungeonTypePickerCell(bounds, i);
             DungeonWaypointType type = types[i];
             boolean active = type.isSet(waypoint);
             boolean hovered = cell.contains(mouseX, mouseY);
+            if (hovered) hoveredType = type;
             int border = hovered ? 0xB0FFFFFF : BORDER;
             int fill = active ? SUBWAY_STYLE_BUTTON_ACTIVE
                     : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
@@ -1638,10 +1641,16 @@ public final class GroupEditScreen extends Screen {
             g.fill(cell.left() + 1, cell.top() + 1, cell.right() - 1, cell.bottom() - 1, fill);
             renderDungeonTypeIcon(g, cell.left(), cell.top(), type, active ? TEXT : TEXT_DIM);
         }
+        if (hoveredType != null) {
+            g.nextStratum();
+            renderInlineTooltip(g, Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type." + hoveredType.name().toLowerCase(Locale.ROOT),
+                    hoveredType.label()).getString(), mouseX, mouseY);
+        }
     }
 
     private DungeonTypePickerBounds dungeonTypePickerBounds() {
-        if (!isDungeonRoomGroup() || dungeonTypePickerIndex < 0
+        if (!usesDungeonControls() || dungeonTypePickerIndex < 0
                 || dungeonTypePickerIndex >= group.size()
                 || dungeonTypePickerIndex != selectedIndex) return null;
         Layout layout = layout();
@@ -1863,6 +1872,11 @@ public final class GroupEditScreen extends Screen {
 
     private boolean isDungeonRoomGroup() {
         return group != null && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
+    }
+
+    /** Dungeon action controls: room routes, and floor routes built from actions (boss routes). */
+    private boolean usesDungeonControls() {
+        return group != null && group.usesDungeonSteps();
     }
 
     @Override
@@ -2286,7 +2300,7 @@ public final class GroupEditScreen extends Screen {
 
     private int dungeonTypeButtonIndexAt(double mx, double my) {
         int idx = rowIndexAt(mx, my);
-        if (!isDungeonRoomGroup() || !shouldShowWaypointControls(idx, selectedIndex)) return -1;
+        if (!usesDungeonControls() || !shouldShowWaypointControls(idx, selectedIndex)) return -1;
         Layout layout = layout();
         int rowY = layout.top() + ROUTE_LIST_INSET
                 - scrollOffset + idx * waypointRowPitch();
@@ -2317,7 +2331,7 @@ public final class GroupEditScreen extends Screen {
                 - scrollOffset + idx * waypointRowPitch();
         int rowRight = layout.mainRight() - ROUTE_LIST_INSET;
         int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
-        if (isDungeonRoomGroup()) {
+        if (usesDungeonControls()) {
             int standX = standSkipButtonX(rowRight);
             if (isInside(mx, my, standX, y,
                     SUBWAY_STYLE_BUTTON_SIZE, SUBWAY_STYLE_BUTTON_SIZE)) {
@@ -2353,7 +2367,7 @@ public final class GroupEditScreen extends Screen {
                 - scrollOffset + idx * waypointRowPitch();
         int rowRight = layout.mainRight() - ROUTE_LIST_INSET;
         int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
-        boolean showDungeonControls = isDungeonRoomGroup();
+        boolean showDungeonControls = usesDungeonControls();
         int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL,
                 showDungeonControls);
         if (isInside(mx, my, smallX, y,
@@ -2439,7 +2453,7 @@ public final class GroupEditScreen extends Screen {
 
     private void toggleWaypointControl(int index, int action) {
         if (index < 0 || index >= group.size()) return;
-        int flag = waypointControlFlagForAction(action, isDungeonRoomGroup());
+        int flag = waypointControlFlagForAction(action, usesDungeonControls());
         if (flag == 0) return;
         Waypoint waypoint = group.get(index);
         group.set(index, waypoint.withFlags(waypoint.flags() ^ flag));
@@ -2638,7 +2652,7 @@ public final class GroupEditScreen extends Screen {
         boolean subwaypoint = group.isSubwaypoint(index);
         boolean isCurrent = !subwaypoint && index == group.currentIndex();
         int textRightX = waypointRowTextRightEdge(rowX2, subwaypoint,
-                isDungeonRoomGroup(), shouldShowWaypointControls(index, selectedIndex),
+                usesDungeonControls(), shouldShowWaypointControls(index, selectedIndex),
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, ""));
         int editorX = Math.min(coordinateX + font.width(coordinateLabel(w, numbers)) + GAP, textRightX);
         int editorW = labelEditorWidth(editorX, textRightX);

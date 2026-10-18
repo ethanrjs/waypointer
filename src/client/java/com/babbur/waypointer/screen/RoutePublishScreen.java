@@ -47,17 +47,21 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
 public final class RoutePublishScreen extends Screen implements RoutePickerHost {
     private static final int PANEL_MARGIN = 16;
     private static final int LINE_H = 10;
-    private static final int LABEL_H = 11;
-    private static final int FIELD_STRIDE = LABEL_H + BTN_H + GAP_TIGHT;
-    private static final int DESCRIPTION_H = 52;
+    /** A label line and the gap below it, above its field. */
+    private static final int LABEL_H = LINE_H + GAP_TIGHT;
+    /** Space between one field and the next field's label. */
+    private static final int FIELD_GAP = 12;
+    private static final int FIELD_STRIDE = LABEL_H + BTN_H + FIELD_GAP;
+    private static final int DESCRIPTION_H = 64;
     private static final int MIN_DESCRIPTION_H = 26;
-    private static final int FORM_FIELDS_H = FIELD_STRIDE * 2 + LABEL_H + DESCRIPTION_H + GAP_TIGHT;
+    private static final int FORM_FIELDS_H = FIELD_STRIDE + LABEL_H + DESCRIPTION_H + FIELD_GAP
+            + LABEL_H + BTN_H;
     /** The description box gives up height first when the window is short. */
     private int descriptionH = DESCRIPTION_H;
 
     private static final int TIGHT_HEIGHT = 340;
 
-    private static final int FORM_W_TARGET = 336;
+    private static final int FORM_W_TARGET = 392;
     private static final int FORM_W_MIN = 176;
     private static final int STATUS_LINES = 2;
     private static final int COUNTER_AT_PERCENT = 75;
@@ -175,9 +179,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
 
         int y = formY + LABEL_H;
         titleBox = editBox(y, TITLE_MAX, form.title(),
-                Component.translatable("waypointer.screen.route_publish.field.title"),
-                Component.translatable(
-                        "waypointer.screen.route_publish.field.title.tooltip"));
+                Component.translatable("waypointer.screen.route_publish.field.title"), null);
         titleBox.setResponder(value -> {
             if (initializing) return;
             form.setTitle(value);
@@ -187,16 +189,11 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         descriptionBox = MultiLineEditBox.builder()
                 .setX(formX)
                 .setY(y)
-                .setPlaceholder(Component.translatable(
-                        "waypointer.screen.route_publish.field.description.hint",
-                        DESCRIPTION_MIN))
                 .build(font, formW, descriptionH,
                         Component.translatable(
                                 "waypointer.screen.route_publish.field.description"));
         // The listener enforces the code-point limit; Minecraft counts UTF-16 units.
         descriptionBox.setValue(form.description());
-        descriptionBox.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.route_publish.field.description.tooltip")));
         descriptionBox.setValueListener(value -> {
             if (initializing || normalizingDescription) return;
             String normalized = normalizeDescriptionInput(value);
@@ -208,7 +205,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
             form.setDescription(normalized);
         });
         addRenderableWidget(descriptionBox);
-        y += LABEL_H + descriptionH + GAP_TIGHT;
+        y += LABEL_H + descriptionH + FIELD_GAP;
 
         buildVisibilityChoice(y);
         buildFooter();
@@ -233,10 +230,9 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
 
         measureFooter();
 
-        int headerH = LINE_H * 2 + GAP;
-        int copyRowH = BTN_H + GAP;
-        int footerH = BTN_H + copyRowH;
-        int chromeH = pad * 2 + headerH + GAP + statusLines * LINE_H + GAP_TIGHT + footerH;
+        int headerH = LINE_H * 2;
+        int headerGap = tight ? GAP : GAP_SECTION;
+        int chromeH = pad * 2 + headerH + headerGap + GAP + statusLines * LINE_H + GAP + BTN_H;
         int bodyH = formHeight();
 
         panelW = contentW + pad * 2;
@@ -248,14 +244,13 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         formX = contentX;
         titleY = panelY + pad;
         subtitleY = titleY + LINE_H;
-        formY = subtitleY + LINE_H + GAP;
+        formY = subtitleY + LINE_H + headerGap;
 
         footerY = panelY + panelH - pad - BTN_H;
-        copyY = footerY - BTN_H - GAP;
-        int topFooterY = footerY - copyRowH;
+        copyY = titleY - 1;
         statusX = contentX;
         statusMaxW = contentW;
-        statusY = topFooterY - GAP_TIGHT - statusLines * LINE_H;
+        statusY = footerY - GAP - statusLines * LINE_H;
         int bodyBottom = statusY - GAP;
 
         descriptionH = DESCRIPTION_H;
@@ -326,16 +321,18 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                         "waypointer.screen.route_publish.action.manage.tooltip")));
         addRenderableWidget(manageButton);
 
-        int actionWidth = publishState.result() == null ? contentW : (contentW - GAP) / 2;
-        addRoutesButton = styledButton(gridX, copyY, actionWidth, BTN_H,
-                Component.translatable(form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON
+        // Adding routes, or copying the link once published, sits beside the summary it changes.
+        Component addLabel = Component.translatable(
+                form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON
                         ? "waypointer.screen.route_publish.action.add_room_routes"
-                        : "waypointer.screen.route_publish.action.add_routes"),
-                button -> addMoreRoutes(), null);
+                        : "waypointer.screen.route_publish.action.add_routes");
+        int addW = Math.min(contentW / 2, font.width(addLabel) + GAP_SECTION);
+        addRoutesButton = styledButton(contentX + contentW - addW, copyY, addW, BTN_H,
+                addLabel, button -> addMoreRoutes(), null);
         addRenderableWidget(addRoutesButton);
 
-        copyButton = styledButton(gridX + (contentW + GAP) / 2, copyY,
-                (contentW - GAP) / 2, BTN_H,
+        copyW = Math.min(contentW / 2, font.width(copyLabel()) + GAP_SECTION);
+        copyButton = styledButton(contentX + contentW - copyW, copyY, copyW, BTN_H,
                 copyLabel(), button -> copyPublishedCode(),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.route_publish.action.copy.tooltip")));
@@ -576,6 +573,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         if (manageButton != null) manageButton.active = controls.manageEnabled();
         if (addRoutesButton != null) {
             addRoutesButton.active = controls.editable();
+            addRoutesButton.visible = !controls.copyVisible();
         }
         if (titleBox != null) titleBox.active = controls.editable();
         if (descriptionBox != null) descriptionBox.active = controls.editable();
@@ -593,22 +591,21 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         graphics.fill(0, 0, width, height, 0x80000000);
         graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
 
-        graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), contentW),
+        graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), headerTextWidth()),
                 contentX, titleY, TEXT, false);
         renderRouteSummary(graphics);
-        graphics.fill(contentX, formY - GAP_TIGHT,
-                contentX + contentW, formY - GAP_TIGHT + 1, BORDER);
+        int dividerY = formY - (height < TIGHT_HEIGHT ? GAP : GAP_SECTION) / 2;
+        graphics.fill(contentX, dividerY, contentX + contentW, dividerY + 1, BORDER);
 
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.title"),
-                formY, form.title(), TITLE_MAX);
+                formY, form.title(), 0, TITLE_MAX);
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.description"),
-                formY + FIELD_STRIDE,
-                null, 0);
+                formY + FIELD_STRIDE, form.description(), DESCRIPTION_MIN, DESCRIPTION_MAX);
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.visibility"),
-                formY + FIELD_STRIDE + LABEL_H + descriptionH + GAP_TIGHT, null, 0);
+                formY + FIELD_STRIDE + LABEL_H + descriptionH + FIELD_GAP, null, 0, 0);
 
         if (showPaintNotice) {
             graphics.text(font, font.plainSubstrByWidth(
@@ -618,7 +615,13 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         renderStatus(graphics);
         super.extractRenderState(graphics, mouseX, mouseY, partial);
         renderVisibilitySelection(graphics);
-        renderDescriptionCounter(graphics);
+    }
+
+    /** The header text stops short of the button beside it. */
+    private int headerTextWidth() {
+        Button beside = copyButton != null && copyButton.visible ? copyButton : addRoutesButton;
+        int buttonW = beside == null || !beside.visible ? 0 : beside.getWidth() + GAP;
+        return Math.max(0, contentW - buttonW);
     }
 
     private void renderVisibilitySelection(GuiGraphicsExtractor graphics) {
@@ -632,38 +635,24 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 GuiTokens.ACCENT);
     }
 
-    private void renderDescriptionCounter(GuiGraphicsExtractor graphics) {
-        if (descriptionBox == null) return;
-        int remaining = descriptionCharactersRemaining(form.description());
-        if (remaining < 0) return;
-        String counter = Component.translatable(
-                "waypointer.screen.route_publish.field.remaining",
-                LocalizedNumberFormatter.active().integer(remaining)).getString();
-        int counterX = descriptionBox.getX() + descriptionBox.getWidth() - GAP_TIGHT
-                - font.width(counter);
-        int counterY = descriptionBox.getY() + descriptionBox.getHeight() - LINE_H - GAP_TIGHT;
-        int backdropLeft = counterX - 3;
-        int backdropRight = descriptionBox.getX() + descriptionBox.getWidth() - 2;
-        int backdropTop = counterY - 2;
-        int backdropBottom = counterY + LINE_H;
-        graphics.fill(backdropLeft, backdropTop, backdropRight, backdropBottom, 0xFF10151A);
-        graphics.fill(backdropLeft, backdropTop, backdropRight, backdropTop + 1, BORDER);
-        graphics.text(font, counter, counterX, counterY,
-                remaining == 0 ? STATUS_ERROR : TEXT_MUTED, false);
-    }
-
+    /**
+     * A field's label, with a quiet count on the right: towards the minimum while the
+     * text is too short, and towards the maximum once it gets close to it.
+     */
     private void drawFieldLabel(GuiGraphicsExtractor graphics, Component label, int y,
-                                String value, int maximum) {
+                                String value, int minimum, int maximum) {
         int labelMaxW = formW;
-        int used = value == null ? 0 : value.length();
-        if (maximum > 0 && used * 100 >= maximum * COUNTER_AT_PERCENT) {
+        int used = value == null ? 0 : value.codePointCount(0, value.length());
+        int limit = used < minimum ? minimum
+                : maximum > 0 && used * 100 >= maximum * COUNTER_AT_PERCENT ? maximum : 0;
+        if (limit > 0) {
             String counter = Component.translatable(
                     "waypointer.screen.route_publish.field.counter",
                     LocalizedNumberFormatter.active().integer(used),
-                    LocalizedNumberFormatter.active().integer(maximum)).getString();
+                    LocalizedNumberFormatter.active().integer(limit)).getString();
             int counterW = font.width(counter);
             graphics.text(font, counter, formX + formW - counterW, y,
-                    used >= maximum ? STATUS_ERROR : TEXT_MUTED, false);
+                    limit == maximum && used >= maximum ? STATUS_ERROR : TEXT_MUTED, false);
             labelMaxW = Math.max(0, formW - counterW - GAP);
         }
         graphics.text(font, font.plainSubstrByWidth(label.getString(), labelMaxW), formX, y,
@@ -671,7 +660,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
     }
 
     private void renderStatus(GuiGraphicsExtractor graphics) {
-        Component validation = validationHint();
+        Component validation = fieldProblem(form.validation()) ? null : validationHint();
         boolean showsValidation = statusText.getString().isBlank() && validation != null;
         Component message = showsValidation ? validation : statusText;
         if (message == null || message.getString().isEmpty()) return;
@@ -689,6 +678,13 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         for (int i = 0; i < shown; i++) {
             graphics.text(font, lines.get(i), textX, statusY + i * LINE_H, color, false);
         }
+    }
+
+    /** Problems with what is being typed; the field's counter shows them, not a red line. */
+    private static boolean fieldProblem(CatalogPublishFormModel.Validation validation) {
+        return validation == CatalogPublishFormModel.Validation.TITLE_REQUIRED
+                || validation == CatalogPublishFormModel.Validation.DESCRIPTION_TOO_SHORT
+                || validation == CatalogPublishFormModel.Validation.DESCRIPTION_TOO_LONG;
     }
 
     private int statusColor() {
@@ -723,11 +719,9 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 Counts.of("route", form.groups().size()), Counts.of(dungeon ? "room" : "zone", zoneCount))
                 .getString();
         String count = waypointCount(form.groups().stream().mapToLong(WaypointGroup::size).sum()).getString();
-        String clippedZone = font.plainSubstrByWidth(zone,
-                Math.max(0, contentW - font.width(count) - GAP_SECTION));
-        graphics.text(font, clippedZone, contentX, subtitleY, GuiTokens.ACCENT, false);
-        graphics.text(font, count, contentX + contentW - font.width(count),
-                subtitleY, TEXT_MUTED, false);
+        String summary = zone + " · " + count;
+        graphics.text(font, font.plainSubstrByWidth(summary, headerTextWidth()),
+                contentX, subtitleY, TEXT_MUTED, false);
     }
 
     @Override

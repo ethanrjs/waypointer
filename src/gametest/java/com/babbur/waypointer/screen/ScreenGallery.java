@@ -57,6 +57,36 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-editor-menu-s" + scale);
+        // A dungeon room route with the waypoint type picker open and its first type hovered.
+        String roomRouteId = context.computeOnClient(client -> {
+            var room = com.babbur.waypointer.core.WaypointGroup.create("Arrow Trap", "arrow-trap");
+            room.setRouteKind(com.babbur.waypointer.core.WaypointGroup.RouteKind.DUNGEON);
+            room.add(new com.babbur.waypointer.core.Waypoint(4, 70, 4, "", 0x9C2EFF,
+                    com.babbur.waypointer.core.Waypoint.FLAG_SKIP_ON_STAND
+                            | com.babbur.waypointer.core.Waypoint.FLAG_DUNGEON_ETHERWARP, 0.0));
+            room.add(new com.babbur.waypointer.core.Waypoint(9, 70, 9, "", 0x2EE0FF,
+                    com.babbur.waypointer.core.Waypoint.FLAG_SKIP_ON_INTERACT
+                            | com.babbur.waypointer.core.Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+            WaypointerClient.manager().add(room);
+            return room.id();
+        });
+        shoot(context, "editor-dungeon", scale, () -> new GroupEditScreen(null, WaypointerClient.manager(), config,
+                WaypointerClient.manager().get(roomRouteId), 0));
+        double[] typeCell = new double[2];
+        context.runOnClient(client -> {
+            GroupEditScreen editor = (GroupEditScreen) MinecraftCompat.screen(client);
+            setField(editor, "dungeonTypePickerIndex", 0);
+            Object bounds = invoke(editor, "dungeonTypePickerBounds", new Class<?>[0]);
+            Object cell = invoke(editor, "dungeonTypePickerCell",
+                    new Class<?>[]{bounds.getClass(), int.class}, bounds, 0);
+            double guiScale = client.getWindow().getGuiScale();
+            typeCell[0] = ((int) invoke(cell, "left", new Class<?>[0]) + 6) * guiScale;
+            typeCell[1] = ((int) invoke(cell, "top", new Class<?>[0]) + 6) * guiScale;
+        });
+        context.getInput().setCursorPos(typeCell[0], typeCell[1]);
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-editor-dungeon-types-s" + scale);
+        context.runOnClient(client -> WaypointerClient.manager().remove(roomRouteId));
         shoot(context, "settings", scale, () -> new SettingsScreen(null, config, WaypointerClient.dungeonConfig()));
         shoot(context, "settings-appearance", scale, () -> SettingsScreen.atSetting(null, config,
                 WaypointerClient.dungeonConfig(), "showTracer"));
@@ -134,6 +164,12 @@ public final class ScreenGallery {
         });
         context.waitTicks(3);
         context.takeScreenshot("gallery-settings-search-results-s" + scale);
+        context.runOnClient(client -> {
+            SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
+            ((net.minecraft.client.gui.components.EditBox) field(screen, "searchBox")).setValue("room");
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-settings-search-room-s" + scale);
         shoot(context, "appearance-scope", scale, () -> SettingsScreen.forAppearance(null, config,
                 WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, "mineshaft")));
         context.runOnClient(client -> {
