@@ -948,6 +948,8 @@ public final class WaypointerScreen extends Screen {
         g.fill(x1, y2 - 1, x2, y2, ACCENT);
         g.fill(x1, y1, x1 + 1, y2, ACCENT);
         g.fill(x2 - 1, y1, x2, y2, ACCENT);
+        // Text sorts above fills in a stratum; a new one keeps the zone name from showing through.
+        g.nextStratum();
         zoneSearchBox.setX(x1 + GAP);
         zoneSearchBox.setY(y1 + (BTN_H - 8) / 2);
         zoneSearchBox.setWidth(x2 - x1 - GAP - 18);
