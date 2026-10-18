@@ -104,6 +104,8 @@ public final class WaypointerScreen extends Screen {
     private Button settingsButton;
     private EditBox zoneSearchBox;
     private String zoneSearchQuery = "";
+    // The click that opens the list focuses the zone button afterwards; focus the search then.
+    private boolean zoneSearchFocusPending;
     String searchQuery = "";
     private boolean importInFlight;
     private boolean islandDropdownOpen;
@@ -357,7 +359,6 @@ public final class WaypointerScreen extends Screen {
                 Component.translatable("waypointer.screen.main.zone_search"));
         zoneSearchBox.setBordered(false);
         zoneSearchBox.setMaxLength(40);
-        zoneSearchBox.setHint(Component.translatable("waypointer.screen.main.zone_search"));
         zoneSearchBox.setValue(zoneSearchQuery);
         zoneSearchBox.setResponder(this::onZoneSearchChanged);
         zoneSearchBox.visible = zoneSearchShown();
@@ -499,7 +500,10 @@ public final class WaypointerScreen extends Screen {
         zoneSearchQuery = "";
         if (zoneSearchBox != null) zoneSearchBox.setValue("");
         syncZoneSearchVisibility();
-        if (zoneSearchBox != null && zoneSearchBox.visible) setFocused(zoneSearchBox);
+        if (zoneSearchBox != null && zoneSearchBox.visible) {
+            setFocused(zoneSearchBox);
+            zoneSearchFocusPending = true;
+        }
     }
 
     private void openIslandDropdown() {
@@ -611,6 +615,10 @@ public final class WaypointerScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         if (restoreStructuresBtn != null) restoreStructuresBtn.visible = restoreStructuresShown();
         focusCurrentDungeonRoomIfChanged();
+        if (zoneSearchFocusPending) {
+            zoneSearchFocusPending = false;
+            if (zoneSearchBox != null && zoneSearchBox.visible) setFocused(zoneSearchBox);
+        }
         if (islandSelectorBtn != null) {
             islandSelectorBtn.setMessage(islandSelectorLabel());
         }
@@ -953,13 +961,7 @@ public final class WaypointerScreen extends Screen {
         zoneSearchBox.setX(x1 + GAP);
         zoneSearchBox.setY(y1 + (BTN_H - 8) / 2);
         zoneSearchBox.setWidth(x2 - x1 - GAP - 18);
-        // The placeholder sits where typing starts; the caret appears with the first letter.
-        if (zoneSearchBox.getValue().isEmpty()) {
-            g.text(font, Component.translatable("waypointer.screen.main.zone_search"),
-                    zoneSearchBox.getX(), zoneSearchBox.getY(), TEXT_MUTED, false);
-        } else {
-            zoneSearchBox.extractWidgetRenderState(g, mouseX, mouseY, partial);
-        }
+        zoneSearchBox.extractWidgetRenderState(g, mouseX, mouseY, partial);
         renderIslandSelectorDirection(g);
     }
 

@@ -104,6 +104,29 @@ public final class ScreenGallery {
         shoot(context, "hub-zones", scale, () -> new WaypointerScreen(manager, config));
         call(context, "openIslandDropdown");
         context.takeScreenshot("gallery-hub-zones-open-s" + scale);
+        shoot(context, "hub-before-empty", scale, () -> new WaypointerScreen(manager, config));
+        context.runOnClient(client -> {
+            WaypointerScreen hub = (WaypointerScreen) MinecraftCompat.screen(client);
+            hub.selectedZoneId = "garden";
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-hub-empty-zone-s" + scale);
+        // A real click on the zone button, then typing: the search must keep focus.
+        shoot(context, "hub-before-zone-click", scale, () -> new WaypointerScreen(manager, config));
+        double[] zoneButton = new double[2];
+        context.runOnClient(client -> {
+            var button = (net.minecraft.client.gui.components.AbstractWidget)
+                    field(MinecraftCompat.screen(client), "islandSelectorBtn");
+            double guiScale = client.getWindow().getGuiScale();
+            zoneButton[0] = (button.getX() + button.getWidth() / 2.0) * guiScale;
+            zoneButton[1] = (button.getY() + button.getHeight() / 2.0) * guiScale;
+        });
+        context.getInput().setCursorPos(zoneButton[0], zoneButton[1]);
+        context.getInput().pressMouse(0);
+        context.waitTicks(2);
+        context.getInput().typeChars("gal");
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-hub-zones-typed-s" + scale);
         shoot(context, "settings-search", scale, () -> new SettingsScreen(null, config, WaypointerClient.dungeonConfig()));
         context.runOnClient(client -> {
             SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);

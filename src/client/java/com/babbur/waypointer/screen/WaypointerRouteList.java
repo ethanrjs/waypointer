@@ -275,7 +275,7 @@ final class WaypointerRouteList {
         int rowsTop = rowsTop(y1);
         screen.renderMainNotice(graphics, x1, y1, x2);
         if (rows.isEmpty()) {
-            renderEmptyState(graphics, x1, rowsTop);
+            renderEmptyState(graphics, x1, rowsTop, x2, y2);
             return;
         }
 
@@ -879,34 +879,48 @@ final class WaypointerRouteList {
         return false;
     }
 
-    private void renderEmptyState(GuiGraphicsExtractor graphics, int x1, int y1) {
-        int textX = x1 + GAP;
+    private void renderEmptyState(GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2) {
+        String key;
+        Icons.Icon icon;
         if (!normalizedSearchQuery().isEmpty()) {
-            graphics.text(font(), Component.translatable("waypointer.screen.main.empty.search"),
-                    textX, y1 + 8, TEXT, false);
-            graphics.text(font(), Component.translatable("waypointer.screen.main.empty.search_hint"),
-                    textX, y1 + 22, TEXT_DIM, false);
-            return;
+            key = "waypointer.screen.main.empty.search";
+            icon = Icons.Icon.ROUTE;
+        } else if (isTemporaryZone(screen.selectedZoneId)) {
+            key = "waypointer.screen.main.empty.temporary";
+            icon = Icons.Icon.CLOCK;
+        } else if (isDungeonRoomsZone(screen.selectedZoneId)) {
+            key = "waypointer.screen.main.empty.dungeons";
+            icon = Icons.Icon.SKULL;
+        } else {
+            key = "waypointer.screen.main.empty.zone";
+            icon = Icons.Icon.ROUTE;
         }
-        if (isTemporaryZone(screen.selectedZoneId)) {
-            graphics.text(font(), Component.translatable("waypointer.screen.main.empty.temporary"),
-                    textX, y1 + 8, TEXT, false);
-            graphics.text(font(), Component.translatable(
-                            "waypointer.screen.main.empty.temporary_hint"),
-                    textX, y1 + 22, TEXT_DIM, false);
-            return;
-        }
-        if (isDungeonRoomsZone(screen.selectedZoneId)) {
-            graphics.text(font(), Component.translatable("waypointer.screen.main.empty.dungeons"),
-                    textX, y1 + 8, TEXT, false);
-            graphics.text(font(), Component.translatable("waypointer.screen.main.empty.dungeons_hint"),
-                    textX, y1 + 22, TEXT_DIM, false);
-            return;
-        }
-        graphics.text(font(), Component.translatable("waypointer.screen.main.empty.zone"),
-                textX, y1 + 8, TEXT, false);
-        graphics.text(font(), Component.translatable("waypointer.screen.main.empty.zone_hint"),
-                textX, y1 + 22, TEXT_DIM, false);
+        Component title = Component.translatable(key);
+        Component hint = Component.translatable(key.endsWith(".zone")
+                ? "waypointer.screen.main.empty.zone_hint" : key + "_hint");
+
+        // A large icon over two centred lines, together centred in the empty list.
+        int iconSize = Icons.SIZE * EMPTY_ICON_SCALE;
+        int lineH = font().lineHeight;
+        int blockH = iconSize + 6 + lineH + 4 + lineH;
+        int centerX = (x1 + x2) / 2;
+        int top = Math.max(y1 + GAP, y1 + (y2 - y1 - blockH) / 2);
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(centerX - iconSize / 2f, top);
+        graphics.pose().scale(EMPTY_ICON_SCALE, EMPTY_ICON_SCALE);
+        Icons.draw(graphics, icon, 0, 0, TEXT_DIM);
+        graphics.pose().popMatrix();
+        int titleY = top + iconSize + 6;
+        drawCentered(graphics, title, centerX, titleY, x1, TEXT);
+        drawCentered(graphics, hint, centerX, titleY + lineH + 4, x1, TEXT_DIM);
+    }
+
+    private static final int EMPTY_ICON_SCALE = 2;
+
+    private void drawCentered(GuiGraphicsExtractor graphics, Component text, int centerX, int y,
+                              int left, int color) {
+        int x = Math.max(left + GAP, centerX - font().width(text) / 2);
+        graphics.text(font(), text, x, y, color, false);
     }
 
     private void renderRoomHeader(GuiGraphicsExtractor graphics, Row row,
