@@ -291,8 +291,8 @@ public final class WaypointCodec {
             int kept = 0;
             for (int i = 0; i < raw.length() && kept < MAX_LABEL_CHARS; i++) {
                 char c = raw.charAt(i);
-                // Keep the title free of formatting escapes and line-breaking controls.
-                if (c == '\u00A7' || c < 0x20 || c == 0x7F) continue;
+                // Keep the title free of formatting escapes, controls and direction overrides.
+                if (com.babbur.waypointer.core.SafeText.isHidden(c)) continue;
                 if (Character.isHighSurrogate(c)) {
                     if (i + 1 >= raw.length() || !Character.isLowSurrogate(raw.charAt(i + 1))
                             || kept + 2 > MAX_LABEL_CHARS) {

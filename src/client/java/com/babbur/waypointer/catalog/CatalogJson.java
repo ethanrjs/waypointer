@@ -1,5 +1,6 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.core.SafeText;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -204,16 +205,21 @@ final class CatalogJson {
             throw new IllegalArgumentException("Catalog route is empty");
         }
 
+        // Shared text is shown in the browser and in chat, so it is cleaned like waypoint names.
+        String title = SafeText.line(requiredString(route, "title", 80));
+        if (title.isEmpty()) throw new IllegalArgumentException("title has an invalid length");
+        String zoneId = requiredString(route, "zoneId", 64);
+        String zoneLabel = SafeText.line(requiredString(route, "zoneLabel", 80));
         return new CatalogRouteSummary(
                 id,
-                requiredString(route, "title", 80),
-                optionalString(route, "description", 500, ""),
-                optionalString(route, "authorName", 40, ""),
+                title,
+                SafeText.paragraph(optionalString(route, "description", 500, "")),
+                SafeText.line(optionalString(route, "authorName", 40, "")),
                 publisherId,
                 optionalBoolean(route, "publisherVerified", false),
                 optionalString(route, "visibility", 16, "public"),
-                requiredString(route, "zoneId", 64),
-                requiredString(route, "zoneLabel", 80),
+                zoneId,
+                zoneLabel.isEmpty() ? zoneId : zoneLabel,
                 waypointCount,
                 groupCount,
                 positiveInt(route, "codecVersion"),

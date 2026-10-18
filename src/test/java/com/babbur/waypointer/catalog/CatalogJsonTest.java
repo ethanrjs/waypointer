@@ -91,6 +91,38 @@ class CatalogJsonTest {
     }
 
     @Test
+    void sharedTextIsCleanedAndAnUnreadableTitleSkipsOnlyThatRoute() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv",
+                  "title":"\\u00a7c[ADMIN]\\u202e Free route",
+                  "description":"Line one\\nLine two\\u0007",
+                  "authorName":"\\u00a7kSomeone",
+                  "zoneId":"hub",
+                  "zoneLabel":"\\u200bHub",
+                  "waypointCount":3,
+                  "groupCount":1,
+                  "codecVersion":9
+                },{
+                  "id":"Bcdefghijklmnopqrstuvw",
+                  "title":"\\u00a7\\u202e",
+                  "zoneId":"hub",
+                  "zoneLabel":"Hub",
+                  "waypointCount":3,
+                  "groupCount":1,
+                  "codecVersion":9
+                }],"hasMore":false}
+                """);
+
+        assertEquals(1, page.routes().size());
+        CatalogRouteSummary route = page.routes().getFirst();
+        assertEquals("c[ADMIN] Free route", route.title());
+        assertEquals("Line one\nLine two", route.description());
+        assertEquals("kSomeone", route.authorName());
+        assertEquals("Hub", route.zoneLabel());
+    }
+
+    @Test
     void readsTheChosenIconAndFallsBackToTheZone() {
         CatalogPage page = CatalogJson.parsePage("""
                 {"routes":[{
