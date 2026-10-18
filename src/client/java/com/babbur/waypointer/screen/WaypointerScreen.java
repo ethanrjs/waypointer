@@ -953,10 +953,12 @@ public final class WaypointerScreen extends Screen {
         zoneSearchBox.setX(x1 + GAP);
         zoneSearchBox.setY(y1 + (BTN_H - 8) / 2);
         zoneSearchBox.setWidth(x2 - x1 - GAP - 18);
-        zoneSearchBox.extractWidgetRenderState(g, mouseX, mouseY, partial);
+        // The placeholder sits where typing starts; the caret appears with the first letter.
         if (zoneSearchBox.getValue().isEmpty()) {
             g.text(font, Component.translatable("waypointer.screen.main.zone_search"),
-                    x1 + GAP + 6, zoneSearchBox.getY(), TEXT_MUTED, false);
+                    zoneSearchBox.getX(), zoneSearchBox.getY(), TEXT_MUTED, false);
+        } else {
+            zoneSearchBox.extractWidgetRenderState(g, mouseX, mouseY, partial);
         }
         renderIslandSelectorDirection(g);
     }
