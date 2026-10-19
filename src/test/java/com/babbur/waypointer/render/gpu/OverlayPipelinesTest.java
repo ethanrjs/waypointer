@@ -2,11 +2,14 @@ package com.babbur.waypointer.render.gpu;
 
 import com.babbur.waypointer.render.WaypointerRenderPipelines;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,11 +24,11 @@ class OverlayPipelinesTest {
     void runtimeFormatChangeRefreshesCachedEntityStrideWithoutReplacingPipelines() throws ReflectiveOperationException {
         OverlayPipelines pipelines = OverlayPipelines.create();
         MeshBucket bucket = MeshBucket.textured(MeshBucket.Kind.BEAM, false,
-                net.minecraft.client.renderer.blockentity.BeaconRenderer.BEAM_LOCATION);
+                BeaconRenderer.BEAM_LOCATION);
         var original = pipelines.slot(bucket);
         var field = OverlayPipelines.class.getDeclaredField("slots");
         field.setAccessible(true);
-        var slots = (java.util.Map<Object, OverlayPipelines.Slot>) field.get(pipelines);
+        var slots = (Map<Object, OverlayPipelines.Slot>) field.get(pipelines);
         var entry = slots.entrySet().iterator().next();
         var expanded = new MeshLayout(original.layout().stride() + 16, original.layout().attributes());
         entry.setValue(new OverlayPipelines.Slot(original.inWorld(), original.postWorld(), expanded, new Object()));
@@ -51,7 +54,7 @@ class OverlayPipelinesTest {
                     var retained = pipelines.slot(MeshBucket.untextured(MeshBucket.Kind.LINES, depth));
                     var expectedDepth = new DepthStencilState(
                             depth ? DepthStencilState.DEFAULT.depthTest() : CompareOp.ALWAYS_PASS, false);
-                    for (var pipeline : new com.mojang.blaze3d.pipeline.RenderPipeline[]{
+                    for (var pipeline : new RenderPipeline[]{
                             legacy, retained.inWorld(), retained.postWorld()}) {
                         assertEquals("waypointer:core/screen_line", pipeline.getFragmentShader().toString());
                         assertEquals(expectedDepth, pipeline.getDepthStencilState());

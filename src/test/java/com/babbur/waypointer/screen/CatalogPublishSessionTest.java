@@ -7,6 +7,7 @@ import com.babbur.waypointer.catalog.CatalogPublishResult;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,7 +48,7 @@ class CatalogPublishSessionTest {
 
         assertEquals(CatalogPublishSession.Phase.SUCCEEDED, session.snapshot().phase());
         assertEquals("multiple", sent.get().zoneId());
-        var payload = com.babbur.waypointer.codec.WaypointCodec.decodeCanonicalV9(sent.get().payload());
+        var payload = WaypointCodec.decodeCanonicalV9(sent.get().payload());
         assertEquals(List.of("hub", "garden"), payload.groups().stream()
                 .map(WaypointGroup::zoneId).toList());
         assertEquals("Published route", sent.get().title());
@@ -225,8 +228,8 @@ class CatalogPublishSessionTest {
         assertTrue(CatalogPublishSession.publisherNameNeedsEntry(
                 CatalogApiExceptions.withCode(400, "invalid_publisher_name", "invalid name")));
         assertTrue(CatalogPublishSession.publisherNameNeedsEntry(
-                new java.util.concurrent.CompletionException(
-                        new java.util.concurrent.ExecutionException(required))));
+                new CompletionException(
+                        new ExecutionException(required))));
         assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 CatalogApiExceptions.withCode(429, "rate_limited", "slow down")));
         assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
@@ -234,7 +237,7 @@ class CatalogPublishSessionTest {
         assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 new IllegalStateException("boom")));
         assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
-                new java.util.concurrent.CompletionException(
+                new CompletionException(
                         new IllegalStateException("boom"))));
     }
 

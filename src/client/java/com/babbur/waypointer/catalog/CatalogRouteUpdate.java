@@ -19,10 +19,6 @@ public record CatalogRouteUpdate(
         return new CatalogRouteUpdate(null, null, null, payload, zoneId);
     }
 
-    public boolean replacesPayload() {
-        return payload != null;
-    }
-
     public boolean isEmpty() {
         return title == null && description == null && visibility == null && payload == null;
     }

@@ -19,11 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Compatibility tests for third-party export targets. These assert the JSON
- * shapes Waypointer promises to emit, then feed them back through the importer
- * so export support cannot drift away from import support unnoticed.
- */
 class WaypointExportCodecTest {
 
     private static final WaypointCodec.Options FULL_EXTERNAL =
@@ -133,7 +128,7 @@ class WaypointExportCodecTest {
                 WaypointExportCodec.Target.WAYPOINTER);
 
         assertEquals("the_park", WaypointCodec.decode(kept).get(0).zoneId());
-        // UNKNOWN marks routes for assignment to the current area on import.
+
         assertEquals(Zone.UNKNOWN.id(), WaypointCodec.decode(stripped).get(0).zoneId());
         assertEquals("Park Route", WaypointCodec.decode(stripped).get(0).name());
         assertEquals("start", WaypointCodec.decode(stripped).get(0).get(0).name());
@@ -143,7 +138,6 @@ class WaypointExportCodecTest {
     void dropping_the_island_is_effectively_free() {
         WaypointCodec.Options portable = FULL_EXTERNAL.toBuilder().includeZone(false).build();
 
-        // UNKNOWN and dictionary zones use one-byte references; allow compression variation.
         int keptDict = encodedLength("the_park", FULL_EXTERNAL);
         int strippedDict = encodedLength("the_park", portable);
         assertTrue(strippedDict <= keptDict + 2,
@@ -164,18 +158,17 @@ class WaypointExportCodecTest {
     void an_island_this_build_cannot_place_decodes_as_unknown_instead_of_failing() throws Exception {
         List<String> pool = List.of("", "some_pooled_zone");
 
-        // Dictionary refs are odd; index 0 is the first real entry.
         assertEquals("hub", WaypointCodec.resolveZoneRef(1, pool));
-        // Unknown dictionary indices preserve the route coordinates.
+
         assertEquals(Zone.UNKNOWN.id(), WaypointCodec.resolveZoneRef((9999 << 1) | 1, pool));
-        // Pool refs are even. The reserved empty slot is how "no island" ships.
+
         assertEquals(Zone.UNKNOWN.id(), WaypointCodec.resolveZoneRef(0, pool));
         assertEquals("some_pooled_zone", WaypointCodec.resolveZoneRef(1 << 1, pool));
     }
 
     @Test
     void a_route_already_stored_without_an_island_round_trips_as_unknown() {
-        // Islandless source formats use the same empty zone reference.
+
         WaypointGroup group = sampleGroup("Mystery Route", Zone.UNKNOWN.id());
         String encoded = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
                 WaypointExportCodec.Target.WAYPOINTER);
@@ -196,7 +189,6 @@ class WaypointExportCodecTest {
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsIslandChoice());
         assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsIslandChoice());
 
-        // Skytils has no unknown island enum, so its export must include an island.
         assertTrue(WaypointExportCodec.Target.SKYTILS.coerce(portable).includeZone);
 
         String encoded = WaypointExportCodec.encode(List.of(group), portable,

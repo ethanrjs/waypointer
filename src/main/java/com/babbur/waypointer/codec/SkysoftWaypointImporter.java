@@ -15,10 +15,6 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.HashSet;
 
-/**
- * Skysoft waypoint libraries, independently decoded from its published format:
- * https://github.com/Akinsoft/Skysoft/blob/a979f8e63d3ced952e02bd1e260321b89f5cc8e0/src/main/kotlin/com/skysoft/features/waypoints/WaypointJson.kt
- */
 final class SkysoftWaypointImporter {
     static final String PREFIX = "SKYSOFT:";
     private static final int DEFAULT_COLOR = 0x45A3FF;
@@ -91,7 +87,7 @@ final class SkysoftWaypointImporter {
         group.setStyleOverride(displayStyle(styles(json, version, Set.of("MARKER")), filled)
                 .with("showRouteLines", group.loadMode() == WaypointGroup.LoadMode.SEQUENCE && bool(json, "lines", true))
                 .with("colorSequenceWaypointsByRole", false));
-        // Loop, profile/visit scope and chroma have no existing local equivalents.
+
         List<Waypoint> waypoints = new ArrayList<>(points.size());
         for (int i = 0; i < points.size(); i++) {
             JsonObject point = object(points.get(i));
@@ -137,7 +133,7 @@ final class SkysoftWaypointImporter {
         boolean block = styles.contains("BLOCK");
         boolean marker = block || styles.contains("MARKER");
         boolean beacon = styles.contains("BEACON");
-        // Waypointer renders one box per waypoint; BLOCK takes precedence over MARKER.
+
         return WaypointStyle.EMPTY
                 .with("boxStyle", block && filled ? "FILLED_OUTLINED" : "OUTLINED")
                 .with("waypointMarkerScale", block ? 1.0 : 0.25)
@@ -151,7 +147,7 @@ final class SkysoftWaypointImporter {
     }
 
     private static int defaultColor(int index, int count) {
-        // Skysoft uses an RGB gradient for its default group color, including disabled points.
+
         float progress = (float) index / Math.max(1, count - 1);
         int result = 0;
         for (int shift = 0; shift <= 16; shift += 8) {
@@ -179,7 +175,7 @@ final class SkysoftWaypointImporter {
         if (!Double.isFinite(value) || Math.abs(value) > 30_000_000) {
             throw new IllegalArgumentException("Skysoft coordinate is missing or out of range");
         }
-        // Skysoft stores block origins; Waypointer stores centers in sixteenths.
+
         return Waypoint.snapToPreciseSixteenths(value + 0.5);
     }
 

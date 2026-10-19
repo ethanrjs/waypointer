@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen.settings;
 
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -81,7 +82,7 @@ class SettingsPresetsTest {
         RecentSettings.record("a");
         RecentSettings.record("b");
         RecentSettings.record("a");
-        assertEquals(java.util.List.of("a", "b"), RecentSettings.mostRecentFirst());
+        assertEquals(List.of("a", "b"), RecentSettings.mostRecentFirst());
 
         for (int i = 0; i < 20; i++) {
             RecentSettings.record("setting" + i);

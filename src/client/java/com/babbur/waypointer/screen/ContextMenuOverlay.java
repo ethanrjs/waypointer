@@ -4,8 +4,11 @@ import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
@@ -53,11 +56,11 @@ final class ContextMenuOverlay {
         return Component.translatable("waypointer.screen.menu.hint." + id).getString();
     }
 
-    static List<Item> withIcons(List<Item> items, java.util.Map<String, Icons.Icon> icons) {
-        List<Item> out = new java.util.ArrayList<>(items.size());
+    static List<Item> withIcons(List<Item> items, Map<String, Icons.Icon> icons) {
+        List<Item> out = new ArrayList<>(items.size());
         for (Item item : items) {
             Icons.Icon icon = item.label().getContents()
-                    instanceof net.minecraft.network.chat.contents.TranslatableContents translatable
+                    instanceof TranslatableContents translatable
                     ? icons.get(translatable.getKey()) : null;
             out.add(icon == null || item.icon() != null ? item : item.withIcon(icon));
         }

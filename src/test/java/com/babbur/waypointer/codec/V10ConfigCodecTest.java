@@ -133,22 +133,18 @@ class V10ConfigCodecTest {
         byte[] unknown = semanticWithField(V10ConfigBodyCodec.MAX_TAG, new byte[] {1, 2, 3});
         assertSameShareableConfig(new WaypointerConfig(), decodedConfig(directCode(unknown)));
 
-        // Tag 2 defaults to true and therefore must be omitted.
         byte[] explicitDefault = semanticWithField(2, new byte[] {1});
         assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(directCode(explicitDefault)));
 
-        // Tag 30 is a shortest unsigned integer. 0x80 0x00 is redundant.
         byte[] nonShortestInteger = semanticWithField(30, new byte[] {(byte) 0x80, 0});
         assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(directCode(nonShortestInteger)));
 
-        // Tag 4 is RGB and must use exactly three bytes.
         byte[] shortRgb = semanticWithField(4, new byte[] {1});
         assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(directCode(shortRgb)));
 
-        // Tag 37: count=1, length=1, malformed UTF-8 byte.
         byte[] malformedUtf8 = semanticWithField(37,
                 new byte[] {1, 1, (byte) 0xFF});
         assertThrows(IllegalArgumentException.class,
@@ -185,7 +181,7 @@ class V10ConfigCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(directCode(tooLong.toByteArray())));
 
-        byte[] tooManyStrings = {(byte) 0x81, 0x02}; // shortest uvarint for 257
+        byte[] tooManyStrings = {(byte) 0x81, 0x02};
         assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(directCode(
                         semanticWithField(37, tooManyStrings))));
@@ -265,7 +261,7 @@ class V10ConfigCodecTest {
     private static WaypointerConfig heavyConfig() {
         WaypointerConfig config = new WaypointerConfig();
         config.disableAllSettings();
-        // Keep this cross-language fixture unchanged as new settings are added.
+
         config.setCoordinateShareHelper(true);
         config.setCrystalHollowsMinimapLabels(true);
         config.setCrystalHollowsTracers(true);
@@ -275,7 +271,7 @@ class V10ConfigCodecTest {
         config.setCrystalHollowsMetalDetector(true);
         config.setCrystalHollowsRemoteSharing(true);
         config.setRenderAntialiasing(true);
-        // Crystal Hollows fields have a separate round-trip test.
+
         config.setCrystalHollowsEnabled(true);
         config.setCrystalHollowsStructureWaypoints(true);
         config.setCrystalHollowsShowRoughMarkers(true);

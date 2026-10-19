@@ -3,16 +3,20 @@ package com.babbur.waypointer.catalog;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.debug.DebugSignals;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -35,7 +39,7 @@ class RouteCatalogClientTest {
                 PublisherIdentity.generate(Instant.EPOCH)).join());
         assertEquals("invalid_response", assertInstanceOf(CatalogApiException.class, failure.getCause()).code());
         assertEquals("PATCH / HTTP 200 / invalid_response",
-                com.babbur.waypointer.debug.DebugSignals.catalogFailureLine());
+                DebugSignals.catalogFailureLine());
     }
 
     @Test
@@ -47,10 +51,10 @@ class RouteCatalogClientTest {
                 CatalogRouteUpdate.metadata(null, null, CatalogPublishRequest.Visibility.UNLISTED),
                 PublisherIdentity.generate(Instant.EPOCH)).join());
         assertEquals("PATCH / HTTP 403 / route_not_found",
-                com.babbur.waypointer.debug.DebugSignals.catalogFailureLine());
-        com.babbur.waypointer.debug.DebugSignals.recordCatalogFailure("private method", 500, "private token=secret");
+                DebugSignals.catalogFailureLine());
+        DebugSignals.recordCatalogFailure("private method", 500, "private token=secret");
         assertEquals("REQUEST / HTTP 500 / unknown",
-                com.babbur.waypointer.debug.DebugSignals.catalogFailureLine());
+                DebugSignals.catalogFailureLine());
     }
 
     @Test
@@ -365,11 +369,11 @@ class RouteCatalogClientTest {
     }
 
     private static byte[] bodyOf(HttpRequest request) {
-        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         CompletableFuture<Void> done = new CompletableFuture<>();
-        request.bodyPublisher().orElseThrow().subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
-            @Override public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) { subscription.request(Long.MAX_VALUE); }
-            @Override public void onNext(java.nio.ByteBuffer value) {
+        request.bodyPublisher().orElseThrow().subscribe(new Flow.Subscriber<ByteBuffer>() {
+            @Override public void onSubscribe(Flow.Subscription subscription) { subscription.request(Long.MAX_VALUE); }
+            @Override public void onNext(ByteBuffer value) {
                 byte[] block = new byte[value.remaining()]; value.get(block); bytes.writeBytes(block);
             }
             @Override public void onError(Throwable error) { done.completeExceptionally(error); }

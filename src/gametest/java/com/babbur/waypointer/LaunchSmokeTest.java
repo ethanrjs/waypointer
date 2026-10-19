@@ -4,16 +4,40 @@ import com.babbur.waypointer.api.RouteLoadMode;
 import com.babbur.waypointer.api.RouteSpec;
 import com.babbur.waypointer.api.WaypointFlags;
 import com.babbur.waypointer.api.WaypointSpec;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsLobbyState;
+import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.debug.ServerTimingDiagnostics;
 import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.crystal.CrystalHollowsPosition;
 import com.babbur.waypointer.crystal.MetalDetectorController;
+import com.babbur.waypointer.screen.DiagnosticsSmokeTest;
+import com.babbur.waypointer.screen.ScreenGallery;
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.block.Blocks;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.scores.DisplaySlot;
+import net.minecraft.world.scores.ScoreHolder;
+import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 
 @SuppressWarnings("UnstableApiUsage")
 public final class LaunchSmokeTest implements FabricClientGameTest {
@@ -31,12 +55,12 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                     && "private_world".equals(WaypointerClient.api().currentZone().id()), 600);
             context.waitForScreen(null);
             if (Boolean.getBoolean("waypointer.test.screenGallery")) {
-                com.babbur.waypointer.screen.ScreenGallery.run(context);
+                ScreenGallery.run(context);
                 return;
             }
-            context.waitFor(client -> com.babbur.waypointer.debug.ServerTimingDiagnostics.estimator()
+            context.waitFor(client -> ServerTimingDiagnostics.estimator()
                     .snapshot(System.nanoTime()).shortWindow().samples() >= 2, 200);
-            com.babbur.waypointer.screen.DiagnosticsSmokeTest.run(context);
+            DiagnosticsSmokeTest.run(context);
             CrystalHollowsMinimapSmokeTest.run(context);
             ShaderCompatibilitySmokeTest.prepare(context);
             ExportSmokeTest.run(context);
@@ -90,35 +114,35 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
         var position = player.position();
         var held = player.getMainHandItem();
         var scoreboard = client.level.getScoreboard();
-        var slot = net.minecraft.world.scores.DisplaySlot.SIDEBAR;
+        var slot = DisplaySlot.SIDEBAR;
         var previousSidebar = scoreboard.getDisplayObjective(slot);
         var sidebar = scoreboard.addObjective("waypointer_detector_test",
-                net.minecraft.world.scores.criteria.ObjectiveCriteria.DUMMY,
-                net.minecraft.network.chat.Component.literal("SKYBLOCK"),
-                net.minecraft.world.scores.criteria.ObjectiveCriteria.RenderType.INTEGER, false, null);
+                ObjectiveCriteria.DUMMY,
+                Component.literal("SKYBLOCK"),
+                ObjectiveCriteria.RenderType.INTEGER, false, null);
         MetalDetectorController previousController = null;
-        java.lang.reflect.Field installed = null;
+        Field installed = null;
         try {
-            var manager = new com.babbur.waypointer.core.ActiveGroupManager();
-            manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+            var manager = new ActiveGroupManager();
+            manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
             var config = new WaypointerConfig();
-            var tracker = new com.babbur.waypointer.crystal.CrystalHollowsTracker(manager, config, null);
-            var lobby = new com.babbur.waypointer.crystal.CrystalHollowsLobbyState("synthetic", 1, 1);
+            var tracker = new CrystalHollowsTracker(manager, config, null);
+            var lobby = new CrystalHollowsLobbyState("synthetic", 1, 1);
             lobby.setDivanCentre(new CrystalHollowsPosition(700, 100, 400));
-            for (var entry : java.util.Map.<String, Object>of("active", true, "lobby", lobby,
+            for (var entry : Map.<String, Object>of("active", true, "lobby", lobby,
                     "serverId", "synthetic").entrySet()) {
                 var field = tracker.getClass().getDeclaredField(entry.getKey());
                 field.setAccessible(true);
                 field.set(tracker, entry.getValue());
             }
-            var item = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COMPASS);
-            var attributes = new net.minecraft.nbt.CompoundTag();
+            var item = new ItemStack(Items.COMPASS);
+            var attributes = new CompoundTag();
             attributes.putString("id", "DWARVEN_METAL_DETECTOR");
-            var tag = new net.minecraft.nbt.CompoundTag();
+            var tag = new CompoundTag();
             tag.put("ExtraAttributes", attributes);
-            item.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA,
-                    net.minecraft.world.item.component.CustomData.of(tag));
-            player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, item);
+            item.set(DataComponents.CUSTOM_DATA,
+                    CustomData.of(tag));
+            player.setItemInHand(InteractionHand.MAIN_HAND, item);
             player.setPos(663.5, 80, 422.5);
             var controller = new MetalDetectorController(manager, tracker, config);
             installed = MetalDetectorController.class.getDeclaredField("installed");
@@ -127,13 +151,13 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             installed.set(null, controller);
             var updateSidebar = tracker.getClass().getDeclaredMethod("updateSidebar", Minecraft.class);
             updateSidebar.setAccessible(true);
-            var reading = net.minecraft.network.chat.Component.literal("TREASURE: 3.9m");
-            var packet = new net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket(reading);
+            var reading = Component.literal("TREASURE: 3.9m");
+            var packet = new ClientboundSetActionBarTextPacket(reading);
             client.getConnection().setActionBarText(packet);
             client.getConnection().setActionBarText(packet);
             if (!manager.activeGroups().isEmpty()) throw new AssertionError("Detector ran outside Mines of Divan");
             scoreboard.setDisplayObjective(slot, sidebar);
-            var areaLine = net.minecraft.world.scores.ScoreHolder.forNameOnly("\uE067 Mines of Divan");
+            var areaLine = ScoreHolder.forNameOnly("\uE067 Mines of Divan");
             scoreboard.getOrCreatePlayerScore(areaLine, sidebar).set(1);
             updateSidebar.invoke(tracker, client);
             client.getConnection().setActionBarText(packet);
@@ -143,7 +167,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             catch (NoSuchFieldException ignored) {                                  }
             var overlay = hud.getClass().getDeclaredField("overlayMessageString");
             overlay.setAccessible(true);
-            String displayed = ((net.minecraft.network.chat.Component) overlay.get(hud)).getString();
+            String displayed = ((Component) overlay.get(hud)).getString();
             if (!displayed.equals("TREASURE: 3.9m")) {
                 throw new AssertionError("Detector changed the server action-bar text: " + displayed);
             }
@@ -151,11 +175,11 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             if (groups.size() != 1 || !MetalDetectorController.isDetectorGroup(groups.getFirst())
                     || groups.getFirst().size() != 1 || groups.getFirst().get(0).x() != 662
                     || groups.getFirst().get(0).y() != 78 || groups.getFirst().get(0).z() != 426
-                    || groups.getFirst().loadMode() != com.babbur.waypointer.core.WaypointGroup.LoadMode.SEQUENCE) {
+                    || groups.getFirst().loadMode() != WaypointGroup.LoadMode.SEQUENCE) {
                 throw new AssertionError("Official detector item action bar did not produce the solved waypoint");
             }
             scoreboard.resetSinglePlayerScore(areaLine, sidebar);
-            scoreboard.getOrCreatePlayerScore(net.minecraft.world.scores.ScoreHolder.forNameOnly(
+            scoreboard.getOrCreatePlayerScore(ScoreHolder.forNameOnly(
                     "\uE067 Lost Precursor City"), sidebar).set(1);
             updateSidebar.invoke(tracker, client);
             client.getConnection().setActionBarText(packet);
@@ -167,7 +191,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             catch (IllegalAccessException e) { throw new AssertionError(e); }
             scoreboard.setDisplayObjective(slot, previousSidebar);
             scoreboard.removeObjective(sidebar);
-            player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, held);
+            player.setItemInHand(InteractionHand.MAIN_HAND, held);
             player.setPos(position.x, position.y, position.z);
         }
     }
@@ -179,7 +203,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
         float yaw = player.getYRot();
         float pitch = player.getXRot();
         BlockPos origin = player.blockPosition().above(8);
-        var restored = new java.util.LinkedHashMap<BlockPos, net.minecraft.world.level.block.state.BlockState>();
+        var restored = new LinkedHashMap<BlockPos, BlockState>();
         try {
 
             for (int z = 0; z <= 5; z++) {
@@ -196,11 +220,11 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             var visible = MetalDetectorController.class.getDeclaredMethod("visibleChests", Minecraft.class);
             visible.setAccessible(true);
             var expected = new CrystalHollowsPosition(chest.getX(), chest.getY(), chest.getZ());
-            if (!((java.util.List<?>) visible.invoke(controller, client)).contains(expected)) {
+            if (!((List<?>) visible.invoke(controller, client)).contains(expected)) {
                 throw new AssertionError("Metal detector did not detect an aimed visible chest");
             }
             level.setBlock(origin.offset(0, 1, 2), Blocks.STONE.defaultBlockState(), 3);
-            if (((java.util.List<?>) visible.invoke(controller, client)).contains(expected)) {
+            if (((List<?>) visible.invoke(controller, client)).contains(expected)) {
                 throw new AssertionError("Metal detector detected a chest through an obstruction");
             }
         } catch (ReflectiveOperationException e) {

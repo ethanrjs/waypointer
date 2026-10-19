@@ -1,5 +1,7 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.crystal.CrystalHollowsShare;
+import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -9,6 +11,7 @@ import com.babbur.waypointer.core.Zone;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -28,12 +31,12 @@ final class WaypointerChatCommands {
     }
 
     int runAddTempHere(FabricClientCommandSource src) {
-        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
+        LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
             error(src, Component.translatable("waypointer.command.error.not_in_world"));
             return 0;
         }
-        var pos = com.babbur.waypointer.placement.PlayerWaypointPlacement.fromPlayer(
+        var pos = PlayerWaypointPlacement.fromPlayer(
                 player.getX(), player.getY(), player.getZ(), config);
         return runAddTempAt(src, pos.x(), pos.y(), pos.z(), "");
     }
@@ -90,7 +93,7 @@ final class WaypointerChatCommands {
             manager.focusTempWaypoint(selection.group(), selection.index());
             success(src, Component.translatable(
                     "waypointer.command.temp.focused", x, y, z)
-                    .append(com.babbur.waypointer.crystal.CrystalHollowsShare.defocus()));
+                    .append(CrystalHollowsShare.defocus()));
             return 1;
         }
 

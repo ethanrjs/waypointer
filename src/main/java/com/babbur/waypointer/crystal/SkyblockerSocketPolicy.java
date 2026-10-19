@@ -27,7 +27,7 @@ final class SkyblockerSocketPolicy {
         this(() -> http.sendAsync(HttpRequest.newBuilder(ENDPOINT)
                         .timeout(Duration.ofSeconds(10)).header("Accept", "application/json")
                         .header("Cache-Control", "no-cache").GET().build(),
-                        info -> new SkyblockerAuthentication.LimitedBody())
+                        SkyblockerAuthentication.limitedBody())
                 .thenApply(response -> {
                     if (response.statusCode() != 200) throw new IllegalStateException("Policy unavailable");
                     return parse(new String(response.body(), StandardCharsets.UTF_8));

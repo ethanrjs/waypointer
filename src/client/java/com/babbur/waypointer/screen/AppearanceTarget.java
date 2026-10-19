@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.config.AppearanceScope;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -8,8 +9,12 @@ import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.function.Consumer;
 import com.babbur.waypointer.text.AmpersandFormatting;
 import net.minecraft.network.chat.Component;
 
@@ -136,24 +141,24 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         return switcherZoneKeys(current, List.of(), List.of());
     }
 
-    static List<String> switcherZoneKeys(Zone current, java.util.Collection<String> routeZoneIds,
-                                         java.util.Collection<String> styledZoneKeys) {
+    static List<String> switcherZoneKeys(Zone current, Collection<String> routeZoneIds,
+                                         Collection<String> styledZoneKeys) {
         List<String> keys = new ArrayList<>();
         if (current != null && current != Zone.UNKNOWN && current != Zone.PRIVATE_WORLD) {
-            for (String key : com.babbur.waypointer.config.WaypointStyles.zoneKeys(current.id())) {
+            for (String key : WaypointStyles.zoneKeys(current.id())) {
                 if (!ZONE_FAMILIES.contains(key)) keys.add(key);
             }
         }
         keys.addAll(ZONE_FAMILIES);
-        java.util.TreeMap<String, String> others = new java.util.TreeMap<>();
-        java.util.function.Consumer<String> offer = id -> {
+        TreeMap<String, String> others = new TreeMap<>();
+        Consumer<String> offer = id -> {
             if (id == null || id.isBlank()) return;
-            List<String> zoneKeys = com.babbur.waypointer.config.WaypointStyles.zoneKeys(id);
+            List<String> zoneKeys = WaypointStyles.zoneKeys(id);
             if (zoneKeys.size() != 1) return;
             String key = zoneKeys.getFirst();
             if (keys.contains(key) || key.equals(Zone.PRIVATE_WORLD.id())
                     || key.equals(Zone.UNKNOWN.id()) || DungeonRoomData.entry(key) != null) return;
-            others.put(zoneLabel(key).getString().toLowerCase(java.util.Locale.ROOT) + "|" + key, key);
+            others.put(zoneLabel(key).getString().toLowerCase(Locale.ROOT) + "|" + key, key);
         };
         routeZoneIds.forEach(offer);
         styledZoneKeys.forEach(offer);

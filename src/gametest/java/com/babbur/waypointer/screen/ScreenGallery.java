@@ -1,15 +1,32 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.catalog.CatalogPage;
+import com.babbur.waypointer.catalog.CatalogProtocol;
+import com.babbur.waypointer.catalog.CatalogPublication;
+import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.CatalogPublishRequest;
+import com.babbur.waypointer.catalog.CatalogRouteDetails;
+import com.babbur.waypointer.catalog.CatalogRouteInstaller;
+import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.catalog.PublisherIdentityStore;
+import com.babbur.waypointer.catalog.RouteCatalogClient;
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointStyle;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 @SuppressWarnings("UnstableApiUsage")
@@ -53,14 +70,14 @@ public final class ScreenGallery {
         context.waitTicks(2);
         context.takeScreenshot("gallery-editor-menu-s" + scale);
         String roomRouteId = context.computeOnClient(client -> {
-            var room = com.babbur.waypointer.core.WaypointGroup.create("Arrow Trap", "arrow-trap");
-            room.setRouteKind(com.babbur.waypointer.core.WaypointGroup.RouteKind.DUNGEON);
-            room.add(new com.babbur.waypointer.core.Waypoint(4, 70, 4, "", 0x9C2EFF,
-                    com.babbur.waypointer.core.Waypoint.FLAG_SKIP_ON_STAND
-                            | com.babbur.waypointer.core.Waypoint.FLAG_DUNGEON_ETHERWARP, 0.0));
-            room.add(new com.babbur.waypointer.core.Waypoint(9, 70, 9, "", 0x2EE0FF,
-                    com.babbur.waypointer.core.Waypoint.FLAG_SKIP_ON_INTERACT
-                            | com.babbur.waypointer.core.Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+            var room = WaypointGroup.create("Arrow Trap", "arrow-trap");
+            room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            room.add(new Waypoint(4, 70, 4, "", 0x9C2EFF,
+                    Waypoint.FLAG_SKIP_ON_STAND
+                            | Waypoint.FLAG_DUNGEON_ETHERWARP, 0.0));
+            room.add(new Waypoint(9, 70, 9, "", 0x2EE0FF,
+                    Waypoint.FLAG_SKIP_ON_INTERACT
+                            | Waypoint.FLAG_DUNGEON_SECRET, 0.0));
             WaypointerClient.manager().add(room);
             return room.id();
         });
@@ -137,7 +154,7 @@ public final class ScreenGallery {
         shoot(context, "hub-before-zone-click", scale, () -> new WaypointerScreen(manager, config));
         double[] zoneButton = new double[2];
         context.runOnClient(client -> {
-            var button = (net.minecraft.client.gui.components.AbstractWidget)
+            var button = (AbstractWidget)
                     field(MinecraftCompat.screen(client), "islandSelectorBtn");
             double guiScale = client.getWindow().getGuiScale();
             zoneButton[0] = (button.getX() + button.getWidth() / 2.0) * guiScale;
@@ -152,13 +169,13 @@ public final class ScreenGallery {
         shoot(context, "settings-search", scale, () -> new SettingsScreen(null, config, WaypointerClient.dungeonConfig()));
         context.runOnClient(client -> {
             SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
-            ((net.minecraft.client.gui.components.EditBox) field(screen, "searchBox")).setValue("tracer");
+            ((EditBox) field(screen, "searchBox")).setValue("tracer");
         });
         context.waitTicks(3);
         context.takeScreenshot("gallery-settings-search-results-s" + scale);
         context.runOnClient(client -> {
             SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
-            ((net.minecraft.client.gui.components.EditBox) field(screen, "searchBox")).setValue("room");
+            ((EditBox) field(screen, "searchBox")).setValue("room");
         });
         context.waitTicks(3);
         context.takeScreenshot("gallery-settings-search-room-s" + scale);
@@ -166,7 +183,7 @@ public final class ScreenGallery {
                 WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, "mineshaft")));
         context.runOnClient(client -> {
             SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
-            invoke(screen, "openScopeMenu", new Class<?>[]{net.minecraft.client.gui.components.Button.class},
+            invoke(screen, "openScopeMenu", new Class<?>[]{Button.class},
                     field(screen, "scopeSwitcher"));
         });
         context.waitTicks(2);
@@ -176,7 +193,7 @@ public final class ScreenGallery {
                 "dwarven_mines", spec -> { }));
         context.runOnClient(client -> {
             Screen screen = MinecraftCompat.screen(client);
-            ((net.minecraft.client.gui.components.EditBox) field(screen, "searchBox")).setValue("glass");
+            ((EditBox) field(screen, "searchBox")).setValue("glass");
         });
         context.waitTicks(3);
         context.takeScreenshot("gallery-route-icon-search-s" + scale);
@@ -191,13 +208,13 @@ public final class ScreenGallery {
 
     private static void shootCatalog(ClientGameTestContext context, int scale) {
         context.runOnClient(client -> {
-            var screen = new RouteCatalogScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production());
+            var screen = new RouteCatalogScreen(null, RouteCatalogClient.production());
             setField(screen, "listRequested", true);
             MinecraftCompat.setScreen(client, screen);
-            invoke(screen, "applyPage", new Class<?>[]{com.babbur.waypointer.catalog.CatalogPage.class, boolean.class},
-                    new com.babbur.waypointer.catalog.CatalogPage(catalogRoutes(), false, null), false);
+            invoke(screen, "applyPage", new Class<?>[]{CatalogPage.class, boolean.class},
+                    new CatalogPage(catalogRoutes(), false, null), false);
             @SuppressWarnings("unchecked")
-            var previews = (java.util.Map<String, Object>) field(screen, "previews");
+            var previews = (Map<String, Object>) field(screen, "previews");
             previews.put(catalogRoutes().get(0).id(), previewOf(sampleRoute()));
             invoke(screen, "rebuildWidgets", new Class<?>[0]);
         });
@@ -211,7 +228,7 @@ public final class ScreenGallery {
             invoke(screen, "toggleSortMenu", new Class<?>[0]);
             var browser = field(screen, "browser");
             invoke(browser, "setTagFilter", new Class<?>[]{String.class},
-                    com.babbur.waypointer.catalog.CatalogRouteSummary.TAG_MINING_CULT);
+                    CatalogRouteSummary.TAG_MINING_CULT);
             invoke(screen, "applyFilters", new Class<?>[0]);
         });
         context.waitTicks(2);
@@ -222,7 +239,7 @@ public final class ScreenGallery {
             invoke(screen, "applyFilters", new Class<?>[0]);
             if (!(boolean) field(screen, "wideLayout")) {
                 var route = invoke(screen, "selectedRoute", new Class<?>[0]);
-                invoke(screen, "openRoute", new Class<?>[]{com.babbur.waypointer.catalog.CatalogRouteSummary.class}, route);
+                invoke(screen, "openRoute", new Class<?>[]{CatalogRouteSummary.class}, route);
             }
         });
         context.waitTicks(2);
@@ -234,23 +251,23 @@ public final class ScreenGallery {
     private static void shootRouteView(ClientGameTestContext context, int scale) {
         context.runOnClient(client -> {
             var base = catalogRoutes().getFirst();
-            var summary = new com.babbur.waypointer.catalog.CatalogRouteSummary(base.id(), "4 Vein Diamond Route",
+            var summary = new CatalogRouteSummary(base.id(), "4 Vein Diamond Route",
                     "[important]\n-All the waypoints called \"TP(Xend)\" are NOT something you need to worry about "
                             + "too much, they just give an idea of where you should end.\n-Some of the block waypoints "
                             + "will sometimes be bedrock if you have max (or close to) mining spread, but it still "
                             + "works very well.\n\nStart at the Dwarven Base Camp and follow the numbers. Each vein "
                             + "respawns before you loop back, so you can keep going without waiting.",
                     "RokiYT2030", "", false, "public", "dwarven_mines", "Dwarven Mines", 16, 1,
-                    com.babbur.waypointer.catalog.CatalogProtocol.currentCodecVersion(), 2, 184,
+                    CatalogProtocol.currentCodecVersion(), 2, 184,
                     base.createdAt(), base.updatedAt(), base.sharePath(),
-                    List.of(com.babbur.waypointer.catalog.CatalogRouteSummary.TAG_MINING_CULT));
-            var details = new com.babbur.waypointer.catalog.CatalogRouteDetails(summary,
-                    com.babbur.waypointer.codec.WaypointCodec.encodeCatalog(List.of(sampleRoute())));
-            var screen = new CatalogRouteInstallScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production(),
-                    com.babbur.waypointer.WaypointerClient.manager(), summary.id());
+                    List.of(CatalogRouteSummary.TAG_MINING_CULT));
+            var details = new CatalogRouteDetails(summary,
+                    WaypointCodec.encodeCatalog(List.of(sampleRoute())));
+            var screen = new CatalogRouteInstallScreen(null, RouteCatalogClient.production(),
+                    WaypointerClient.manager(), summary.id());
             setField(screen, "requested", true);
             MinecraftCompat.setScreen(client, screen);
-            setField(screen, "prepared", com.babbur.waypointer.catalog.CatalogRouteInstaller.prepare(details));
+            setField(screen, "prepared", CatalogRouteInstaller.prepare(details));
             setField(screen, "preview", previewOf(sampleRoute()));
             setField(screen, "phase", enumValue(screen, "phase", "READY"));
             invoke(screen, "refreshInstallState", new Class<?>[0]);
@@ -272,24 +289,24 @@ public final class ScreenGallery {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void shootMyRoutes(ClientGameTestContext context, int scale) {
         context.runOnClient(client -> {
-            var screen = new PublishedRoutesScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production(),
-                    com.babbur.waypointer.catalog.PublisherIdentityStore.defaultLocation(),
-                    com.babbur.waypointer.catalog.CatalogPublicationRegistry.defaultLocation());
+            var screen = new PublishedRoutesScreen(null, RouteCatalogClient.production(),
+                    PublisherIdentityStore.defaultLocation(),
+                    CatalogPublicationRegistry.defaultLocation());
             setField(screen, "loading", false);
-            String api = com.babbur.waypointer.catalog.RouteCatalogClient.production().apiRoot();
-            String week = java.time.Instant.now().minus(java.time.Duration.ofDays(6)).toString();
-            List<com.babbur.waypointer.catalog.CatalogPublication> mine = List.of(
+            String api = RouteCatalogClient.production().apiRoot();
+            String week = Instant.now().minus(Duration.ofDays(6)).toString();
+            List<CatalogPublication> mine = List.of(
                     publication("AAAAAAAAAAAAAAAAAAAAA1", "Glacite tungsten loop", "dwarven_mines", 3, true, week, api),
                     publication("AAAAAAAAAAAAAAAAAAAAA5", "Gemstone grinding route", "crystal_hollows", 1, true, week, api),
                     publication("AAAAAAAAAAAAAAAAAAAAA9", "Practice route", "hub", 2, false, week, api));
             invoke(field(screen, "model"), "replace", new Class<?>[]{List.class}, mine);
             invoke(field(screen, "model"), "select", new Class<?>[]{String.class}, mine.getFirst().routeId());
-            var summaries = (java.util.Map<String, Object>) field(screen, "summaries");
+            var summaries = (Map<String, Object>) field(screen, "summaries");
             for (var route : catalogRoutes()) summaries.put(route.id(), route);
-            ((java.util.Map<String, Object>) field(screen, "previews")).put(mine.getFirst().routeId(), previewOf(sampleRoute()));
+            ((Map<String, Object>) field(screen, "previews")).put(mine.getFirst().routeId(), previewOf(sampleRoute()));
             try {
                 Class<Enum> state = (Class<Enum>) Class.forName("com.babbur.waypointer.screen.PublishedRoutesScreen$LinkState");
-                var links = (java.util.Map<String, Object>) field(screen, "links");
+                var links = (Map<String, Object>) field(screen, "links");
                 links.put(mine.get(0).routeId(), Enum.valueOf(state, "CHANGED"));
                 links.put(mine.get(1).routeId(), Enum.valueOf(state, "SAME"));
                 links.put(mine.get(2).routeId(), Enum.valueOf(state, "NOT_LINKED"));
@@ -300,13 +317,13 @@ public final class ScreenGallery {
         context.takeScreenshot("gallery-my-routes-s" + scale);
     }
 
-    private static com.babbur.waypointer.catalog.CatalogPublication publication(
+    private static CatalogPublication publication(
             String id, String title, String zone, int version, boolean isPublic, String created, String api) {
-        return new com.babbur.waypointer.catalog.CatalogPublication(id, "publisher", "Kaeso", title,
+        return new CatalogPublication(id, "publisher", "Kaeso", title,
                 "Ordered for one clean lap; check the mineshaft at the end.",
-                isPublic ? com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.PUBLIC
-                        : com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.UNLISTED,
-                zone, version, 9, created, "/r/" + id, api, "0".repeat(64), java.time.Instant.now());
+                isPublic ? CatalogPublishRequest.Visibility.PUBLIC
+                        : CatalogPublishRequest.Visibility.UNLISTED,
+                zone, version, 9, created, "/r/" + id, api, "0".repeat(64), Instant.now());
     }
 
     private static Object previewOf(WaypointGroup route) {
@@ -328,7 +345,7 @@ public final class ScreenGallery {
         return route;
     }
 
-    private static final java.util.Map<String, String> ICONS = java.util.Map.of(
+    private static final Map<String, String> ICONS = Map.of(
             "AAAAAAAAAAAAAAAAAAAAA1", "minecraft:diamond_pickaxe*",
             "AAAAAAAAAAAAAAAAAAAAA2", "minecraft:red_stained_glass",
             "AAAAAAAAAAAAAAAAAAAAA3", "minecraft:oak_leaves",
@@ -338,11 +355,11 @@ public final class ScreenGallery {
             "AAAAAAAAAAAAAAAAAAAAA7", "minecraft:redstone",
             "AAAAAAAAAAAAAAAAAAAAA8", "");
 
-    private static List<com.babbur.waypointer.catalog.CatalogRouteSummary> catalogRoutes() {
-        String now = java.time.Instant.now().toString();
-        String week = java.time.Instant.now().minus(java.time.Duration.ofDays(6)).toString();
-        String months = java.time.Instant.now().minus(java.time.Duration.ofDays(70)).toString();
-        String mc = com.babbur.waypointer.catalog.CatalogRouteSummary.TAG_MINING_CULT;
+    private static List<CatalogRouteSummary> catalogRoutes() {
+        String now = Instant.now().toString();
+        String week = Instant.now().minus(Duration.ofDays(6)).toString();
+        String months = Instant.now().minus(Duration.ofDays(70)).toString();
+        String mc = CatalogRouteSummary.TAG_MINING_CULT;
         return List.of(
                 route("AAAAAAAAAAAAAAAAAAAAA1", "Glacite tungsten loop", "Tungsten and umber nodes through the Glacite Tunnels, ordered for one clean lap with a mineshaft check at the end.",
                         "Kaeso", true, "dwarven_mines", "Dwarven Mines", 16, 412, week, now, List.of(mc)),
@@ -362,12 +379,12 @@ public final class ScreenGallery {
                         "M2AT", false, "torrhus_canyon", "Torrhus Canyon", 4, 9, now, now, List.of()));
     }
 
-    private static com.babbur.waypointer.catalog.CatalogRouteSummary route(
+    private static CatalogRouteSummary route(
             String id, String title, String description, String author, boolean verified, String zoneId,
             String zoneLabel, int waypoints, long installs, String created, String updated, List<String> tags) {
-        return new com.babbur.waypointer.catalog.CatalogRouteSummary(id, title, description, author, "", verified,
+        return new CatalogRouteSummary(id, title, description, author, "", verified,
                 "public", zoneId, zoneLabel, waypoints, 1,
-                com.babbur.waypointer.catalog.CatalogProtocol.currentCodecVersion(), 1, installs, created, updated, "/r/" + id, tags, ICONS.getOrDefault(id, ""));
+                CatalogProtocol.currentCodecVersion(), 1, installs, created, updated, "/r/" + id, tags, ICONS.getOrDefault(id, ""));
     }
 
     private static void setField(Object owner, String name, Object value) {

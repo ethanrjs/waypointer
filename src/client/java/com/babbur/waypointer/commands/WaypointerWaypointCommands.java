@@ -8,6 +8,7 @@ import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
+import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointerKeybinds;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
@@ -18,6 +19,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -233,7 +235,7 @@ final class WaypointerWaypointCommands {
 
     @FunctionalInterface
     private interface NamedAction {
-        int run(CommandContext<FabricClientCommandSource> ctx, String name) throws com.mojang.brigadier.exceptions.CommandSyntaxException;
+        int run(CommandContext<FabricClientCommandSource> ctx, String name) throws CommandSyntaxException;
     }
 
     private LiteralArgumentBuilder<FabricClientCommandSource> atCoordinates(NamedAction action) {
@@ -261,7 +263,7 @@ final class WaypointerWaypointCommands {
         if (route == null) return 0;
         info(src, Component.empty().append(routeName(route))
                 .append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY))
-                .append(com.babbur.waypointer.i18n.Counts.of("waypoint", route.size())
+                .append(Counts.of("waypoint", route.size())
                         .copy().withStyle(ChatFormatting.GRAY)));
         int shown = Math.min(route.size(), 20);
         for (int i = 0; i < shown; i++) {

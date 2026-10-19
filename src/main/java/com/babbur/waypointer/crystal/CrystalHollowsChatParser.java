@@ -5,6 +5,7 @@ import com.babbur.waypointer.crystal.compass.Crystal;
 import com.babbur.waypointer.crystal.compass.CrystalState;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -59,7 +60,7 @@ public final class CrystalHollowsChatParser {
         String text = CrystalHollowsSidebar.normalizeName(body);
         boolean asksLocation = containsWholePhrase(text, "coords")
                 || containsWholePhrase(text, "location") || containsWholePhrase(text, "where");
-        var requested = new java.util.LinkedHashSet<CrystalHollowsStructure>();
+        var requested = new LinkedHashSet<CrystalHollowsStructure>();
         for (Alias alias : ALIASES) {
             if (asksLocation ? containsWholePhrase(text, alias.text()) : containsQuestion(text, alias.text())) {
                 requested.add(alias.structure());

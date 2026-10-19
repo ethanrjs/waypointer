@@ -1,5 +1,8 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,14 +26,14 @@ class DebugInspectScreenTest {
 
     @Test
     void routeActivationCountsDistinguishDisabledOtherZoneAndFocusedRoutesWithoutNames() {
-        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
-        var visible = com.babbur.waypointer.core.WaypointGroup.create("Private route title", "hub");
-        var disabled = com.babbur.waypointer.core.WaypointGroup.create("Disabled", "hub");
+        var manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        var visible = WaypointGroup.create("Private route title", "hub");
+        var disabled = WaypointGroup.create("Disabled", "hub");
         disabled.setEnabled(false);
         manager.add(visible);
         manager.add(disabled);
-        manager.add(com.babbur.waypointer.core.WaypointGroup.create("Elsewhere", "crystal_hollows"));
+        manager.add(WaypointGroup.create("Elsewhere", "crystal_hollows"));
         var target = manager.addTempWaypoint(4, 5, 6, "Private sender");
         manager.focusTempWaypoint(target, 0);
 

@@ -1,4 +1,4 @@
-# Waypointer API 1.12.0
+# Waypointer API 1.12.1
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.12.0"
+    modImplementation "maven.modrinth:waypointer:1.12.1"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.12.0-mc26.2.jar")
+    modImplementation files("libs/waypointer-1.12.1-mc26.2.jar")
 }
 ```
 

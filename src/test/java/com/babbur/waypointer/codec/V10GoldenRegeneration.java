@@ -21,8 +21,6 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.zip.Deflater;
 
-/** Regenerates wire fixtures with {@code -Pv10.regen=<repo root>}. Kind 2 preserves recorded
- * coordinates; kind 3 uses {@link V10ConfigCodecTest#fixtures()}. Review every wire change. */
 class V10GoldenRegeneration {
 
     static final String KIND2_PROFILE =
@@ -101,7 +99,6 @@ class V10GoldenRegeneration {
                 StandardCharsets.UTF_8);
     }
 
-    /** SHA-256 over each vector's wire, prefixed by its big-endian four-byte length. */
     static String selectedWireSha256(JsonArray vectors) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         for (JsonElement element : vectors) {

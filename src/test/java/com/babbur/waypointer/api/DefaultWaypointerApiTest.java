@@ -3,6 +3,7 @@ package com.babbur.waypointer.api;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.codec.RouteLibraryCodec;
+import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
@@ -12,6 +13,7 @@ import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,7 +28,7 @@ class DefaultWaypointerApiTest {
     @Test
     void skysoftExportHonorsInclusionOptionsAndUsesExistingAppearance() {
         var manager = new ActiveGroupManager();
-        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        var config = new WaypointerConfig();
         config.setShowRouteLines(false);
         var route = WaypointGroup.create("Island route", "private_island");
         route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
@@ -100,8 +102,8 @@ class DefaultWaypointerApiTest {
     @Test
     void publicImportSourcesExhaustivelyMirrorImporterSources() {
         assertEquals(
-                java.util.Arrays.stream(WaypointImporter.Source.values()).map(Enum::name).toList(),
-                java.util.Arrays.stream(ImportSource.values()).map(Enum::name).toList());
+                Arrays.stream(WaypointImporter.Source.values()).map(Enum::name).toList(),
+                Arrays.stream(ImportSource.values()).map(Enum::name).toList());
         for (WaypointImporter.Source source : WaypointImporter.Source.values()) {
             assertEquals(source.name(), ImportSource.from(source).name());
         }

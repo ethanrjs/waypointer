@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.catalog.CatalogProtocol;
@@ -223,7 +224,7 @@ final class RouteReuploadScreen extends Screen implements RoutePickerHost {
                         refreshButtons();
                         return;
                     }
-                    var sources = com.babbur.waypointer.catalog.PublishedSources.active();
+                    var sources = PublishedSources.active();
                     if (sources != null) {
                         sources.remember(publication.routeId(), chosen.stream().map(WaypointGroup::id).toList());
                     }

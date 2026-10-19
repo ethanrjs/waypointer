@@ -9,6 +9,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -195,7 +196,7 @@ class CatalogBrowserModelTest {
     @Test
     void scrollingClampsAndKeepsKeyboardSelectionVisible() {
         CatalogBrowserModel model = new CatalogBrowserModel();
-        List<CatalogRouteSummary> routes = java.util.stream.IntStream.range(0, 10)
+        List<CatalogRouteSummary> routes = IntStream.range(0, 10)
                 .mapToObj(index -> summary(
                         "AAAAAAAAAAAAAAAAAAAAA" + index, "Route " + index, 1))
                 .toList();

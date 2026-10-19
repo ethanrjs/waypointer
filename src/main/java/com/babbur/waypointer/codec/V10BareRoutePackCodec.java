@@ -11,9 +11,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.zip.Deflater;
 
-/** V10 kind 6, subtype 0: ordered bare routes. Children use headerless kind-2 bodies
- * in the enclosing transport mode, without nested framing. Route count and
- * shortest-form child lengths delimit the bodies. */
 final class V10BareRoutePackCodec {
 
     static final int CONTENT_KIND = 6;
@@ -99,8 +96,6 @@ final class V10BareRoutePackCodec {
         }
         reader.requireEnd();
 
-        // Do not allocate any waypoint arrays until every child boundary and
-        // the aggregate count have passed their outer-container limits.
         List<WaypointGroup> groups = new ArrayList<>(routeCount);
         for (int routeIndex = 0; routeIndex < children.size(); routeIndex++) {
             byte[] child = children.get(routeIndex);
@@ -152,7 +147,6 @@ final class V10BareRoutePackCodec {
         return semantic;
     }
 
-    /** Headerless kind-2 child: direct uses shorter Rice/quotient (Rice wins ties); B uses delta. */
     private static byte[] encodeCanonicalChild(WaypointGroup group, int mode)
             throws IOException {
         int[][] coordinates = V10BareRouteCodec.coordinatesOf(group);

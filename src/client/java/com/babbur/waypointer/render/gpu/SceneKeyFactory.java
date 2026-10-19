@@ -1,6 +1,7 @@
 package com.babbur.waypointer.render.gpu;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.crystal.CompassMarkerState;
 import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.render.WaypointSkipFade;
 import com.babbur.waypointer.core.Waypoint;
@@ -48,13 +49,15 @@ public final class SceneKeyFactory {
         key.mixEnum(options.occlusion());
         mixConfig(key, config);
 
-        key.mix(groups.size());
+        key.mix(groups.size()).mix(CompassMarkerState.version());
         Map<WaypointerConfig, Long> styleHashes = new IdentityHashMap<>();
         for (WaypointGroup group : groups) {
             WaypointSkipFade fade = WaypointSkipFade.observe(group, config);
             key.mix(fade != null && fade.active());
             mixGroup(key, group);
             key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, null)));
+            key.mix(WaypointStyles.routeColorOverride(config, group));
+            if (!group.hasWaypointStyleOverrides()) continue;
             for (Waypoint waypoint : group.waypoints()) {
                 key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, waypoint)));
                 key.mix(WaypointStyles.waypointColor(config, group, waypoint));
@@ -132,32 +135,17 @@ public final class SceneKeyFactory {
     }
 
     static void mixGroup(SceneKey.Builder key, WaypointGroup group) {
-        key.mix(group.currentIndex())
+        key.mix(System.identityHashCode(group))
+                .mix(group.contentVersion())
+                .mix(group.currentIndex())
                 .mix(group.activeSubwaypointParentIndex())
                 .mix(group.paintEnabled())
                 .mix(group.visibleMainSteps())
+                .mix(group.showAllWaypoints())
+                .mix(group.focusedVisibleIndex())
                 .mix(group.size());
         key.mixEnum(group.loadMode());
         mixPaint(key, group.paint());
-        int size = group.size();
-        for (int i = 0; i < size; i++) {
-            Waypoint waypoint = group.get(i);
-            mixWaypoint(key, waypoint);
-            key.mix(group.isWaypointDisabled(i))
-                    .mix(group.isStaticWaypointReached(i));
-        }
-    }
-
-    static void mixWaypoint(SceneKey.Builder key, Waypoint waypoint) {
-        if (waypoint == null) {
-            key.mix(-1L);
-            return;
-        }
-        key.mix(waypoint.preciseX())
-                .mix(waypoint.preciseY())
-                .mix(waypoint.preciseZ())
-                .mix(waypoint.color())
-                .mix(waypoint.flags());
     }
 
     static void mixPaint(SceneKey.Builder key, WaypointPaint paint) {

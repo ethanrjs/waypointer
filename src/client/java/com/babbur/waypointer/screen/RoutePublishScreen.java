@@ -28,6 +28,7 @@ import net.minecraft.util.FormattedCharSequence;
 
 import java.util.List;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -36,7 +37,6 @@ import static com.babbur.waypointer.screen.GuiTokens.GAP_SECTION;
 import static com.babbur.waypointer.screen.GuiTokens.GAP_TIGHT;
 import static com.babbur.waypointer.screen.GuiTokens.PAD_OUTER;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE;
-import static com.babbur.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
@@ -801,7 +801,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
     static Component friendlyFailure(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
+                || cause instanceof ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }

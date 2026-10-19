@@ -17,6 +17,7 @@ import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -26,6 +27,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.network.chat.Component;
 
 import java.nio.file.Files;
@@ -271,7 +273,7 @@ public final class PublishedRoutesScreen extends Screen {
         }
 
         @Override
-        public void onPress(net.minecraft.client.input.InputWithModifiers input) {
+        public void onPress(InputWithModifiers input) {
             select(publication.routeId());
         }
 
@@ -519,7 +521,7 @@ public final class PublishedRoutesScreen extends Screen {
         }
         int y = detailY + pad;
         g.text(font, Component.literal(GuiTokens.ellipsize(font, publication.title(), available))
-                .withStyle(net.minecraft.ChatFormatting.BOLD), x, y, TEXT, false);
+                .withStyle(ChatFormatting.BOLD), x, y, TEXT, false);
         y += LINE_H + 3;
 
         boolean isPublic = publication.visibility() == CatalogPublishRequest.Visibility.PUBLIC;

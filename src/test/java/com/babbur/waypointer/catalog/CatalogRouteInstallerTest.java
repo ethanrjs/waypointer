@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -79,7 +80,7 @@ class CatalogRouteInstallerTest {
 
     @Test
     void enforcesRegularGroupAndWaypointLimits() {
-        List<WaypointGroup> groups = java.util.stream.IntStream.range(0, 65)
+        List<WaypointGroup> groups = IntStream.range(0, 65)
                 .mapToObj(index -> route("hub", 1))
                 .toList();
         String payload = WaypointCodec.encodeCatalog(groups);
@@ -95,7 +96,7 @@ class CatalogRouteInstallerTest {
 
     @Test
     void dungeonPackInstallsEditableRoomsWithProvenanceAndUpdatesTogether() {
-        List<WaypointGroup> rooms = java.util.stream.IntStream.range(0, 109).mapToObj(index -> {
+        List<WaypointGroup> rooms = IntStream.range(0, 109).mapToObj(index -> {
             WaypointGroup room = route("room-" + (index % 108), 2);
             room.setName("Route " + index);
             room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);

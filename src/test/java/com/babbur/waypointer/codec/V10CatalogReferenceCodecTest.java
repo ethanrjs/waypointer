@@ -1,6 +1,7 @@
 package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.chat.CodecScanner;
+import com.babbur.waypointer.screen.CatalogRouteInstallScreen;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -15,12 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Kind 6 subtype 2: a ~30 character code (or a share link) that stands for a published route. */
 class V10CatalogReferenceCodecTest {
 
-    /** 22 base64url chars = 16 bytes; the catalog's id shape. */
     private static final String PACKABLE_ID = "Ab3dEfGhIjKlMnOpQrStUw";
-    /** Same alphabet, wrong length for packing: must use the inline form. */
+
     private static final String INLINE_ID = "short-route_id7";
 
     @Test
@@ -44,7 +43,6 @@ class V10CatalogReferenceCodecTest {
         assertEquals(PACKABLE_ID, reference.routeId());
         assertEquals("https://waypointermod.com/r/" + PACKABLE_ID, reference.shareUrl());
 
-        // Markdown fences and surrounding whitespace are tolerated like other shares.
         assertEquals(PACKABLE_ID, ((UniversalShareCodec.CatalogReference)
                 UniversalShareCodec.decode("```\n" + code + "\n```")).routeId());
     }
@@ -57,7 +55,6 @@ class V10CatalogReferenceCodecTest {
         assertEquals(V10CatalogReferenceCodec.ID_FORM_INLINE, frame.semantic()[3] & 0xFF);
         assertEquals(INLINE_ID, V10CatalogReferenceCodec.decode(frame));
 
-        // Hand-built inline spelling of a packable id is non-canonical.
         byte[] semantic = V10CatalogReferenceCodec.encodeSemantic(INLINE_ID);
         byte[] ascii = PACKABLE_ID.getBytes();
         byte[] nonCanonical = new byte[4 + 1 + ascii.length];
@@ -112,9 +109,9 @@ class V10CatalogReferenceCodecTest {
                 "https://waypointermod.com/guides"));
         assertEquals(Optional.empty(), CatalogShareLink.routeIdFromLink(
                 "https://example.com/r/" + PACKABLE_ID));
-        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen
+        assertNull(CatalogRouteInstallScreen
                 .referenceRouteId("not a share at all"));
-        assertEquals(PACKABLE_ID, com.babbur.waypointer.screen.CatalogRouteInstallScreen
+        assertEquals(PACKABLE_ID, CatalogRouteInstallScreen
                 .referenceRouteId("https://waypointermod.com/r/" + PACKABLE_ID));
     }
 
@@ -123,27 +120,23 @@ class V10CatalogReferenceCodecTest {
         String code = UniversalShareCodec.encodeCatalogReference(PACKABLE_ID);
 
         assertEquals(PACKABLE_ID,
-                com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(code));
+                CatalogRouteInstallScreen.referenceRouteId(code));
         assertEquals(PACKABLE_ID,
-                com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                CatalogRouteInstallScreen.referenceRouteId(
                         "```text\n" + code + "\n```"));
         assertEquals(PACKABLE_ID,
-                com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                CatalogRouteInstallScreen.referenceRouteId(
                         "```text\nhttps://waypointermod.com/r/"
                                 + PACKABLE_ID + "\n```"));
 
-        // The wire codec accepts this inline spelling, but the catalog detail
-        // endpoint currently only addresses its 22-character IDs.
-        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+        assertNull(CatalogRouteInstallScreen.referenceRouteId(
                 "waypointermod.com/r/short-route_id7"));
-        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+        assertNull(CatalogRouteInstallScreen.referenceRouteId(
                 UniversalShareCodec.encodeCatalogReference("short-route_id7")));
 
-        // An unrelated clipboard document is rejected before universal import
-        // can parse JSON or inflate any payload.
-        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+        assertNull(CatalogRouteInstallScreen.referenceRouteId(
                 "{\"waypoints\":[]}"));
-        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+        assertNull(CatalogRouteInstallScreen.referenceRouteId(
                 "{\"waypoints\":[\"" + "x".repeat(4_096) + "\"]}"));
     }
 
@@ -165,7 +158,6 @@ class V10CatalogReferenceCodecTest {
         assertTrue(linkMatches.stream().allMatch(match ->
                 match.valid() && match.type() == UniversalShareCodec.Type.CATALOG));
 
-        // A link glued to other text is not a share; an unrelated path is ignored.
         assertTrue(CodecScanner.scan("notwaypointermod.com/r/" + PACKABLE_ID).isEmpty());
         assertTrue(CodecScanner.scan("https://waypointermod.com/download").isEmpty());
     }

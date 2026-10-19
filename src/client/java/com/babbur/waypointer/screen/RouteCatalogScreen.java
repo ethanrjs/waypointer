@@ -1,5 +1,8 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.catalog.InstallTokenStore;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.api.ImportSummary;
@@ -19,7 +22,9 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -28,14 +33,26 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.FormatStyle;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -126,10 +143,10 @@ public final class RouteCatalogScreen extends Screen {
     private boolean wideLayout;
 
     private final LinkedHashMap<String, CatalogRoutePreview> previews = boundedPageCache(PREVIEW_CACHE_LIMIT);
-    private final java.util.Set<String> previewFailures = new java.util.HashSet<>();
+    private final Set<String> previewFailures = new HashSet<>();
     private String previewWantedId;
-    private final java.util.Set<String> previewLoading = new java.util.HashSet<>();
-    private final java.util.ArrayDeque<CatalogRouteSummary> previewQueue = new java.util.ArrayDeque<>();
+    private final Set<String> previewLoading = new HashSet<>();
+    private final ArrayDeque<CatalogRouteSummary> previewQueue = new ArrayDeque<>();
     private int previewDelayTicks;
     private int previewTicket;
 
@@ -184,11 +201,11 @@ public final class RouteCatalogScreen extends Screen {
     private static List<String> playerPlace(ActiveGroupManager manager) {
         Zone current = manager == null ? null : manager.currentZone();
         String structure = null;
-        var tracker = com.babbur.waypointer.WaypointerClient.crystalHollowsTracker();
+        var tracker = WaypointerClient.crystalHollowsTracker();
         if (current != null && "crystal_hollows".equals(current.id()) && tracker != null && tracker.active()
                 && tracker.sidebarStructure() != null
-                && com.babbur.waypointer.crystal.CrystalHollowsStructureZones.supports(tracker.sidebarStructure())) {
-            structure = com.babbur.waypointer.crystal.CrystalHollowsStructureZones.zoneId(tracker.sidebarStructure());
+                && CrystalHollowsStructureZones.supports(tracker.sidebarStructure())) {
+            structure = CrystalHollowsStructureZones.zoneId(tracker.sidebarStructure());
         }
         return CatalogRecommendation.here(current, structure);
     }
@@ -1099,13 +1116,13 @@ public final class RouteCatalogScreen extends Screen {
         }
 
         if (failure != null) {
-            com.babbur.waypointer.Waypointer.LOGGER.warn("Could not install community route {}", requestedRouteId, failure);
+            Waypointer.LOGGER.warn("Could not install community route {}", requestedRouteId, failure);
             statusText = friendlyFailure(failure);
             statusColor = STATUS_ERROR;
         } else {
             showInstalled(summary);
             catalogClient.recordInstall(requestedRouteId, null,
-                    com.babbur.waypointer.catalog.InstallTokenStore.shared()
+                    InstallTokenStore.shared()
                             .tokenFor(requestedRouteId));
             WaypointGroup focus = installedFocus(manager, summary);
             if (focus != null) {
@@ -1328,7 +1345,7 @@ public final class RouteCatalogScreen extends Screen {
         boolean miningCult = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT);
         int badgeW = miningCult ? CatalogRouteRowButton.miningCultWidth(font) + GAP : 0;
         Component title = Component.literal(GuiTokens.ellipsize(font, route.title(), available - badgeW))
-                .withStyle(net.minecraft.ChatFormatting.BOLD);
+                .withStyle(ChatFormatting.BOLD);
         graphics.text(font, title, x, y, TEXT, false);
         if (miningCult) {
             int pillX = right - badgeW + GAP;
@@ -1408,14 +1425,14 @@ public final class RouteCatalogScreen extends Screen {
         dateTooltip(graphics, font, route, factsRight, y, mouseX, mouseY);
     }
 
-    static void dateTooltip(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font,
+    static void dateTooltip(GuiGraphicsExtractor graphics, Font font,
                             CatalogRouteSummary route, int factsRight, int y, int mouseX, int mouseY) {
         if (factsRight < 0) return;
         Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
         if (age == null) return;
         int ageLeft = factsRight - font.width(age);
         if (mouseX < ageLeft || mouseX >= factsRight || mouseY < y - 1 || mouseY >= y + 9) return;
-        List<net.minecraft.util.FormattedCharSequence> lines = new ArrayList<>();
+        List<FormattedCharSequence> lines = new ArrayList<>();
         String updated = exactTime(route.updatedAt());
         String published = exactTime(route.createdAt());
         if (updated != null && !updated.equals(published)) {
@@ -1430,11 +1447,11 @@ public final class RouteCatalogScreen extends Screen {
     static String exactTime(String timestamp) {
         if (timestamp == null || timestamp.isBlank()) return null;
         try {
-            java.time.Instant instant = java.time.Instant.parse(timestamp);
-            java.util.Locale locale = com.babbur.waypointer.i18n.LocalizedNumberFormatter.active().locale();
-            return java.time.format.DateTimeFormatter.ofLocalizedDateTime(
-                            java.time.format.FormatStyle.LONG, java.time.format.FormatStyle.SHORT)
-                    .withLocale(locale).withZone(java.time.ZoneId.systemDefault()).format(instant);
+            Instant instant = Instant.parse(timestamp);
+            Locale locale = LocalizedNumberFormatter.active().locale();
+            return DateTimeFormatter.ofLocalizedDateTime(
+                            FormatStyle.LONG, FormatStyle.SHORT)
+                    .withLocale(locale).withZone(ZoneId.systemDefault()).format(instant);
         } catch (RuntimeException invalid) {
             return null;
         }
@@ -1453,17 +1470,17 @@ public final class RouteCatalogScreen extends Screen {
 
     static Component ageLabel(String timestamp) {
         if (timestamp == null || timestamp.isBlank()) return null;
-        java.time.Instant then;
+        Instant then;
         try {
-            then = java.time.OffsetDateTime.parse(timestamp).toInstant();
-        } catch (java.time.format.DateTimeParseException e) {
+            then = OffsetDateTime.parse(timestamp).toInstant();
+        } catch (DateTimeParseException e) {
             try {
-                then = java.time.Instant.parse(timestamp);
-            } catch (java.time.format.DateTimeParseException ignored) {
+                then = Instant.parse(timestamp);
+            } catch (DateTimeParseException ignored) {
                 return null;
             }
         }
-        long days = Math.max(0, java.time.Duration.between(then, java.time.Instant.now()).toDays());
+        long days = Math.max(0, Duration.between(then, Instant.now()).toDays());
         String base = "waypointer.screen.route_catalog.age.";
         if (days == 0) return Component.translatable(base + "today");
         if (days == 1) return Component.translatable(base + "yesterday");
@@ -1481,7 +1498,7 @@ public final class RouteCatalogScreen extends Screen {
     private void drawWrapped(GuiGraphicsExtractor graphics, Component text,
                              int x, int y, int width, int maxHeight, int color) {
         maxHeight = Math.max(DETAIL_LINE_H, maxHeight / DETAIL_LINE_H * DETAIL_LINE_H);
-        List<net.minecraft.util.FormattedCharSequence> split = font.split(
+        List<FormattedCharSequence> split = font.split(
                 text, Math.max(1, width - GAP));
         int contentHeight = split.size() * DETAIL_LINE_H;
         descriptionMaxScroll = Math.max(0, contentHeight - maxHeight);
@@ -1711,12 +1728,6 @@ public final class RouteCatalogScreen extends Screen {
         return browser.installState(catalogClient.apiRoot(), manager, route);
     }
 
-    private boolean installedState(CatalogRouteSummary route) {
-        CatalogInstallState.Action action = installState(route).action();
-        return action == CatalogInstallState.Action.INSTALLED
-                || action == CatalogInstallState.Action.LOCAL_NEWER;
-    }
-
     private Component refreshButtonLabel(long nowNanos) {
         int seconds = refreshCooldownSeconds(nowNanos);
         return seconds == 0
@@ -1749,7 +1760,7 @@ public final class RouteCatalogScreen extends Screen {
     static Component friendlyFailure(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
+                || cause instanceof ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }

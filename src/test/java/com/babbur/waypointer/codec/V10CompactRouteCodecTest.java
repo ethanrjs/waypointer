@@ -4,6 +4,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -306,7 +307,7 @@ class V10CompactRouteCodecTest {
                         .includeNames((mask & 1) != 0).includeColors((mask & 2) != 0)
                         .includeRadii((mask & 4) != 0).includeWaypointFlags((mask & 8) != 0)
                         .includeGroupMeta((mask & 16) != 0).includeZone((mask & 32) != 0).build();
-                // The older no-names subtype intentionally omits the route title as well.
+
                 if (mask == 48) continue;
                 assertCompactProjection(route, options);
             }
@@ -342,7 +343,7 @@ class V10CompactRouteCodecTest {
         System.arraycopy(name, 0, nonCanonical, 5, name.length);
         System.arraycopy(semantic, 4, nonCanonical, 5 + name.length, semantic.length - 4);
 
-        assertThrows(java.io.IOException.class,
+        assertThrows(IOException.class,
                 () -> V10CompactRouteCodec.decode(direct(nonCanonical)));
     }
 
@@ -352,19 +353,19 @@ class V10CompactRouteCodecTest {
                 V10CompactRouteCodec.encode(fullRoute(), WaypointCodec.Options.FULL_FIDELITY));
         byte[] reserved = frame.semantic().clone();
         reserved[1] |= 3 << 5;
-        assertThrows(java.io.IOException.class,
+        assertThrows(IOException.class,
                 () -> V10CompactRouteCodec.decode(direct(reserved)));
 
         byte[] trailingZero = Arrays.copyOf(frame.semantic(), frame.semantic().length + 1);
-        assertThrows(java.io.IOException.class,
+        assertThrows(IOException.class,
                 () -> V10CompactRouteCodec.decode(direct(trailingZero)));
     }
 
     @Test
     void decoderRejectsTruncatedPackedZoneAndOversizedCoordinateBody() {
-        assertThrows(java.io.IOException.class, () -> V10CompactRouteCodec.decode(direct(
+        assertThrows(IOException.class, () -> V10CompactRouteCodec.decode(direct(
                 new byte[]{(byte) V10CompactRouteCodec.SEMANTIC_HEADER, 0x41, 0, 10})));
-        assertThrows(java.io.IOException.class, () -> V10CompactRouteCodec.decode(direct(
+        assertThrows(IOException.class, () -> V10CompactRouteCodec.decode(direct(
                 new byte[]{(byte) V10CompactRouteCodec.SEMANTIC_HEADER, 0x41,
                         1, (byte) 0xFF, (byte) 0xFF, 0x7F})));
     }

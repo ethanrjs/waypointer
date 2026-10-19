@@ -4,10 +4,12 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -193,7 +195,7 @@ class SceneKeyTest {
         WaypointGroup group = WaypointGroup.create("Painted", "hub");
         group.add(new Waypoint(0, 64, 0, "", 0xFFFFFF, 0, 0.0));
         SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
-        java.util.function.Supplier<SceneKey> currentKey = () -> factory.build(
+        Supplier<SceneKey> currentKey = () -> factory.build(
                 List.of(group), config, new Vec3(0, 64, 0), null, -64, 320,
                 0L, 0L, 0L, null);
         SceneKey unpainted = currentKey.get();
@@ -218,17 +220,17 @@ class SceneKeyTest {
         WaypointGroup group = WaypointGroup.create("Styled", "hub");
         group.add(new Waypoint(0, 64, 0, "", 0xFFFFFF, 0, 0));
         SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
-        java.util.function.Supplier<SceneKey> current = () -> factory.build(List.of(group), config,
+        Supplier<SceneKey> current = () -> factory.build(List.of(group), config,
                 Vec3.ZERO, null, -64, 320, 0, 0, 0, null);
         SceneKey plain = current.get();
-        group.setStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY.with("beaconWidthScale", 2));
+        group.setStyleOverride(WaypointStyle.EMPTY.with("beaconWidthScale", 2));
         SceneKey route = current.get();
         assertNotEquals(plain, route);
-        group.set(0, group.get(0).withStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY
+        group.set(0, group.get(0).withStyleOverride(WaypointStyle.EMPTY
                 .with("currentWaypointOpacity", 0.2)));
         assertNotEquals(route, current.get());
         SceneKey faded = current.get();
-        group.set(0, group.get(0).withStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY
+        group.set(0, group.get(0).withStyleOverride(WaypointStyle.EMPTY
                 .with("currentWaypointOpacity", 0.2).with("defaultWaypointColor", 0x123456)));
         assertNotEquals(faded, current.get());
     }
@@ -239,11 +241,15 @@ class SceneKeyTest {
         Waypoint right = new Waypoint(0, 64, 0, "", 1, 0, 0.0);
         assertEquals(left.hashCode(), right.hashCode());
 
-        SceneKey.Builder leftKey = SceneKey.builder();
-        SceneKey.Builder rightKey = SceneKey.builder();
-        SceneKeyFactory.mixWaypoint(leftKey, left);
-        SceneKeyFactory.mixWaypoint(rightKey, right);
+        WaypointGroup group = new WaypointGroup("collision", "Collision", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(left);
+        SceneKey.Builder before = SceneKey.builder();
+        SceneKeyFactory.mixGroup(before, group);
+        group.set(0, right);
+        SceneKey.Builder after = SceneKey.builder();
+        SceneKeyFactory.mixGroup(after, group);
 
-        assertNotEquals(leftKey.finish(), rightKey.finish());
+        assertNotEquals(before.finish(), after.finish());
     }
 }

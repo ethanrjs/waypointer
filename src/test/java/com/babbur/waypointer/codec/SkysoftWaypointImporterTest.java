@@ -12,8 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class SkysoftWaypointImporterTest {
     @Test
-    void importsDisplayOverridesAndPersistsThemLocally(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tempDir) {
+    void importsDisplayOverridesAndPersistsThemLocally(@org.junit.jupiter.api.io.TempDir Path tempDir) {
         var group = WaypointImporter.importAny("""
                 {"version":2,"groups":[{"route":true,"lines":false,"filled":true,
                 "styles":["BLOCK","BEACON"],"points":[
@@ -65,7 +68,7 @@ class SkysoftWaypointImporterTest {
 
     @Test
     void importsActualPrivateIslandShareWithoutChangingAnyCoordinateOrOrder() throws Exception {
-        String share = java.nio.file.Files.readString(java.nio.file.Path.of(
+        String share = Files.readString(Path.of(
                 "src/test/resources/fixtures/skysoft-private-island-share.txt")).strip();
         int[][] coordinates = {
                 {11, 30}, {10, 36}, {8, 43}, {-1, 48}, {-10, 50}, {-15, 47},
@@ -127,7 +130,7 @@ class SkysoftWaypointImporterTest {
 
     @Test
     void preservesDefaultGradientSignedColorsAndIslandMappings() {
-        for (var island : java.util.Map.of("JERRYS_WORKSHOP", "winter", "DUNGEONS", "unknown",
+        for (var island : Map.of("JERRYS_WORKSHOP", "winter", "DUNGEONS", "unknown",
                 "GLACITE_TUNNELS", "dwarven_mines", "THE_RIFT", "rift",
                 "GLACITE_MINESHAFTS", "mineshaft_unknown").entrySet()) {
             String json = """

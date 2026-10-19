@@ -1,6 +1,7 @@
 package com.babbur.waypointer.config;
 
 import com.babbur.waypointer.codec.AsciiStreamCodec;
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.core.Waypoint;
@@ -323,12 +324,12 @@ class WaypointerConfigTest {
     void formerAnimatedDefaultPaintLoadsItsStoredFirstFrame() {
         WaypointPaint first = WaypointPaint.solid(0x123456);
         JsonObject json = new JsonObject();
-        json.add("waypointPainterDefaultPalette", new com.google.gson.Gson().toJsonTree(first.paletteCopy()));
+        json.add("waypointPainterDefaultPalette", new Gson().toJsonTree(first.paletteCopy()));
         json.addProperty("waypointPainterDefaultPixels", first.pixelsBase64());
         json.add("waypointPainterDefaultAnimation", new JsonObject());
         WaypointerConfig restarted = WaypointerConfig.fromJson(json.toString());
         assertEquals(first, restarted.waypointPainterDefaultPaint());
-        assertFalse(new com.google.gson.Gson().toJson(restarted).contains("waypointPainterDefaultAnimation"));
+        assertFalse(new Gson().toJson(restarted).contains("waypointPainterDefaultAnimation"));
     }
 
     @Test
@@ -1417,7 +1418,7 @@ class WaypointerConfigTest {
             assertEquals(id, WaypointerConfigCodec.decode(
                     WaypointerConfigCodec.encode(config)).etherwarpAlignmentSound());
             assertEquals(id, WaypointerConfig.fromJson(
-                    new com.google.gson.Gson().toJson(config)).etherwarpAlignmentSound());
+                    new Gson().toJson(config)).etherwarpAlignmentSound());
         }
         config.setEtherwarpAlignmentSound(" minecraft:block.note_block.pling ");
         assertEquals("block.note_block.pling", config.etherwarpAlignmentSound());
@@ -1720,7 +1721,7 @@ class WaypointerConfigTest {
                     WaypointerConfig imported = new WaypointerConfig();
                     imported.replaceShareableSettingsWith(config);
                     for (WaypointerConfig decoded : List.of(replaced, imported,
-                            WaypointerConfig.fromJson(new com.google.gson.Gson().toJson(config)),
+                            WaypointerConfig.fromJson(new Gson().toJson(config)),
                             WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)),
                             V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)))) {
                         assertEquals(structures, decoded.crystalHollowsTracers());
@@ -1758,7 +1759,7 @@ class WaypointerConfigTest {
             WaypointerConfig json = WaypointerConfig.fromJson(
                     "{\"dianaWaypointsEnabled\":" + (value != 0) + ",\"crystalHollowsTracers\":false}");
             assertFalse(json.crystalHollowsTracers());
-            assertFalse(new com.google.gson.Gson().toJson(json).contains("dianaWaypointsEnabled"));
+            assertFalse(new Gson().toJson(json).contains("dianaWaypointsEnabled"));
         }
         assertThrows(IllegalArgumentException.class, () -> WaypointerConfigCodec.decode(
                 configCodeForRawPayload((byte) 6, (byte) 108)));

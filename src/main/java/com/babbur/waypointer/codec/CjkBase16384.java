@@ -1,10 +1,5 @@
 package com.babbur.waypointer.codec;
 
-/**
- * Legacy base-16384 binary-to-text codec using a contiguous CJK Unified
- * Ideographs range. This class exists only so current imports can still read
- * v1 Waypointer exports.
- */
 public final class CjkBase16384 {
 
     static final char ALPHABET_BASE = 0x4E00;

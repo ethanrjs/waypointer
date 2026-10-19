@@ -1,14 +1,18 @@
 package com.babbur.waypointer.crystal;
 
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,7 +26,7 @@ class CrystalHollowsProjectionTest {
     void refreshingStylesAppliesBulkChangesAndResetOnlyToRuntimeStructureGroups() {
         var manager = new ActiveGroupManager();
         var config = new WaypointerConfig();
-        var style = com.babbur.waypointer.core.WaypointStyle.EMPTY.with("waypointIcon", "STAR");
+        var style = WaypointStyle.EMPTY.with("waypointIcon", "STAR");
         var structure = new WaypointGroup(CrystalHollowsStructureFolder.GROUP_PREFIX + "fairy_grotto:2",
                 "Grotto", "crystal_hollows");
         var nucleus = new WaypointGroup(CrystalHollowsStructureFolder.GROUP_PREFIX + "nucleus",
@@ -72,9 +76,9 @@ class CrystalHollowsProjectionTest {
             config.setCrystalHollowsDetectionEnabled(sighting.structure().id(), false);
         }
         projection.rebuild(lobby);
-        assertEquals(java.util.Set.of(userRoute.id(), CrystalHollowsStructureFolder.GROUP_PREFIX + "jungle_temple",
+        assertEquals(Set.of(userRoute.id(), CrystalHollowsStructureFolder.GROUP_PREFIX + "jungle_temple",
                         CrystalHollowsStructureFolder.GROUP_PREFIX + "xalx"),
-                manager.allGroupsList().stream().map(WaypointGroup::id).collect(java.util.stream.Collectors.toSet()));
+                manager.allGroupsList().stream().map(WaypointGroup::id).collect(Collectors.toSet()));
         assertEquals(4, lobby.sightings().size());
         config.setCrystalHollowsDetectionEnabled("odawa", true);
         config.setCrystalHollowsDetectionEnabled("king_yolkar", true);
@@ -87,7 +91,7 @@ class CrystalHollowsProjectionTest {
     void structureTypeAppearanceSurvivesProjectionAndLobbyChanges() {
         var manager = new ActiveGroupManager();
         var config = new WaypointerConfig();
-        var style = com.babbur.waypointer.core.WaypointStyle.EMPTY.with("waypointIcon", "STAR")
+        var style = WaypointStyle.EMPTY.with("waypointIcon", "STAR")
                 .with("waypointMarkerScale", 1.5);
         config.setCrystalHollowsStyle(CrystalHollowsStructure.ODAWA.id(), style);
         var projection = new CrystalHollowsProjection(manager, config);
@@ -98,7 +102,7 @@ class CrystalHollowsProjectionTest {
             projection.rebuild(lobby);
             var group = manager.get(CrystalHollowsStructureFolder.GROUP_PREFIX + "odawa");
             assertEquals(style, group.styleOverride());
-            assertEquals("STAR", com.babbur.waypointer.config.WaypointStyles
+            assertEquals("STAR", WaypointStyles
                     .resolve(config, group, group.get(0)).waypointIcon());
             projection.endSession();
         }

@@ -11,7 +11,13 @@ public final class CompassMarkerState {
     private static final List<WeakReference<Waypoint>> targets = new ArrayList<>();
     private static final List<WeakReference<Waypoint>> regionExited = new ArrayList<>();
 
+    private static int version;
+
     private CompassMarkerState() {}
+
+    public static int version() {
+        return version;
+    }
 
     public static boolean arrived(Waypoint waypoint) {
         return contains(arrived, waypoint);
@@ -34,27 +40,33 @@ public final class CompassMarkerState {
     }
 
     static void markDefocused(Waypoint waypoint) {
-        if (waypoint != null && !defocused(waypoint)) defocused.add(new WeakReference<>(waypoint));
+        mark(defocused, waypoint);
     }
 
     static void markRegionExited(Waypoint waypoint) {
-        if (!regionExited(waypoint)) regionExited.add(new WeakReference<>(waypoint));
+        mark(regionExited, waypoint);
     }
 
     static void markTarget(Waypoint waypoint) {
-        if (!isTarget(waypoint)) targets.add(new WeakReference<>(waypoint));
+        mark(targets, waypoint);
+    }
+
+    static void markArrived(Waypoint waypoint) {
+        mark(arrived, waypoint);
+    }
+
+    private static void mark(List<WeakReference<Waypoint>> markers, Waypoint waypoint) {
+        if (waypoint == null || contains(markers, waypoint)) return;
+        markers.removeIf(reference -> reference.get() == null);
+        markers.add(new WeakReference<>(waypoint));
+        version++;
     }
 
     private static boolean contains(List<WeakReference<Waypoint>> markers, Waypoint waypoint) {
-        if (waypoint == null) return false;
-        markers.removeIf(reference -> reference.get() == null);
+        if (waypoint == null || markers.isEmpty()) return false;
         for (WeakReference<Waypoint> reference : markers) {
             if (reference.get() == waypoint) return true;
         }
         return false;
-    }
-
-    static void markArrived(Waypoint waypoint) {
-        if (!arrived(waypoint)) arrived.add(new WeakReference<>(waypoint));
     }
 }

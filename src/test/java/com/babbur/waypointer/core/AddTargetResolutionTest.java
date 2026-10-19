@@ -1,6 +1,7 @@
 package com.babbur.waypointer.core;
 
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,7 +37,7 @@ class AddTargetResolutionTest {
 
         manager.onZoneChanged(Zone.fromId("dungeon_m7"));
 
-        assertEquals(java.util.List.of(boss), manager.activeGroups());
+        assertEquals(List.of(boss), manager.activeGroups());
         assertSame(boss, manager.activeRouteGroupOrNull());
     }
 

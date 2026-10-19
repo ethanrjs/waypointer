@@ -13,13 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Reads the clipboard export of Odin's Waypoints module (Odin 0.3.6, October 2026): a JSON array
- * of {@code {area, blockPos:{x,y,z}, endPos, label, color:"#RRGGBBAA", trigger, command, radius,
- * enabled}}. Areas are an island ({@code ISLAND_DwarvenMines}), a Kuudra tier ({@code KUUDRA_T5}),
- * a boss room ({@code FLOOR_3}) or a boss phase ({@code F7_STORM}). Each area becomes one route
- * showing every point at once, as Odin does. Commands that Odin runs on a trigger are not kept.
- */
 final class OdinWaypointImporter {
 
     private static final Map<String, String> ISLANDS = Map.ofEntries(
@@ -47,7 +40,6 @@ final class OdinWaypointImporter {
             Map.entry("TorrhusCanyon", "torrhus_canyon"),
             Map.entry("Safari", "safari"));
 
-    /** Odin's own names for its island keys, used for route names. */
     private static final Map<String, String> ISLAND_LABELS = Map.ofEntries(
             Map.entry("SinglePlayer", "Singleplayer"),
             Map.entry("PrivateIsland", "Private Island"),
@@ -71,7 +63,6 @@ final class OdinWaypointImporter {
 
     private OdinWaypointImporter() {}
 
-    /** An array whose objects all carry Odin's {@code area} and {@code blockPos} object. */
     static boolean looksLikeExport(JsonArray array) {
         boolean any = false;
         for (JsonElement element : array) {
@@ -108,7 +99,6 @@ final class OdinWaypointImporter {
         return groups;
     }
 
-    /** One point, at the middle of Odin's box (from blockPos to endPos) on its lowest layer. */
     private static Waypoint waypoint(JsonObject point) {
         double[] from = vector(point.get("blockPos"));
         if (from == null) return null;
@@ -129,7 +119,7 @@ final class OdinWaypointImporter {
                 double r = point.get("radius").getAsDouble();
                 if (r > 0) radius = Math.max(Waypoint.MIN_REACH_RADIUS, Math.min(Waypoint.MAX_REACH_RADIUS, r));
             } catch (RuntimeException ignored) {
-                // Keep the route radius.
+
             }
         }
         boolean enabled = !point.has("enabled") || !point.get("enabled").isJsonPrimitive()
@@ -152,7 +142,6 @@ final class OdinWaypointImporter {
         }
     }
 
-    /** {@code #RRGGBBAA}; anything else gets the default color. */
     private static int color(String hex) {
         String digits = hex.startsWith("#") ? hex.substring(1) : hex;
         if (digits.length() != 8 && digits.length() != 6) return Waypoint.DEFAULT_COLOR;
@@ -178,7 +167,6 @@ final class OdinWaypointImporter {
         return floor > 0 ? "dungeon_f" + floor : Zone.UNKNOWN.id();
     }
 
-    /** FLOOR_3 and F7_STORM name a floor; Odin uses the same area for the Master Mode floor. */
     private static int floor(String area) {
         String digits = area.startsWith("FLOOR_") ? area.substring(6)
                 : area.startsWith("F") && area.indexOf('_') > 1 ? area.substring(1, area.indexOf('_')) : "";
@@ -190,7 +178,6 @@ final class OdinWaypointImporter {
         }
     }
 
-    /** Odin's label for the area: "Dwarven Mines", "Kuudra T5", "F1 / M1 Boss", "F7 Storm". */
     static String routeName(String area) {
         if (area.startsWith("ISLAND_")) {
             String key = area.substring(7);

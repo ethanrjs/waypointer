@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
@@ -27,14 +28,6 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
 
-/**
- * Deterministic JVM oracle for implementations of the native {@code WP:} wire format.
- *
- * <p>This class lives in the test source set on purpose. It emits a stable JSON
- * document that another runtime can consume without loading Minecraft classes.
- * Run {@link #main(String[])} with no arguments to print the fixture. Pass one
- * path argument to write it as UTF-8.
- */
 public final class WaypointCodecGoldenVectorGenerator {
 
     static final String FIXTURE_RESOURCE = "/fixtures/waypointer-native-golden-vectors.json";
@@ -152,7 +145,7 @@ public final class WaypointCodecGoldenVectorGenerator {
             throw new IllegalStateException(vector.id() + " emitted v" + actualVersion);
         }
         Integer actualKind = actualVersion == 9 ? WaypointCodec.v9ContentKind(header) : null;
-        if (!java.util.Objects.equals(vector.v9ContentKind(), actualKind)) {
+        if (!Objects.equals(vector.v9ContentKind(), actualKind)) {
             throw new IllegalStateException(vector.id() + " emitted content kind " + actualKind);
         }
 

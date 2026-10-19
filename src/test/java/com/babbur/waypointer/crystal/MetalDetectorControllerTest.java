@@ -5,6 +5,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import java.util.List;
+import java.util.stream.IntStream;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,7 +27,7 @@ class MetalDetectorControllerTest {
         MetalDetectorController controller = new MetalDetectorController(manager, null, new WaypointerConfig());
         var show = MetalDetectorController.class.getDeclaredMethod("show", List.class);
         show.setAccessible(true);
-        List<CrystalHollowsPosition> positions = java.util.stream.IntStream.range(0, 12)
+        List<CrystalHollowsPosition> positions = IntStream.range(0, 12)
                 .mapToObj(x -> new CrystalHollowsPosition(650 + x, 78, 426)).toList();
         show.invoke(controller, positions);
         WaypointGroup group = manager.get(MetalDetectorController.GROUP_ID);

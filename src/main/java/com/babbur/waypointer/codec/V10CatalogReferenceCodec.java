@@ -11,20 +11,6 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.regex.Pattern;
 
-/**
- * V10 kind 6, subtype 2: catalog route id, resolved by the recipient.
- *
- * <pre>{@code
- * 0x6A              header
- * subtype : uvarint MUST be 2
- * catalog : uvarint MUST be 0 (waypointermod.com); other values are reserved
- * idForm  : u8      0 = packed, 1 = inline
- * id      : packed: 16 bytes, the base64url decoding of a 22-character route id
- *           inline: length:uvarint (1..64) + ASCII bytes matching [A-Za-z0-9_-]
- * }</pre>
- *
- * <p>Ids that round-trip through 16 bytes must use packed form. No trailing bytes.
- */
 final class V10CatalogReferenceCodec {
 
     static final int CONTENT_KIND = V10BareRoutePackCodec.CONTENT_KIND;

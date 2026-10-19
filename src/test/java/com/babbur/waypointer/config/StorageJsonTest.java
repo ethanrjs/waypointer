@@ -1,5 +1,6 @@
 package com.babbur.waypointer.config;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.babbur.waypointer.codec.WaypointImporter;
@@ -16,6 +17,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -38,7 +40,7 @@ class StorageJsonTest {
     @Test
     void formerAnimatedPaintKeepsItsFirstFrameWhenLoadingAndSaving() {
         WaypointPaint first = WaypointPaint.solid(0x123456);
-        com.google.gson.JsonArray frames = new com.google.gson.JsonArray();
+        JsonArray frames = new JsonArray();
         frames.add(Storage.paintToJson(first));
         frames.add(Storage.paintToJson(WaypointPaint.solid(0xABCDEF)));
         JsonObject paint = new JsonObject();
@@ -877,6 +879,26 @@ class StorageJsonTest {
     }
 
     @Test
+    void aRouteThatStopsQualifyingForItsFolderLeavesItInsteadOfInvalidatingTheFile() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup kept = new WaypointGroup("kept", "Kept", "hub");
+        WaypointGroup converted = new WaypointGroup("converted", "Converted", "hub");
+        manager.addAll(List.of(kept, converted));
+        manager.addFolder(new RouteFolder("folder", "Mining", "hub", false),
+                List.of(kept.id(), converted.id()));
+        converted.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        Path file = tempDir.resolve("folder-member-changed.json");
+
+        new Storage(file).save(manager);
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+
+        assertFalse(Files.exists(file.resolveSibling(file.getFileName() + ".invalid")));
+        assertEquals(2, loaded.allGroups().size());
+        assertEquals(List.of("kept"), loaded.groupIdsInFolder("folder"));
+    }
+
+    @Test
     void runtimeFoldersAndTheirRuntimeRoutesAreNeverPersisted() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup runtime = new WaypointGroup("runtime", "Odawa", "crystal_hollows");
@@ -999,7 +1021,7 @@ class StorageJsonTest {
         storage.attach(manager);
         int snapshotsAfterAttach = storage.snapshotCount();
 
-        manager.replaceAll(List.of(), List.of(), java.util.Map.of());
+        manager.replaceAll(List.of(), List.of(), Map.of());
         storage.flush();
 
         assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());

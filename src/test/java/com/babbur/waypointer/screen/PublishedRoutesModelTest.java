@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogPublication;
+import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -38,7 +39,7 @@ class PublishedRoutesModelTest {
         CatalogPublication bundle = new CatalogPublication(
                 "unlisted-bundle", route.publisherId(), route.publisherName(),
                 "Mining bundle", route.description(),
-                com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.UNLISTED,
+                CatalogPublishRequest.Visibility.UNLISTED,
                 "multiple", route.version(), route.codecVersion(), route.serverCreatedAt(),
                 "/r/unlisted-bundle", route.apiRoot(), route.payloadSha256(), route.recordedAt());
         PublishedRoutesModel model = new PublishedRoutesModel();
@@ -104,7 +105,7 @@ class PublishedRoutesModelTest {
         return new CatalogPublication(
                 "route-" + index, "publisher", "Publisher", "Title " + index,
                 "A route description.",
-                com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.PUBLIC,
+                CatalogPublishRequest.Visibility.PUBLIC,
                 "crystal_hollows", 1, 9, "2026-01-01T00:00:00Z",
                 "/r/route-" + index, "https://catalog.example", "sha256", Instant.EPOCH);
     }

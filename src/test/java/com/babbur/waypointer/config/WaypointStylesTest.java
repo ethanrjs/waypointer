@@ -4,6 +4,8 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointStyle;
 import com.google.gson.JsonParser;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -66,8 +68,8 @@ class WaypointStylesTest {
         config.setZoneStyle("mineshaft", WaypointStyle.EMPTY.with("showTracer", true).with("labelScale", 2));
         config.setZoneStyle("mineshaft_crystal", WaypointStyle.EMPTY.with("labelScale", 3));
         config.setZoneStyle("crystal_hollows", WaypointStyle.EMPTY.with("showWaypointNames", false));
-        assertEquals(java.util.List.of("mineshaft", "mineshaft_crystal"), WaypointStyles.zoneKeys("mineshaft_crystal"));
-        assertEquals(java.util.List.of("crystal_hollows"), WaypointStyles.zoneKeys("crystal_hollows"));
+        assertEquals(List.of("mineshaft", "mineshaft_crystal"), WaypointStyles.zoneKeys("mineshaft_crystal"));
+        assertEquals(List.of("crystal_hollows"), WaypointStyles.zoneKeys("crystal_hollows"));
         WaypointerConfig resolvedShaft = WaypointStyles.resolve(config, shaft, null);
         assertTrue(resolvedShaft.showTracer());
         assertEquals(3, resolvedShaft.labelScale(), "the exact zone beats its family");
@@ -82,7 +84,7 @@ class WaypointStylesTest {
         WaypointerConfig loaded = WaypointerConfig.fromJson("""
                 {"zoneStyles":{"mineshaft":{"values":{"showRouteLines":"true","bogus":"x"}},"":{"values":{}}}}
                 """);
-        assertEquals(java.util.Map.of("showRouteLines", "true"), loaded.zoneStyle("mineshaft").values());
+        assertEquals(Map.of("showRouteLines", "true"), loaded.zoneStyle("mineshaft").values());
         assertEquals(1, loaded.zoneStyles().size());
         loaded.resetToDefaults();
         assertTrue(loaded.zoneStyles().isEmpty());
@@ -134,7 +136,7 @@ class WaypointStylesTest {
         assertEquals(2, loaded.labelScale());
         assertEquals("", loaded.preferredStyleId());
         assertEquals(1, loaded.namedStyles().size());
-        assertEquals(java.util.Map.of("labelScale", "1.5"), loaded.namedStyles().get("Good").values());
+        assertEquals(Map.of("labelScale", "1.5"), loaded.namedStyles().get("Good").values());
         assertEquals("STAR", loaded.crystalHollowsStyle("temple").values().get("waypointIcon"));
     }
     @Test void importingLegacySettingsKeepsLocalStylesAndResetDisablesThemWithoutDeletingLibrary() {

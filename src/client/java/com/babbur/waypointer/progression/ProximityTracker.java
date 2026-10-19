@@ -11,7 +11,6 @@ import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import com.babbur.waypointer.dungeon.DungeonSecretCompletionSound;
 import com.babbur.waypointer.dungeon.DungeonStepProgress;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;

@@ -16,11 +16,14 @@ import com.babbur.waypointer.crystal.compass.CrystalState;
 import com.babbur.waypointer.location.SidebarTexts;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -43,7 +46,7 @@ public final class CrystalHollowsTracker {
     private final WaypointerConfig config;
     private final CrystalHollowsStore store;
     private final CrystalHollowsProjection projection;
-    private final List<Runnable> detectionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Runnable> detectionListeners = new CopyOnWriteArrayList<>();
     private final Set<Integer> processedEntityIds = new HashSet<>();
     private final EnumMap<Crystal, CrystalState> tabCrystalStates = new EnumMap<>(Crystal.class);
     private CrystalHollowsLobbyState lobby;
@@ -71,13 +74,13 @@ public final class CrystalHollowsTracker {
     private CrystalHollowsZone compassOriginRegion;
     private CrystalHollowsZone compassCurrentRegion;
     private boolean compassCurrentRegionKnown;
-    private final Map<String, StructureSighting> compassShares = new java.util.HashMap<>();
+    private final Map<String, StructureSighting> compassShares = new HashMap<>();
     private long nextCompassShareId;
     private String compassShareReference;
     private boolean batchingDetections;
     private boolean detectionsChanged;
     private long caveInDeadline;
-    private final Map<StructureSighting, Integer> incorrectStructureTicks = new java.util.HashMap<>();
+    private final Map<StructureSighting, Integer> incorrectStructureTicks = new HashMap<>();
     private String verificationArea;
 
     public CrystalHollowsTracker(
@@ -194,7 +197,7 @@ public final class CrystalHollowsTracker {
     void applyRelayUpdate(StructureRelayProtocol.Update update) {
         if (update == null || !active || lobby == null) return;
         batchDetections(() -> {
-            if (update.snapshot()) detectionsChanged |= lobby.clearRemoteSightings("relay");
+            if (update.snapshot()) detectionsChanged |= lobby.clearRemoteSightings(StructureRelayProtocol.SOURCE);
             for (StructureSighting sighting : update.sightings()) merge(sighting, false);
         });
     }
@@ -464,16 +467,6 @@ public final class CrystalHollowsTracker {
         projection.rebuild(lobby);
     }
 
-    public void configurationChanged() {
-        refreshCompassFocusSetting();
-        if (!config.crystalHollowsEnabled()) {
-            if (active) leaveLobby();
-            return;
-        }
-        onZoneChanged(manager.currentZone());
-        if (active) projection.rebuild(lobby);
-    }
-
     public void flush() {
         if (lobby != null && isPersistable()) store.put(lobby);
         store.flush();
@@ -620,7 +613,7 @@ public final class CrystalHollowsTracker {
     }
 
     List<CrystalHollowsStructure> checkIncorrectStructures(String area, double x, double y, double z, boolean ready) {
-        if (!ready || !java.util.Objects.equals(verificationArea, area)) incorrectStructureTicks.clear();
+        if (!ready || !Objects.equals(verificationArea, area)) incorrectStructureTicks.clear();
         verificationArea = area;
         if (!ready || lobby == null) return List.of();
         incorrectStructureTicks.keySet().removeIf(sighting -> !lobby.sightings().contains(sighting)

@@ -5,6 +5,8 @@ import com.babbur.waypointer.render.RenderSubmission;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -101,6 +103,8 @@ public final class MeshCaptureSink implements GeometrySink {
     private final class Switching implements VertexConsumer {
         private final Pair pair;
 
+        private final Vector3f transformed = new Vector3f();
+
         Switching(Pair pair) {
             this.pair = pair;
         }
@@ -111,6 +115,16 @@ public final class MeshCaptureSink implements GeometrySink {
         }
 
         @Override public VertexConsumer addVertex(float x, float y, float z) { target().addVertex(x, y, z); return this; }
+        @Override public VertexConsumer addVertex(Matrix4fc pose, float x, float y, float z) {
+            pose.transformPosition(x, y, z, transformed);
+            target().addVertex(transformed.x, transformed.y, transformed.z);
+            return this;
+        }
+        @Override public VertexConsumer setNormal(PoseStack.Pose pose, float x, float y, float z) {
+            pose.transformNormal(x, y, z, transformed);
+            target().setNormal(transformed.x, transformed.y, transformed.z);
+            return this;
+        }
         @Override public VertexConsumer setColor(int r, int g, int b, int a) { target().setColor(r, g, b, a); return this; }
         @Override public VertexConsumer setColor(int argb) { target().setColor(argb); return this; }
         @Override public VertexConsumer setUv(float u, float v) { target().setUv(u, v); return this; }

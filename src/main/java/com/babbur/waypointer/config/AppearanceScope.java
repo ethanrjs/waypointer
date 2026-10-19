@@ -156,6 +156,6 @@ public final class AppearanceScope {
 
     private void write(WaypointStyle style) {
         writer.accept(style.isEmpty() ? WaypointStyle.EMPTY : style);
-        base.resolvedStyles.clear();
+        base.invalidateResolvedStyles();
     }
 }

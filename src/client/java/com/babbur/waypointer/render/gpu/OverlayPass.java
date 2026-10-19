@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.PriorityQueue;
 
 public final class OverlayPass implements AutoCloseable {
 
@@ -58,19 +57,28 @@ public final class OverlayPass implements AutoCloseable {
         }
     }
 
-    private static final class DrawStream {
+    private static final class DrawStream implements DrawSchedule.Stream {
         final MeshBucket bucket;
         final GpuMesh mesh;
-        int index;
-        int tieOrder;
 
         DrawStream(MeshBucket bucket, GpuMesh mesh) {
             this.bucket = bucket;
             this.mesh = mesh;
         }
 
-        double distance() {
+        @Override
+        public int primitiveCount() {
+            return mesh.primitiveCount();
+        }
+
+        @Override
+        public double primitiveDistance(int index) {
             return mesh.primitiveDistance(index);
+        }
+
+        @Override
+        public int bandOrder() {
+            return bucket.bandOrder();
         }
     }
 
@@ -79,9 +87,12 @@ public final class OverlayPass implements AutoCloseable {
     private final Vector3f scratchOffset = new Vector3f();
     private final List<Map.Entry<MeshBucket, MeshSet>> ordered = new ArrayList<>();
     private final Map<Identifier, AbstractTexture> textures = new HashMap<>();
-    private final PriorityQueue<DrawStream> streams = new PriorityQueue<>(Comparator
-            .comparingDouble(DrawStream::distance).reversed()
-            .thenComparingInt(stream -> stream.tieOrder));
+    private final List<DrawStream> streams = new ArrayList<>();
+    private int lastDrawCalls;
+
+    public int lastDrawCalls() {
+        return lastDrawCalls;
+    }
 
     public void draw(OverlayCompositing compositing, FrameView view, SceneKey key,
                     Map<MeshBucket, MeshSet> meshes, OverlayPipelines pipelines,
@@ -95,6 +106,7 @@ public final class OverlayPass implements AutoCloseable {
         textures.clear();
         ordered.clear();
         streams.clear();
+        lastDrawCalls = 0;
         for (Map.Entry<MeshBucket, MeshSet> entry : meshes.entrySet()) {
             if (!entry.getValue().isEmpty()) ordered.add(entry);
         }
@@ -114,8 +126,8 @@ public final class OverlayPass implements AutoCloseable {
                     encoder, localCameraX, localCameraY, localCameraZ);
             set.statics.prepareIndices(
                     encoder, localCameraX, localCameraY, localCameraZ);
-            enqueue(set.dynamicStream);
-            enqueue(set.staticStream);
+            if (!set.dynamics.isEmpty()) streams.add(set.dynamicStream);
+            if (!set.statics.isEmpty()) streams.add(set.staticStream);
         }
 
         for (Map.Entry<MeshBucket, MeshSet> entry : ordered) {
@@ -136,32 +148,23 @@ public final class OverlayPass implements AutoCloseable {
 
         GpuTextureView color = OverlayPassCompat.mainColorView();
         GpuTextureView depth = depthOverride != null ? depthOverride : OverlayPassCompat.mainDepthView();
+        int[] drawCalls = {0};
         try (RenderPass pass = OverlayPassCompat.beginPass(() -> "Waypointer overlay", color, depth)) {
-            while (!streams.isEmpty()) {
-                DrawStream stream = streams.remove();
+            DrawSchedule.plan(streams, (stream, start, end) -> {
                 MeshBucket bucket = stream.bucket;
                 OverlayPipelines.Slot slot = pipelines.slot(bucket);
                 pass.setPipeline(slot.forCompositing(compositing));
                 OverlayPassCompat.bindUniforms(pass, transforms, projection, fog);
-                if (bucket.texture() != null) {
-                    if (!OverlayPassCompat.bindTexture(
-                            pass, "Sampler0", textures.get(bucket.texture()))) continue;
+                if (bucket.texture() != null
+                        && !OverlayPassCompat.bindTexture(pass, "Sampler0", textures.get(bucket.texture()))) {
+                    return;
                 }
-                int end = stream.mesh.batchEnd(stream.index,
-                        streams.isEmpty() ? Double.NEGATIVE_INFINITY : streams.peek().distance());
                 int indices = bucket.topology().indicesPerPrimitive();
-                stream.mesh.draw(pass, stream.index * indices, (end - stream.index) * indices);
-                stream.index = end;
-                if (end < stream.mesh.primitiveCount()) streams.add(stream);
-            }
+                stream.mesh.draw(pass, start * indices, (end - start) * indices);
+                drawCalls[0]++;
+            });
         }
-    }
-
-    private void enqueue(DrawStream stream) {
-        if (stream.mesh.isEmpty()) return;
-        stream.index = 0;
-        stream.tieOrder = streams.size();
-        streams.add(stream);
+        lastDrawCalls = drawCalls[0];
     }
 
     static Matrix4f modelViewFor(Matrix4f target, Matrix4fc view, SceneKey key,
@@ -188,5 +191,6 @@ public final class OverlayPass implements AutoCloseable {
         ordered.clear();
         textures.clear();
         streams.clear();
+        lastDrawCalls = 0;
     }
 }

@@ -1,13 +1,18 @@
 package com.babbur.waypointer.crystal;
 
+import com.babbur.waypointer.util.BoundedBody;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
+import java.net.http.HttpTimeoutException;
+import java.net.http.WebSocketHandshakeException;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -15,11 +20,12 @@ import java.security.SecureRandom;
 import java.security.Signature;
 import java.time.Duration;
 import java.util.Base64;
-import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import javax.net.ssl.SSLException;
 
 public final class SkyblockerAuthentication {
     static final URI ENDPOINT = URI.create("https://api.azureaaron.net/authenticate");
@@ -59,13 +65,13 @@ public final class SkyblockerAuthentication {
         FailureCause fallback = FailureCause.UNKNOWN;
         for (int depth = 0; error != null && depth < 16; depth++, error = error.getCause()) {
             if (error instanceof SafeFailure safe) return safe.reason();
-            if (error instanceof Rejected || error instanceof java.net.http.WebSocketHandshakeException) return FailureCause.HTTP_REJECTED;
-            if (error instanceof java.net.http.HttpTimeoutException || error instanceof java.util.concurrent.TimeoutException) return FailureCause.TIMEOUT;
-            if (error instanceof java.net.UnknownHostException || error instanceof java.nio.channels.UnresolvedAddressException) return FailureCause.DNS;
-            if (error instanceof javax.net.ssl.SSLException) return FailureCause.TLS;
-            if (error instanceof java.util.concurrent.CancellationException) return FailureCause.CANCELLED;
-            if (error instanceof java.net.ConnectException) fallback = FailureCause.CONNECT;
-            else if (error instanceof java.io.IOException && fallback == FailureCause.UNKNOWN) fallback = FailureCause.NETWORK;
+            if (error instanceof Rejected || error instanceof WebSocketHandshakeException) return FailureCause.HTTP_REJECTED;
+            if (error instanceof HttpTimeoutException || error instanceof TimeoutException) return FailureCause.TIMEOUT;
+            if (error instanceof UnknownHostException || error instanceof UnresolvedAddressException) return FailureCause.DNS;
+            if (error instanceof SSLException) return FailureCause.TLS;
+            if (error instanceof CancellationException) return FailureCause.CANCELLED;
+            if (error instanceof ConnectException) fallback = FailureCause.CONNECT;
+            else if (error instanceof IOException && fallback == FailureCause.UNKNOWN) fallback = FailureCause.NETWORK;
         }
         return fallback;
     }
@@ -100,13 +106,17 @@ public final class SkyblockerAuthentication {
 
     public static CompletableFuture<Token> authenticate(String proof, String userAgent) {
         HttpRequest request = authenticationRequest(proof, userAgent);
-        CompletableFuture<HttpResponse<byte[]>> exchange = HTTP.sendAsync(request, ignored -> new LimitedBody());
+        CompletableFuture<HttpResponse<byte[]>> exchange = HTTP.sendAsync(request, limitedBody());
         CompletableFuture<Token> result = exchange.thenApply(response -> {
             if (response.statusCode() != 200) throw new Rejected(response.statusCode());
             return parseToken(response.body(), System.currentTimeMillis());
-        }).orTimeout(20, java.util.concurrent.TimeUnit.SECONDS);
+        }).orTimeout(20, TimeUnit.SECONDS);
         result.whenComplete((value, error) -> { if (error != null) exchange.cancel(true); });
         return result;
+    }
+
+    static HttpResponse.BodyHandler<byte[]> limitedBody() {
+        return BoundedBody.handler(MAX_RESPONSE, () -> new SafeFailure(FailureCause.INVALID_RESPONSE));
     }
 
     static HttpRequest authenticationRequest(String proof, String userAgent) {
@@ -149,28 +159,5 @@ public final class SkyblockerAuthentication {
         private final int status;
         public Rejected(int status) { super("hysky authentication HTTP " + status); this.status = status; }
         public int status() { return status; }
-    }
-
-    static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
-        private final CompletableFuture<byte[]> result = new CompletableFuture<>();
-        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        private Flow.Subscription subscription;
-        @Override public CompletionStage<byte[]> getBody() { return result; }
-        @Override public void onSubscribe(Flow.Subscription value) { subscription = value; value.request(1); }
-        @Override public void onNext(List<ByteBuffer> buffers) {
-            for (ByteBuffer buffer : buffers) {
-                if (buffer.remaining() > MAX_RESPONSE - bytes.size()) {
-                    subscription.cancel();
-                    result.completeExceptionally(new SafeFailure(FailureCause.INVALID_RESPONSE));
-                    return;
-                }
-                byte[] part = new byte[buffer.remaining()];
-                buffer.get(part);
-                bytes.writeBytes(part);
-            }
-            subscription.request(1);
-        }
-        @Override public void onError(Throwable error) { result.completeExceptionally(error); }
-        @Override public void onComplete() { result.complete(bytes.toByteArray()); }
     }
 }

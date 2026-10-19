@@ -2,6 +2,7 @@ package com.babbur.waypointer.render;
 
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -95,7 +96,7 @@ public final class WaypointPaintTextureCache {
                     WaypointerRenderPipelines.paintedQuads(id, false),
                     WaypointerRenderPipelines.paintedQuads(id, true));
             CACHE.put(paint, entry);
-            com.babbur.waypointer.render.gpu.OverlayRenderer.onPaintTextureCreated(entry);
+            OverlayRenderer.onPaintTextureCreated(entry);
             evictOldTextures();
             created = true;
             return entry;
@@ -155,7 +156,7 @@ public final class WaypointPaintTextureCache {
 
     private static void releaseEntry(Entry entry) {
         try {
-            com.babbur.waypointer.render.gpu.OverlayRenderer.onPaintTextureEvicted(entry);
+            OverlayRenderer.onPaintTextureEvicted(entry);
         } catch (RuntimeException | LinkageError failure) {
             Waypointer.LOGGER.warn("Could not remove a paint mesh", failure);
         }

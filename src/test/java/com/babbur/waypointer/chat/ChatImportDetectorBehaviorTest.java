@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -172,7 +173,7 @@ class ChatImportDetectorBehaviorTest {
 
     private static int countTranslationKey(Component component, String key) {
         int count = component.getContents()
-                instanceof net.minecraft.network.chat.contents.TranslatableContents translated
+                instanceof TranslatableContents translated
                 && translated.getKey().equals(key) ? 1 : 0;
         for (Component sibling : component.getSiblings()) {
             count += countTranslationKey(sibling, key);

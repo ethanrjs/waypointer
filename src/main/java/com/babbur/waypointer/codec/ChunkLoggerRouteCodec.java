@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
-/** RouteSkipper bridge: coal offsets become subwaypoints; span statistics are lossy. */
 final class ChunkLoggerRouteCodec {
 
     record RelativeOffset(int x, int y, int z) {
@@ -45,8 +44,7 @@ final class ChunkLoggerRouteCodec {
             hasChunkLoggerSpecificField |= waypoint.has("coal") || waypoint.has("blocks")
                     || waypoint.has("xzSpan") || waypoint.has("ySpan");
         }
-        // Plain coordinate JSON is valid generic JSON too. Only claim it as
-        // RouteSkipper when its distinctive optional fields make that certain.
+
         return hasCoordinateWaypoint && hasChunkLoggerSpecificField;
     }
 
@@ -72,7 +70,6 @@ final class ChunkLoggerRouteCodec {
         return group;
     }
 
-    /** Standard Base64 signed-byte triples; malformed/empty fields are empty shapes. */
     static List<RelativeOffset> decodeCoal(JsonObject source) {
         if (!source.has("coal") || !source.get("coal").isJsonPrimitive()
                 || !source.getAsJsonPrimitive("coal").isString()) {

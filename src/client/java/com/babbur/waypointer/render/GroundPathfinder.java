@@ -7,6 +7,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -360,7 +361,7 @@ final class GroundPathfinder {
         for (Node node = end; node != null; node = node.previous) {
             path.add(new BlockPos(node.cell.x, node.cell.y, node.cell.z));
         }
-        java.util.Collections.reverse(path);
+        Collections.reverse(path);
         return path;
     }
 

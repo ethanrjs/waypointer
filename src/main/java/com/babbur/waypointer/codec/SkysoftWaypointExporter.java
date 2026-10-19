@@ -16,7 +16,6 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
-/** Skysoft schema 2; matches Akinsoft/Skysoft's WaypointJson and ShareableConfigCodec. */
 final class SkysoftWaypointExporter {
     private SkysoftWaypointExporter() {}
 
@@ -58,7 +57,7 @@ final class SkysoftWaypointExporter {
         WaypointerConfig appearance = WaypointStyles.resolve(base, group, null);
         boolean sequence = group.loadMode() == WaypointGroup.LoadMode.SEQUENCE;
         JsonObject json = new JsonObject();
-        // Skysoft share import assigns fresh identities; stored-library IDs are unnecessary on the wire.
+
         json.addProperty("name", name(group.name(), true));
         json.addProperty("island", island(group.zoneId()));
         json.addProperty("enabled", !options.includeGroupMeta || group.enabled());
@@ -69,7 +68,7 @@ final class SkysoftWaypointExporter {
         if (options.includeColors) json.addProperty("color", group.staticColor() & 0xFFFFFF);
         JsonArray groupStyles = styles(appearance, null);
         json.add("styles", groupStyles);
-        // Skysoft fill and line visibility are group-wide; use the route setting.
+
         json.addProperty("filled", filled(appearance));
         json.addProperty("lines", sequence && appearance.showRouteLines() && appearance.routeLineOpacity() > 0);
         json.addProperty("scope", "ISLAND");
@@ -103,7 +102,7 @@ final class SkysoftWaypointExporter {
                     || point != null && point.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
             styles.add(small ? "MARKER" : "BLOCK");
         }
-        // Skysoft has no CURRENT-only beam mode; preserve beams on eligible points.
+
         if (config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF && config.beaconOpacity() > 0
                 && (point == null || !point.hasFlag(Waypoint.FLAG_HIDE_BEACON))) styles.add("BEACON");
         return styles;

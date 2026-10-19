@@ -41,7 +41,6 @@ public final class CodecZoneDictionary {
             "dungeon_m6",
             "dungeon_m7",
 
-            // Raw Skyblocker/Hypixel location IDs whose Waypointer storage IDs differ.
             "dynamic",
             "farming_1",
             "foraging_1",
@@ -55,9 +54,6 @@ public final class CodecZoneDictionary {
             "fishing_1",
             "mineshaft",
 
-            // The first three entries are retired surface-zone IDs. Keep their
-            // positions forever so older Waypointer payloads remain decodable;
-            // Zone.canonicalId migrates them to dwarven_mines after decode.
             "great_glacite_lake",
             "glacite_tunnels",
             "dwarven_base_camp",

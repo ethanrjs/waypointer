@@ -5,15 +5,13 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.zip.Deflater;
 
-/** Test helper: incompressible semantic bodies sized exactly at the V10 frame boundary. */
 final class V10FrameBoundary {
 
     private V10FrameBoundary() {}
 
-    /** Builds a random DEFLATE frame that fits before its two-byte checksum is appended. */
     static byte[] semanticWhoseDeflateOnlyFitsWithoutChecksum(byte header, long seed)
             throws IOException {
-        int target = V10Transport.MAX_FRAME_BYTES - 1 - 1; // compressed length wanted: MAX - 2
+        int target = V10Transport.MAX_FRAME_BYTES - 1 - 1;
         int size = target - 5 * (target / 65_535 + 1);
         for (int attempt = 0; attempt < 12; attempt++) {
             byte[] semantic = new byte[size];

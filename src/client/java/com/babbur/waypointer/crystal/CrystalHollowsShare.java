@@ -1,8 +1,10 @@
 package com.babbur.waypointer.crystal;
 
 import java.util.List;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
 
 public final class CrystalHollowsShare {
     private CrystalHollowsShare() {}
@@ -12,11 +14,11 @@ public final class CrystalHollowsShare {
                 + " " + sighting.x() + " " + sighting.y() + " " + sighting.z());
     }
 
-    public static net.minecraft.network.chat.Component defocus() {
-        return net.minecraft.network.chat.Component.literal(" ").append(
-                net.minecraft.network.chat.Component.translatableWithFallback(
+    public static Component defocus() {
+        return Component.literal(" ").append(
+                Component.translatableWithFallback(
                         "waypointer.crystal.action.defocus", "[Defocus]")
-                        .withStyle(net.minecraft.ChatFormatting.AQUA, net.minecraft.ChatFormatting.UNDERLINE)
+                        .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
                         .withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand("/wpch defocus"))));
     }
 

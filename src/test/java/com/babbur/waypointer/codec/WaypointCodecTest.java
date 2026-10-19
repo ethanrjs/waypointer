@@ -23,7 +23,6 @@ import java.util.zip.Inflater;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-
 class WaypointCodecTest {
 
     private static final WaypointCodec.Options FULL_FIDELITY =
@@ -206,7 +205,6 @@ class WaypointCodecTest {
         WaypointGroup b = sampleGroup("B", "crystal_hollows");
         b.setDefaultRadius(7.5);
         b.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        // Progress is local state and decodes at index zero.
 
         List<WaypointGroup> decoded = WaypointCodec.decode(
                 WaypointCodec.encode(List.of(a, b), FULL_FIDELITY));
@@ -340,7 +338,7 @@ class WaypointCodecTest {
             WaypointCodec.decodeFull(encoded);
             fail("decodeFull should reject oversized group counts");
         } catch (IllegalArgumentException expected) {
-            // Expected: malformed untrusted payloads surface as decode failures.
+
         }
     }
 
@@ -380,7 +378,7 @@ class WaypointCodecTest {
             WaypointCodec.readVarint(new DataInputStream(new ByteArrayInputStream(overflowing)));
             fail("readVarint should reject overflowing five-byte values");
         } catch (IOException expected) {
-            // Expected: values above Integer.MAX_VALUE are not valid wire ints.
+
         }
     }
 
@@ -498,7 +496,7 @@ class WaypointCodecTest {
 
     @Test
     void rejects_legacy_prefixes() {
-        // Prototype prefixes never shipped; reject them before decoding the versioned WP: body.
+
         assertThrows(IllegalArgumentException.class,
                 () -> WaypointCodec.decode("WPTR1:AAAABBBBCCCCDDDD"));
         assertThrows(IllegalArgumentException.class,
@@ -515,7 +513,7 @@ class WaypointCodecTest {
 
     @Test
     void fuzz_random_routes_round_trip() {
-        // Progress and enabled defaults are covered separately.
+
         Random r = new Random(0xC0FFEE);
         for (int trial = 0; trial < 50; trial++) {
             List<WaypointGroup> groups = new ArrayList<>();
@@ -554,13 +552,13 @@ class WaypointCodecTest {
         WaypointGroup g = WaypointGroup.create("Gold Run", "dungeon_f7");
         for (int i = 0; i < 40; i++) g.add(Waypoint.at(i * 3, 70, i * 2));
         String s = WaypointCodec.encode(List.of(g));
-        // Keep this structured 40-point route under 400 characters, allowing DEFLATE variation.
+
         assertTrue(s.length() < 400, "expected packed export < 400 chars, got " + s.length() + ": " + s);
     }
 
     @Test
     void twenty_named_waypoints_fit_in_command_packet() {
-        // This 20-point fixture must fit the 253-byte body budget after a three-byte party-chat prefix.
+
         WaypointGroup g = WaypointGroup.create("Big Run", "dungeon_f7");
         for (int i = 0; i < 20; i++) {
             g.add(new Waypoint(100 + i * 3, 70 + (i % 5), 200 + i * 2,
@@ -580,7 +578,7 @@ class WaypointCodecTest {
         String body = s.substring(WaypointCodec.MAGIC.length());
         for (int i = 0; i < body.length(); i++) {
             char c = body.charAt(i);
-            assertTrue(com.babbur.waypointer.codec.AsciiStreamCodec.isAlphabetChar(c),
+            assertTrue(AsciiStreamCodec.isAlphabetChar(c),
                     "body char at " + i + " out of alphabet: '" + c
                             + "' (0x" + Integer.toHexString(c).toUpperCase() + ")");
         }
@@ -588,7 +586,7 @@ class WaypointCodecTest {
 
     @Test
     void body_never_contains_period() {
-        // Periods can form URL-like text that triggers the advertising filter.
+
         for (int i = 0; i < 20; i++) {
             WaypointGroup g = WaypointGroup.create("fuzz " + i, "dungeon_f7");
             for (int j = 0; j < 8 + i; j++) {
@@ -603,7 +601,7 @@ class WaypointCodecTest {
 
     @Test
     void current_wire_version_keeps_hypixel_emote_escape() {
-        // Legacy V9 keeps the v4+ chat escape and v8 integrity checks.
+
         assertEquals(9, WaypointCodec.WIRE_VERSION);
 
         String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
@@ -702,7 +700,7 @@ class WaypointCodecTest {
 
     @Test
     void packed_export_is_chat_paste_safe() {
-        // Spaces can truncate a share when pasted into chat.
+
         WaypointGroup g = sampleGroup("space test", "zone");
         String s = WaypointCodec.encode(List.of(g));
         assertFalse(s.contains(" "), "codec output must contain zero whitespace; got: " + s);
@@ -753,7 +751,7 @@ class WaypointCodecTest {
 
     @Test
     void exports_always_reset_session_state_on_import() {
-        // Imports reset session state: enabled=true, currentIndex=0.
+
         WaypointGroup g = sampleGroup("Boss Route", "dungeon_f7");
         g.setCurrentIndex(2);
         g.setEnabled(false);
@@ -767,7 +765,7 @@ class WaypointCodecTest {
 
     @Test
     void round_trip_preserves_every_shareable_metadata_field() {
-        // Route fields survive sharing; session state is tested separately.
+
         WaypointGroup g = WaypointGroup.create("F7 Terminals", "dungeon_f7");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -810,8 +808,6 @@ class WaypointCodecTest {
         assertFalse(WaypointCodec.isCodecString(null));
         assertFalse(WaypointCodec.isCodecString(""));
     }
-
-    // --- granular Options toggles ----------------------------------------------------------
 
     @Test
     void include_colors_false_strips_per_waypoint_colors_to_default() {
@@ -883,7 +879,7 @@ class WaypointCodecTest {
 
     @Test
     void include_group_meta_false_strips_gradient_load_mode_and_default_radius() {
-        // Stripping colors must also suppress AUTO, which would recolor the imported defaults.
+
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -1001,7 +997,7 @@ class WaypointCodecTest {
 
     @Test
     void label_sanitization_strips_section_signs_and_caps_visible_chars() {
-        // Options sanitize formatting codes and bound label length.
+
         String hostile = "\u00A7c" + "Pwned " + "\u00A74".repeat(5);
         String sanitized = WaypointCodec.Options.sanitizeLabel(hostile);
         assertFalse(sanitized.contains("\u00A7"),
@@ -1019,11 +1015,9 @@ class WaypointCodecTest {
         assertTrue(fittingPair.endsWith("\uD83D\uDE80"));
     }
 
-    // --- coord packing mode selection ---------------------------------------------------------
-
     @Test
     void auto_mode_beats_absolute_on_yoyo_route_inside_fixed_bounds() {
-        // Large jumps within the compact range compare eligible modes after compression.
+
         WaypointGroup g = WaypointGroup.create("yoyo", "z");
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(2000, 100, 2000, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1047,7 +1041,7 @@ class WaypointCodecTest {
 
     @Test
     void auto_mode_no_worse_than_either_when_coords_exceed_fixed_bounds() {
-        // Outside FIXED_COMPACT range; compare final compressed lengths, not raw byte counts.
+
         WaypointGroup g = WaypointGroup.create("yoyo_far", "z");
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(1_000_000, 100, 1_000_000, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1070,7 +1064,7 @@ class WaypointCodecTest {
 
     @Test
     void auto_mode_picks_vector_when_waypoints_cluster_far_from_origin() {
-        // A tight cluster at large coordinates favors deltas or FIT_COMPACT over absolute varints.
+
         WaypointGroup g = WaypointGroup.create("cluster", "z");
         int base = 2_000_000;
         for (int i = 0; i < 20; i++) {
@@ -1095,7 +1089,7 @@ class WaypointCodecTest {
 
     @Test
     void fit_compact_round_trips_tight_group_exactly() {
-        // The fixture spans 7/5/6 bits per axis: 18 bits per point instead of the fixed 33.
+
         WaypointGroup g = WaypointGroup.create("tight", "dungeon_f7");
         g.add(new Waypoint( 66, 128, 135, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint( 79, 128, 142, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1119,7 +1113,7 @@ class WaypointCodecTest {
 
     @Test
     void fit_compact_handles_single_value_axis() {
-        // A constant y=70 requires no per-point Y bits.
+
         WaypointGroup g = WaypointGroup.create("flat", "z");
         g.add(new Waypoint(10, 70, 20, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(15, 70, 25, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1290,7 +1284,7 @@ class WaypointCodecTest {
             int n = 2 + r.nextInt(15);
             boolean fixedEligible = true;
             for (int i = 0; i < n; i++) {
-                // Mix of origin-adjacent and far coords to stress both modes.
+
                 int scale = r.nextBoolean() ? 1 : 100_000;
                 int x = (r.nextInt(2000) - 1000) * scale;
                 int z = (r.nextInt(2000) - 1000) * scale;
@@ -1331,8 +1325,6 @@ class WaypointCodecTest {
             return Integer.MAX_VALUE;
         }
     }
-
-    // --- helpers ------------------------------------------------------------------------------
 
     private static boolean hasGroup(List<WaypointGroup> groups, String name, String zoneId, int size) {
         return groups.stream().anyMatch(g ->
@@ -1558,7 +1550,7 @@ class WaypointCodecTest {
     private static void assertGroupsEqual(WaypointGroup expected, WaypointGroup actual) {
         assertEquals(expected.name(), actual.name(), "name");
         assertEquals(expected.zoneId(), actual.zoneId(), "zoneId");
-        // This helper expects default session state; use separate assertions when mutating it.
+
         assertTrue(actual.enabled(), "decoded groups always import enabled");
         assertEquals(0, actual.currentIndex(), "decoded groups always start at index 0");
         assertEquals(expected.defaultRadius(), actual.defaultRadius(), 1e-6, "defaultRadius");
@@ -1569,8 +1561,7 @@ class WaypointCodecTest {
         assertEquals(expected.gradientStartColor(), actual.gradientStartColor(), "gradientStartColor");
         assertEquals(expected.gradientEndColor(), actual.gradientEndColor(), "gradientEndColor");
         assertEquals(expected.size(), actual.size(), "size");
-        // Waypoint comparison: compare position/flags/radius strictly; compare color
-        // loosely when the source was AUTO because encode/decode re-applies the gradient.
+
         boolean looseColor = expected.gradientMode() == WaypointGroup.GradientMode.AUTO;
         for (int i = 0; i < expected.size(); i++) {
             Waypoint e = expected.get(i);

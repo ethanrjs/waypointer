@@ -3,6 +3,7 @@ package com.babbur.waypointer;
 import com.babbur.waypointer.api.DefaultWaypointerApi;
 import com.babbur.waypointer.api.WaypointerApi;
 import com.babbur.waypointer.api.WaypointerApiEntrypoints;
+import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.chat.ChatCoordDetector;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.ChatImportDetector;
@@ -16,11 +17,14 @@ import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsMinimap;
 import com.babbur.waypointer.crystal.CrystalHollowsStore;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.crystal.MetalDetectorController;
 import com.babbur.waypointer.crystal.StructureRelayController;
 import com.babbur.waypointer.crystal.WishingCompassController;
+import com.babbur.waypointer.debug.ServerTimingDiagnostics;
 import com.babbur.waypointer.dungeon.DungeonBossGate;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
@@ -137,7 +141,7 @@ public final class WaypointerClient implements ClientModInitializer {
         migrateLegacyDungeonRoutes();
         storage.attach(manager);
         Minecraft minecraft = Minecraft.getInstance();
-        com.babbur.waypointer.debug.ServerTimingDiagnostics.install();
+        ServerTimingDiagnostics.install();
         api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft, config);
 
         new LocationTracker(manager, config).install();
@@ -317,12 +321,12 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsStore = CrystalHollowsStore.loadDefault();
         crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
         crystalHollowsTracker.install();
-        new com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync(manager, crystalHollowsTracker).install();
-        new com.babbur.waypointer.crystal.CrystalHollowsMinimap(crystalHollowsTracker, config).install();
+        new CrystalHollowsStructureRouteSync(manager, crystalHollowsTracker).install();
+        new CrystalHollowsMinimap(crystalHollowsTracker, config).install();
         crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
         crystalHollowsCompass.install();
         new MetalDetectorController(manager, crystalHollowsTracker, config).install();
-        com.babbur.waypointer.catalog.PublishedSources.install(FabricLoader.getInstance().getConfigDir()
+        PublishedSources.install(FabricLoader.getInstance().getConfigDir()
                 .resolve(Waypointer.MOD_ID).resolve("publisher").resolve("published-sources.json"));
         new StructureRelayController(crystalHollowsTracker, config).install();
         new CrystalHollowsCommands(crystalHollowsTracker, crystalHollowsCompass, config).install();
@@ -355,7 +359,7 @@ public final class WaypointerClient implements ClientModInitializer {
         }
     }
 
-    private static boolean isDungeonRoomRouteGroup(com.babbur.waypointer.core.WaypointGroup group) {
+    private static boolean isDungeonRoomRouteGroup(WaypointGroup group) {
         return group != null
                 && !group.temp()
                 && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;

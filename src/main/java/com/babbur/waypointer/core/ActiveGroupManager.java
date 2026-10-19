@@ -1,5 +1,6 @@
 package com.babbur.waypointer.core;
 
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public final class ActiveGroupManager {
 
     private List<WaypointGroup> cachedActive;
     private boolean inDungeonBoss;
+    private boolean waypointsHidden;
 
     public Zone currentZone() {
         return currentZone;
@@ -54,6 +56,16 @@ public final class ActiveGroupManager {
         return inDungeonBoss;
     }
 
+    public boolean waypointsHidden() {
+        return waypointsHidden;
+    }
+
+    public void setWaypointsHidden(boolean hidden) {
+        if (waypointsHidden == hidden) return;
+        waypointsHidden = hidden;
+        fireTransientDataChanged();
+    }
+
     public void onZoneChanged(Zone newZone) {
         if (Objects.equals(newZone, currentZone)) return;
         currentZone = newZone;
@@ -67,6 +79,11 @@ public final class ActiveGroupManager {
         if (isolatedEditingGroupId != null) {
             WaypointGroup isolated = isolatedEditingGroup();
             cachedActive = isolated == null ? Collections.emptyList() : List.of(isolated);
+            return cachedActive;
+        }
+
+        if (waypointsHidden) {
+            cachedActive = withWaypointPreview(Collections.emptyList());
             return cachedActive;
         }
 
@@ -87,7 +104,7 @@ public final class ActiveGroupManager {
             if (g.enabled()
                     && Zone.sharesRoutes(g.zoneId(), zoneId) && shouldSurfaceActiveGroup(g)
                     && (focused == null || g == focused || g.runtimeOnly()
-                        && g.id().startsWith(com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.GROUP_PREFIX))) {
+                        && g.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX))) {
                 active.add(g);
             }
         }

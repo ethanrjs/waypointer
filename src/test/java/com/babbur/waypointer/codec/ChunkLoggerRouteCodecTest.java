@@ -1,7 +1,6 @@
 package com.babbur.waypointer.codec;
 
 import com.google.gson.JsonObject;
-import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
@@ -45,7 +44,7 @@ class ChunkLoggerRouteCodecTest {
     @Test
     void coalUsesStandardBase64SignedTriplesAndIgnoresTrailingBytes() {
         JsonObject source = new JsonObject();
-        source.addProperty("coal", "Af4DgH8AYw=="); // [1,-2,3], [-128,127,0], trailing 99
+        source.addProperty("coal", "Af4DgH8AYw==");
 
         List<ChunkLoggerRouteCodec.RelativeOffset> decoded = ChunkLoggerRouteCodec.decodeCoal(source);
         assertEquals(List.of(

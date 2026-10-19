@@ -5,11 +5,13 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import com.babbur.waypointer.input.WaypointRepositionMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 public final class DungeonRoomRouteSync {
@@ -83,7 +85,7 @@ public final class DungeonRoomRouteSync {
 
     private void onRoomChanged(DungeonRoom room) {
         String physicalKey = room == null ? null : room.identityKey();
-        if (!java.util.Objects.equals(selectedPhysicalRoomKey, physicalKey)) {
+        if (!Objects.equals(selectedPhysicalRoomKey, physicalKey)) {
             selectedPhysicalRoomKey = physicalKey;
             selectedSourceGroupId = null;
         }
@@ -120,7 +122,7 @@ public final class DungeonRoomRouteSync {
             WaypointGroup next = DungeonRoomRouteProjection.transformedRouteGroupForRoom(
                     room, userRoute, visibleSecretStages());
             next.setShowAllWaypoints(
-                    com.babbur.waypointer.input.WaypointRepositionMode.isEditModeEnabled());
+                    WaypointRepositionMode.isEditModeEnabled());
             replaceGeneratedGroup(generatedId, next);
             return;
         }
@@ -131,7 +133,7 @@ public final class DungeonRoomRouteSync {
     private void replaceGeneratedGroup(String generatedId, WaypointGroup next) {
         WaypointGroup previous = manager.get(generatedId);
         if (previous == null
-                || java.util.Objects.equals(
+                || Objects.equals(
                 previous.runtimeSourceGroupId(), next.runtimeSourceGroupId())) {
             carryOverProgress(previous, next);
         }

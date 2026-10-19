@@ -17,10 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.CRC32;
-
 import static org.junit.jupiter.api.Assertions.*;
-
 
 class CodecScannerTest {
 
@@ -88,7 +85,7 @@ class CodecScannerTest {
 
     @Test
     void ignores_legacy_prefixes() {
-        // These prototype prefixes never shipped; the version belongs in the WP: header.
+
         assertTrue(CodecScanner.scan("route: WPTR1:AAAABBBBCCCCDDDD").isEmpty());
         assertTrue(CodecScanner.scan("route: WP2:AAAABBBBCCCCDDDD").isEmpty());
         assertTrue(CodecScanner.scan("route: WP3:AAAABBBBCCCCDDDD").isEmpty());
@@ -163,7 +160,7 @@ class CodecScannerTest {
     @Test
     void extracts_export_before_clause_punctuation_after_greedy_body() {
         String export = sampleExport();
-        // Legacy alphabets include sentence punctuation, so extraction must trim it.
+
         String afterComma = "Try " + export + ", then head north";
         List<CodecScanner.Match> a = CodecScanner.scan(afterComma);
         assertEquals(1, a.size());
@@ -209,7 +206,7 @@ class CodecScannerTest {
 
     @Test
     void rejects_magic_mid_word_when_preceding_char_is_ascii_alphanumeric() {
-        // Reject prefixes embedded in words.
+
         String export = sampleExport();
         assertTrue(CodecScanner.scan("file" + export).isEmpty(),
                 "magic preceded by ASCII alphanumeric must not match");
@@ -349,8 +346,7 @@ class CodecScannerTest {
     }
 
     private static String committedExplicitDefaultConfig() {
-        // Header kind=3/version=10 (direct mode, bit 7 clear), tag 2 one-byte
-        // token, explicit default true. Direct payload = header, body, CRC-16.
+
         byte[] semantic = {0x3A, 0x08, 0x01};
         int crc = 0xFFFF;
         for (byte b : semantic) {

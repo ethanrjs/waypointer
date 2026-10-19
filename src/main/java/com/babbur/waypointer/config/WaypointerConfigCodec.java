@@ -138,7 +138,7 @@ public final class WaypointerConfigCodec {
     private static final int CRYSTAL_HOLLOWS_MINIMAP_SIZE = 105;
     private static final int CRYSTAL_HOLLOWS_MINIMAP_CORNER = 106;
     private static final int CRYSTAL_HOLLOWS_MINIMAP_LABELS = 107;
-    // Removed feature: reserve this tag permanently. Old WPC payloads still contain one boolean.
+
     private static final int LEGACY_DIANA_WAYPOINTS_ENABLED = 108;
     private static final int CRYSTAL_HOLLOWS_TRACERS = 109;
     private static final int CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS = 110;
@@ -464,7 +464,7 @@ public final class WaypointerConfigCodec {
                 case TEMP_DEFAULT_MODE -> config.setTempDefaultMode(in.readInt());
                 case TEMP_DEFAULT_DURATION_MIN -> config.setTempDefaultDurationMin(in.readInt());
                 case TEMP_DEFAULT_DURATION_SEC -> config.setTempDefaultDurationSec(in.readInt());
-                // Tag 79 was a boolean in WPC v4 and v5; retain legacy decoding.
+
                 case ETHERWARP_ALIGNMENT_SOUND -> config.setEtherwarpAlignmentSound(
                         in.readBoolean() ? WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE
                                 : WaypointerConfig.EtherwarpAlignmentSound.OFF);
@@ -561,7 +561,7 @@ public final class WaypointerConfigCodec {
 
     private static List<String> readStringList(DataInputStream in) throws IOException {
         int size = in.readUnsignedShort();
-        java.util.ArrayList<String> out = new java.util.ArrayList<>(size);
+        ArrayList<String> out = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             out.add(in.readUTF());
         }

@@ -14,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Optional real-export check enabled with {@code -Dcoleweight.file=<path>}. */
 class ColeweightSmokeTest {
 
     @Test
@@ -32,7 +31,6 @@ class ColeweightSmokeTest {
         assertTrue(g.size() > 0, "group should contain at least one waypoint");
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
 
-        // Names should be stringified step numbers; monotonic if the exporter kept sorted order.
         Set<String> names = new HashSet<>();
         for (int i = 0; i < g.size(); i++) {
             Waypoint w = g.get(i);

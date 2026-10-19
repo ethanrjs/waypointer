@@ -10,36 +10,10 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.function.ToIntFunction;
 
-/**
- * V10 kind 6, subtype 1: length-prefixed kind-0 body and metadata indexed by
- * route ordinal. Replaces WPL exports within V10 frame limits.
- *
- * <pre>{@code
- * 0x6A                          header
- * subtype      : uvarint        MUST be 1
- * routeLength  : uvarint >= 1
- * route        : kind-0 semantic body
- * manualCount  : uvarint        0..256, strictly ascending group ordinals
- *   ordinal    : uvarint
- *   colorCount : uvarint        MUST equal that route's point count
- *   colors     : u24be x colorCount
- * folderCount  : uvarint        0..256
- *   name       : uvarint length + strict UTF-8 (1..256 bytes, trimmed, nonblank)
- *   color      : u24be
- *   flags      : u8             bit 0 collapsed; other bits MUST be zero
- *   memberCount: uvarint        1..256
- *   members    : uvarint x memberCount (route ordinals, no duplicates)
- * paintCount   : uvarint        0..256, strictly ascending group ordinals
- *   ordinal    : uvarint
- *   enabled    : u8             0 or 1
- *   palette    : u24be x 16
- *   pixels     : 768 bytes      two 4-bit palette slots per byte, low nibble first
- * }</pre>
- *
- * <p>Requires metadata; otherwise write kind 0.
- */
 final class V10RouteLibraryCodec {
 
     static final int CONTENT_KIND = V10BareRoutePackCodec.CONTENT_KIND;
@@ -54,7 +28,6 @@ final class V10RouteLibraryCodec {
 
     private V10RouteLibraryCodec() {}
 
-    /** True when a committed kind-6 semantic body declares the route-library subtype. */
     static boolean isLibrarySemantic(byte[] semantic) {
         return semantic != null && semantic.length >= 2
                 && (semantic[0] & 0xFF) == SEMANTIC_HEADER
@@ -247,9 +220,9 @@ final class V10RouteLibraryCodec {
     }
 
     private static <T> List<T> sortedByOrdinal(
-            List<T> entries, java.util.function.ToIntFunction<T> ordinal) {
+            List<T> entries, ToIntFunction<T> ordinal) {
         List<T> sorted = new ArrayList<>(entries);
-        sorted.sort(java.util.Comparator.comparingInt(ordinal));
+        sorted.sort(Comparator.comparingInt(ordinal));
         return sorted;
     }
 
@@ -335,7 +308,6 @@ final class V10RouteLibraryCodec {
         T build();
     }
 
-    /** Model validation failures become decode failures rather than escaping as runtime errors. */
     private static <T> T wrap(Construction<T> construction) throws IOException {
         try {
             return construction.build();

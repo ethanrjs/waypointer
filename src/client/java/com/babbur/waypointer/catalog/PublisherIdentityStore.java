@@ -8,6 +8,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -24,11 +25,11 @@ import java.security.PublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 public final class PublisherIdentityStore {
@@ -99,7 +100,7 @@ public final class PublisherIdentityStore {
         String comparison = "unavailable";
         if (profile.publisherId() != null && shared.publisherId() != null) {
             comparison = !profile.publisherId().equals(shared.publisherId()) ? "different signing identities"
-                    : !java.util.Objects.equals(profile.publisherName(), shared.publisherName())
+                    : !Objects.equals(profile.publisherName(), shared.publisherName())
                     ? "same signing identity; saved names differ" : "same signing identity and name";
         }
         return new Diagnostics(profile, shared, comparison);
@@ -209,8 +210,6 @@ public final class PublisherIdentityStore {
             byte[] probe = PublisherIdentity.identityProbe();
             if (!identity.verifies(probe, identity.sign(probe))) throw invalidIdentity(null);
             return identity;
-        } catch (IOException | DateTimeParseException failure) {
-            throw invalidIdentity(failure);
         } catch (Exception failure) {
             throw invalidIdentity(failure);
         }
@@ -287,7 +286,7 @@ public final class PublisherIdentityStore {
         try {
             Files.createDirectories(parent);
             if (Files.isSymbolicLink(file)) throw invalidIdentity(null);
-            byte[] json = serialize(identity).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] json = serialize(identity).getBytes(StandardCharsets.UTF_8);
             CatalogAtomicFile.create(
                     file, json, "identity-", PublisherIdentityStore::setOwnerOnlyPermissions);
         } catch (IOException failure) {
@@ -302,7 +301,7 @@ public final class PublisherIdentityStore {
         }
         try {
             rejectUnsafeFile();
-            byte[] json = serialize(identity).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] json = serialize(identity).getBytes(StandardCharsets.UTF_8);
             CatalogAtomicFile.replace(
                     file, json, "identity-", PublisherIdentityStore::setOwnerOnlyPermissions);
         } catch (IOException failure) {

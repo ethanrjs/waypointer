@@ -9,8 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.compass.WishingCompassSolver;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class WishingCompassControllerTest {
@@ -19,7 +21,7 @@ class WishingCompassControllerTest {
     void defocusStopsCompassAndFocusedCoordinateTracersWithoutRemovingMarkers() {
         var manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
-        var route = com.babbur.waypointer.core.WaypointGroup.create("Route", "crystal_hollows");
+        var route = WaypointGroup.create("Route", "crystal_hollows");
         manager.add(route);
         var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
         tracker.focusCompassTarget(new StructureSighting(CrystalHollowsStructure.ODAWA,
@@ -205,16 +207,16 @@ class WishingCompassControllerTest {
                 300, 100, 300, SightingConfidence.COMPASS, "compass", 1L);
         tracker.focusCompassTarget(target);
         tracker.refineCompassTarget(new StructureSighting(target.structure(), 400, 100, 300,
-                SightingConfidence.SHARED_REMOTE, "relay", 2L, java.util.List.of(), "",
+                SightingConfidence.SHARED_REMOTE, "relay", 2L, List.of(), "",
                 SightingConfidence.ENTITY));
         assertEquals(target, tracker.compassTargetSighting());
 
         StructureSighting ambiguous = new StructureSighting(CrystalHollowsStructure.WISHING_TARGET,
                 600, 100, 700, SightingConfidence.COMPASS, "compass", 1L,
-                java.util.List.of(CrystalHollowsStructure.MINES_OF_DIVAN), "");
+                List.of(CrystalHollowsStructure.MINES_OF_DIVAN), "");
         tracker.focusCompassTarget(ambiguous);
         tracker.refineCompassTarget(new StructureSighting(CrystalHollowsStructure.LOST_PRECURSOR_CITY,
-                600, 100, 700, SightingConfidence.SHARED_REMOTE, "relay", 2L, java.util.List.of(), "",
+                600, 100, 700, SightingConfidence.SHARED_REMOTE, "relay", 2L, List.of(), "",
                 SightingConfidence.ENTITY));
         assertEquals(ambiguous, tracker.compassTargetSighting());
         assertTrue(manager.tempWaypointFocusActive());
@@ -268,7 +270,7 @@ class WishingCompassControllerTest {
     void citySidebarWithHiddenPrefixClearsFocusAndKeepsRoutesVisible() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
-        var other = com.babbur.waypointer.core.WaypointGroup.create(
+        var other = WaypointGroup.create(
                 "Other route", "crystal_hollows", false);
         other.add(Waypoint.at(300, 100, 300));
         manager.add(other);
@@ -297,7 +299,7 @@ class WishingCompassControllerTest {
         CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
         tracker.focusCompassTarget(new StructureSighting(CrystalHollowsStructure.WISHING_TARGET,
                 600, 100, 700, SightingConfidence.COMPASS, "compass", 1L,
-                java.util.List.of(CrystalHollowsStructure.LOST_PRECURSOR_CITY), ""));
+                List.of(CrystalHollowsStructure.LOST_PRECURSOR_CITY), ""));
         var group = manager.getOrCreateTempGroup();
         tracker.checkCompassArrival(CrystalHollowsStructure.LOST_PRECURSOR_CITY, 570, 100, 680);
         assertEquals(1, group.size());

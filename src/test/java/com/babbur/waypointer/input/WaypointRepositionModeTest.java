@@ -4,11 +4,8 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.Direction;
-import com.babbur.waypointer.dungeon.DungeonRoom;
-import com.babbur.waypointer.dungeon.DungeonRoomShape;
-import com.babbur.waypointer.dungeon.DungeonRoomType;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.core.BlockPos;
@@ -138,7 +135,7 @@ class WaypointRepositionModeTest {
         WaypointGroup editedRoute = WaypointGroup.create("Citrine 2", "hub");
         manager.add(firstRoute);
         manager.add(editedRoute);
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+        manager.onZoneChanged(Zone.fromId("hub"));
 
         assertEquals(firstRoute, manager.getOrCreateActiveGroup());
 
@@ -158,7 +155,7 @@ class WaypointRepositionModeTest {
         manager.add(shownBefore);
         manager.add(editedRoute);
         manager.add(hiddenBefore);
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+        manager.onZoneChanged(Zone.fromId("hub"));
 
         assertEquals(List.of(shownBefore, editedRoute), manager.activeGroups());
 
@@ -186,7 +183,7 @@ class WaypointRepositionModeTest {
         editedRoute.setEnabled(false);
         manager.add(shownBefore);
         manager.add(editedRoute);
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+        manager.onZoneChanged(Zone.fromId("hub"));
 
         WaypointRepositionMode.setEditModeEnabled(manager, config, editedRoute, true);
 

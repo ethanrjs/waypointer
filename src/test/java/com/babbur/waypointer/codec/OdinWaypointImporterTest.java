@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OdinWaypointImporterTest {
 
-    /** As Odin 0.3.6's "Export" writes it: Gson, pretty printed, Vec3 as x/y/z objects. */
     private static final String EXPORT = """
             [
               {

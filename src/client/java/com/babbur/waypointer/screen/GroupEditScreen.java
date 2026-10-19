@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
@@ -630,7 +629,7 @@ public final class GroupEditScreen extends Screen {
     private Component colorModeLabel() {
         return Component.translatable("waypointer.screen.group_edit.color_mode",
                 Component.translatable("waypointer.screen.group_edit.color_mode."
-                        + colorModeName(routeColorMode()).toLowerCase(java.util.Locale.ROOT)));
+                        + colorModeName(routeColorMode()).toLowerCase(Locale.ROOT)));
     }
 
     private RouteColorMode routeColorMode() {
@@ -1228,7 +1227,7 @@ public final class GroupEditScreen extends Screen {
                     mouseX, mouseY, hasSubwaypoints);
         }
         if (dragActive) {
-            int sourceTop = (int) mouseY - ROW_H / 2;
+            int sourceTop = mouseY - ROW_H / 2;
             int sourceBottom = sourceTop + (blockSize - 1) * pitch + ROW_H;
             g.fill(x1 + ROUTE_LIST_INSET, sourceTop, x2 - ROUTE_LIST_INSET, sourceBottom, OVERLAY);
             for (int i = 0; i < blockSize; i++) {
@@ -2457,10 +2456,6 @@ public final class GroupEditScreen extends Screen {
         recordEdit();
     }
 
-    public void toggleSelectedWaypointControl(int action) {
-        toggleWaypointControl(selectedIndex, action);
-    }
-
     private void toggleSubwaypointStyle(int index, int action) {
         if (index < 0 || index >= group.size() || !group.isSubwaypoint(index)) return;
         int flag = subwaypointStyleFlagForAction(action);
@@ -2469,10 +2464,6 @@ public final class GroupEditScreen extends Screen {
         Waypoint waypoint = group.get(index);
         group.set(index, waypoint.withFlags(waypoint.flags() ^ flag));
         recordEdit();
-    }
-
-    public void toggleSelectedSubwaypointStyle(int action) {
-        toggleSubwaypointStyle(selectedIndex, action);
     }
 
     private void openWaypointColorPicker(int idx) {

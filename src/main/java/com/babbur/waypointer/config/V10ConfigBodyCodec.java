@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Canonical wire-v10 kind-3 semantic body, independent of text/compression transport. */
 public final class V10ConfigBodyCodec {
 
     public static final int CONTENT_KIND = 3;
@@ -241,7 +241,7 @@ public final class V10ConfigBodyCodec {
         ByteBuffer encoded = StandardCharsets.UTF_8.newEncoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .encode(java.nio.CharBuffer.wrap(value));
+                .encode(CharBuffer.wrap(value));
         byte[] bytes = new byte[encoded.remaining()];
         encoded.get(bytes);
         return bytes;

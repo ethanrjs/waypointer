@@ -6,7 +6,9 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.screen.GuiTokens;
 import com.babbur.waypointer.crystal.CrystalHollowsMinimapLayout.Rect;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -14,6 +16,7 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
@@ -252,11 +255,11 @@ public final class CrystalHollowsMinimap implements HudElement {
         };
     }
 
-    private static final java.util.Map<String, String> TEXT = new java.util.HashMap<>();
-    private static net.minecraft.locale.Language textLanguage;
+    private static final Map<String, String> TEXT = new HashMap<>();
+    private static Language textLanguage;
 
     private static String text(String key) {
-        net.minecraft.locale.Language language = net.minecraft.locale.Language.getInstance();
+        Language language = Language.getInstance();
         if (language != textLanguage) {
             TEXT.clear();
             textLanguage = language;

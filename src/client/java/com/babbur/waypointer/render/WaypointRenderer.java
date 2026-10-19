@@ -2,9 +2,8 @@ package com.babbur.waypointer.render;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 
+import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -12,12 +11,10 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointVisibility;
 import com.babbur.waypointer.crystal.CompassMarkerState;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.text.AmpersandFormatting;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
@@ -30,26 +27,16 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.blockentity.BeaconRenderer;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Pose;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.client.resources.language.I18n;
+import net.minecraft.locale.Language;
+import net.minecraft.network.chat.FormattedText;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.VoxelShape;
-
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Objects;
-import java.util.function.IntPredicate;
+import java.util.Map;
 import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenCustomHashMap;
 
@@ -84,7 +71,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     public boolean emitWorldGeometryFor(LevelRenderContext ctx, PoseStack poseStack,
-                                        GeometrySink sink, net.minecraft.world.phys.Vec3 origin,
+                                        GeometrySink sink, Vec3 origin,
                                         boolean gpuDepthTestOwnsOcclusion) {
         boolean previous = trustGpuDepthTest;
         trustGpuDepthTest = gpuDepthTestOwnsOcclusion;
@@ -96,23 +83,23 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     public long depthVisibilityFingerprintFor(List<WaypointGroup> groups,
-                                              net.minecraft.world.phys.Vec3 cameraPosition) {
+                                              Vec3 cameraPosition) {
         Minecraft mc = Minecraft.getInstance();
         return depthVisibilityFingerprint(groups, mc, mc.level, cameraPosition);
     }
 
     public long blockShapeFingerprintFor(List<WaypointGroup> groups) {
         Minecraft mc = Minecraft.getInstance();
-        net.minecraft.world.phys.Vec3 cameraPosition =
+        Vec3 cameraPosition =
                 MinecraftCompat.mainCamera(mc.gameRenderer).position();
-        net.minecraft.world.phys.Vec3 playerPosition =
+        Vec3 playerPosition =
                 mc.player == null ? null : mc.player.position();
         return blockShapeFingerprint(groups, mc.level, cameraPosition, playerPosition);
     }
 
     public long worldVisibilityFingerprintFor(List<WaypointGroup> groups,
-                                              net.minecraft.world.phys.Vec3 cameraPosition,
-                                              net.minecraft.world.phys.Vec3 playerPosition) {
+                                              Vec3 cameraPosition,
+                                              Vec3 playerPosition) {
         return worldVisibilityFingerprint(groups, cameraPosition, playerPosition);
     }
 
@@ -121,17 +108,33 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     public void install() {
-        WorldOverlayCompat.register(this::onWorldRender);
+        WorldOverlayCompat.register(context -> {
+            long started = RenderCost.start();
+            try {
+                onWorldRender(context);
+            } finally {
+                RenderCost.stop(started);
+            }
+        });
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, LABEL_HUD_ID, this);
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
+        long started = RenderCost.start();
+        try {
+            extractLabels(g);
+        } finally {
+            RenderCost.stop(started);
+            RenderCost.endFrame();
+        }
+    }
+
+    private void extractLabels(GuiGraphicsExtractor g) {
         boolean drawIrisHudBoxes = IrisShaderFallback.shouldUse(config)
-                && !com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry();
+                && !OverlayRenderer.ownsWorldGeometry();
         boolean drawEditModeSubtitle = config.showEditModeSubtitle()
                 && WaypointRepositionMode.isEditModeEnabled();
-
 
         var groups = manager.activeGroups();
         prepareSkipFades(groups);
@@ -204,7 +207,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                                        WaypointGroup group, double maxStaticDistanceSq,
                                        double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
-
 
         forEachFadingVisibleIndex(group,
                 i -> {
@@ -291,7 +293,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                                  WaypointGroup group) {
         int currentIdx = group.currentIndex();
         boolean hasSubwaypoints = group.hasSubwaypoints();
-        String[] progressText = {null};
         boolean dungeonRoomRoute = isDungeonRoomRoute(group);
         int firstCandidate = labelCandidateCount;
 
@@ -360,18 +361,14 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                     : NAME_ARGB;
             LabelCandidate candidate = nextLabelCandidate();
             candidate.collectionOrder = labelCandidateCount - 1;
-            if (appearance.showRouteProgress() && !group.temp() && progressText[0] == null
-                    && group.loadMode() == WaypointGroup.LoadMode.STATIC) progressText[0] = routeProgressText(group);
-            candidate.set(group, i, w, appearance.showRouteProgress() && !group.temp()
-                            ? progressText[0] != null ? progressText[0] : routeProgressText(group, i) : null,
-                    hasSubwaypoints, sx, sy, distanceSq, nameColor, alpha, labelScale);
+            candidate.set(group, i, w, null, hasSubwaypoints, sx, sy, distanceSq, nameColor, alpha, labelScale);
             candidate.appearance = appearance;
             candidate.backgroundAlpha = stateAlpha * (float) appearance.labelBackdropOpacity();
             candidate.focused = WaypointLabelAppearance.focused(sx, sy, screenW * .5, screenH * .5);
             candidate.current = state == State.CURRENT;
             candidate.detail = WaypointLabelAppearance.showDetail(appearance, distanceSq, candidate.focused);
-            prepareCandidateRows(candidate);
-            if (candidate.rows.isEmpty() && ("NONE".equals(appearance.waypointIcon()) || !labelAlphaVisible(alpha))) {
+            if (!hasLabelRows(appearance, group, w, candidate.detail)
+                    && ("NONE".equals(appearance.waypointIcon()) || !labelAlphaVisible(alpha))) {
                 candidate.clear();
                 labelCandidateCount--;
             }
@@ -461,7 +458,10 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         boolean overlap = false;
         for (int i = 0; i < labelCandidateCount; i++) overlap |= labelCandidates.get(i).appearance.preventLabelOverlap();
         if (overlap) {
-            for (int i = 0; i < labelCandidateCount; i++) prepareCandidateBounds(font, labelCandidates.get(i));
+            for (int i = 0; i < labelCandidateCount; i++) {
+                prepareCandidateRows(labelCandidates.get(i));
+                prepareCandidateBounds(font, labelCandidates.get(i));
+            }
             labelCandidates.subList(0, labelCandidateCount).sort(Comparator
                     .comparingInt((LabelCandidate c) -> WaypointLabelAppearance.priority(c.current, c.focused))
                     .thenComparingDouble(c -> c.distanceSquared));
@@ -470,7 +470,10 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             labelCandidates.subList(0, count).sort(LABEL_NEAREST_FIRST);
         }
         selectLabelsForDrawing(labelCandidates, labelCandidateCount, count, overlap, drawnLabelCandidates);
-        for (LabelCandidate candidate : drawnLabelCandidates) drawCandidateLabel(g, font, candidate);
+        for (LabelCandidate candidate : drawnLabelCandidates) {
+            prepareCandidateRows(candidate);
+            drawCandidateLabel(g, font, candidate);
+        }
     }
 
     static void selectLabelsForDrawing(List<LabelCandidate> candidates, int candidateCount, int budget,
@@ -497,9 +500,20 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     private void prepareCandidateRows(LabelCandidate c) {
+        if (c.rowsBuilt) return;
+        c.rowsBuilt = true;
         WaypointerConfig a = c.appearance;
+        if (a.showRouteProgress() && !c.group.temp()) c.routeProgressText = routeProgressText(c.group, c.index);
         String role = labelRole(c.group, c.index, c.waypoint, stateFor(c.group, c.index, c.group.currentIndex()));
         appendLabelRows(c.rows, a, c.group, c.index, c.waypoint, c.detail, role, Math.sqrt(c.distanceSquared), c.routeProgressText);
+    }
+
+    static boolean hasLabelRows(WaypointerConfig appearance, WaypointGroup group, Waypoint waypoint, boolean detail) {
+        if (hasNameRow(appearance, group, waypoint) || appearance.showWaypointRoleBadge()) return true;
+        return detail && (appearance.labelShowRouteName()
+                || appearance.showRouteProgress() && !group.temp()
+                || appearance.showWaypointDistances()
+                || appearance.labelShowCoordinates());
     }
 
     private void prepareCandidateBounds(Font font, LabelCandidate c) {
@@ -598,10 +612,30 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return (font.lineHeight + DISTANCE_ROW_GAP) * scale;
     }
 
+    private static final int MAX_CACHED_LABEL_TEXTS = 1024;
+    private static final Map<String, FormattedCharSequence> LABEL_TEXT = new HashMap<>();
+    private static Language labelTextLanguage;
+
+    private static FormattedCharSequence labelText(String text) {
+        Language language = Language.getInstance();
+        if (language != labelTextLanguage) {
+            LABEL_TEXT.clear();
+            labelTextLanguage = language;
+        }
+        FormattedCharSequence ordered = LABEL_TEXT.get(text);
+        if (ordered == null) {
+            if (LABEL_TEXT.size() >= MAX_CACHED_LABEL_TEXTS) LABEL_TEXT.clear();
+            ordered = language.getVisualOrder(FormattedText.of(text));
+            LABEL_TEXT.put(text, ordered);
+        }
+        return ordered;
+    }
+
     public static void drawCenteredLabel(GuiGraphicsExtractor g, Font font, String text,
                                    double cx, double top, int argb, float alpha,
                                    float scale, WaypointerConfig appearance) {
-        int width = font.width(text);
+        FormattedCharSequence ordered = labelText(text);
+        int width = font.width(ordered);
         double left = cx - (width * scale) / 2.0;
         int drawX = (int) Math.floor(left);
         int drawY = (int) Math.floor(top);
@@ -618,7 +652,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                     width + BACKDROP_PAD_X, font.lineHeight - 1 + BACKDROP_PAD_Y,
                     RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB, alpha));
         }
-        if (labelAlphaVisible((argb >>> 24) / 255.0f)) g.text(font, text, 0, 0, argb, appearance.showLabelTextShadow());
+        if (labelAlphaVisible((argb >>> 24) / 255.0f)) g.text(font, ordered, 0, 0, argb, appearance.showLabelTextShadow());
         g.pose().popMatrix();
     }
 
@@ -676,7 +710,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             }
             rows.add(label);
         }
-        if (appearance.showWaypointRoleBadge()) rows.add(net.minecraft.client.resources.language.I18n.get("waypointer.label.role." + role));
+        if (appearance.showWaypointRoleBadge()) rows.add(I18n.get("waypointer.label.role." + role));
         if (detail) {
             if (appearance.labelShowRouteName()) rows.add(group.name());
             if (appearance.showRouteProgress() && progressText != null) rows.add(progressText);
@@ -731,6 +765,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         int nameColor;
         float alpha;
         float scale;
+        boolean rowsBuilt;
 
         void set(WaypointGroup group, int index, Waypoint waypoint, String routeProgressText,
                  boolean hasSubwaypoints, double screenX,
@@ -752,6 +787,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         void clear() {
             appearance = null;
             rows.clear();
+            rowsBuilt = false;
             group = null;
             waypoint = null;
             routeProgressText = null;

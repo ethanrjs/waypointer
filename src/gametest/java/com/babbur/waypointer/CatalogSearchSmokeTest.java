@@ -6,8 +6,8 @@ import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.screen.RouteCatalogScreen;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -26,7 +26,7 @@ final class CatalogSearchSmokeTest {
                         "AAAAAAAAAAAAAAAAAAAAAA", "Route", "", "Tester", "", false,
                         "public", "hub", "Hub", 44, 1, 10, 1, 0, "", "", "/r/test")), false, null));
                 MinecraftCompat.setScreen(client, screen);
-                var hideInstalled = (net.minecraft.client.gui.components.AbstractWidget) field(screen, "hideInstalledChip");
+                var hideInstalled = (AbstractWidget) field(screen, "hideInstalledChip");
                 if (hideInstalled == null || hideInstalled.getY() != (int) field(screen, "chipsY"))
                     throw new AssertionError("Hide installed must sit in the filter chip row");
                 for (int i = 0; i < 100; i++) {

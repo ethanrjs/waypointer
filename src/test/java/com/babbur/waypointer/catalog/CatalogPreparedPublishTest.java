@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -78,7 +79,7 @@ class CatalogPreparedPublishTest {
 
     @Test
     void dungeonPackUsesOneListingAndKeepsRoomIdentityAndWaypointStyles() {
-        List<WaypointGroup> rooms = java.util.stream.IntStream.range(0, 109).mapToObj(index -> {
+        List<WaypointGroup> rooms = IntStream.range(0, 109).mapToObj(index -> {
             WaypointGroup room = route();
             room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             room.setZoneId("room-" + index);

@@ -8,9 +8,13 @@ import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.http.WebSocket;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import net.minecraft.client.Minecraft;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,10 +37,10 @@ class StructureRelayControllerTest {
         set(controller, "nextConnect", 5000L);
         set(controller, "failures", 3);
         set(controller, "diagnosticGeneration", 7L);
-        var sent = new java.util.LinkedHashMap<String, Long>();
+        var sent = new LinkedHashMap<String, Long>();
         sent.put("private-publication-key", 1000L);
         set(controller, "sent", sent);
-        set(controller, "publications", new java.util.ArrayDeque<>(java.util.List.of(1000L, 2000L)));
+        set(controller, "publications", new ArrayDeque<>(List.of(1000L, 2000L)));
         var first = controller.diagnostics(3000);
         assertEquals(first, controller.diagnostics(3000));
         assertEquals(2000, first.backoffRemainingMillis());
@@ -82,7 +86,7 @@ class StructureRelayControllerTest {
                 listener.get().onOpen(socket);
                 listener.get().onText(socket, "{\"type\":\"snapshot\",\"sightings\":[]}", true);
             }
-            var tick = StructureRelayController.class.getDeclaredMethod("tick", net.minecraft.client.Minecraft.class);
+            var tick = StructureRelayController.class.getDeclaredMethod("tick", Minecraft.class);
             tick.setAccessible(true);
             tick.invoke(controller, new Object[]{null});
             assertTrue(pending.isCancelled());

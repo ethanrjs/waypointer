@@ -8,6 +8,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -20,7 +21,7 @@ import java.util.Set;
 public final class CatalogProtocol {
     private static final int CATALOG_CODEC_VERSION = 9;
     private static final int MAX_REGULAR_GROUPS = 64;
-    private static final int MAX_DUNGEON_GROUPS = 256;
+    static final int MAX_DUNGEON_GROUPS = 256;
     private static final int MAX_WAYPOINTS = 25_000;
     static final int MAX_PAYLOAD_CHARS = 256 * 1024;
 
@@ -202,7 +203,7 @@ public final class CatalogProtocol {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(
                     payload.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (java.security.NoSuchAlgorithmException impossible) {
+        } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
         }
     }

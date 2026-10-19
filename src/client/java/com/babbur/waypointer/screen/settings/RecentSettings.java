@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen.settings;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +26,7 @@ public final class RecentSettings {
 
     public static synchronized List<String> mostRecentFirst() {
         List<String> ids = new ArrayList<>(CHANGES.keySet());
-        java.util.Collections.reverse(ids);
+        Collections.reverse(ids);
         return ids;
     }
 

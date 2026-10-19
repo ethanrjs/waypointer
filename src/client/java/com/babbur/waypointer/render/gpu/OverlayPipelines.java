@@ -8,6 +8,7 @@ import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.CompareOp;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -51,14 +53,14 @@ public final class OverlayPipelines {
             pipelines.map(WaypointerRenderPipelines.linesDepthTested(smooth),
                     MeshBucket.untextured(MeshBucket.Kind.LINES, true));
         }
-        pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.quadsThroughWalls(),
+        pipelines.map(WaypointerRenderPipelines.quadsThroughWalls(),
                 MeshBucket.untextured(MeshBucket.Kind.QUADS, false));
-        pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.quadsDepthTested(),
+        pipelines.map(WaypointerRenderPipelines.quadsDepthTested(),
                 MeshBucket.untextured(MeshBucket.Kind.QUADS, true));
-        Identifier beam = net.minecraft.client.renderer.blockentity.BeaconRenderer.BEAM_LOCATION;
-        pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.beaconBeamThroughWalls(),
+        Identifier beam = BeaconRenderer.BEAM_LOCATION;
+        pipelines.map(WaypointerRenderPipelines.beaconBeamThroughWalls(),
                 MeshBucket.textured(MeshBucket.Kind.BEAM, false, beam));
-        pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.beaconBeamDepthTested(),
+        pipelines.map(WaypointerRenderPipelines.beaconBeamDepthTested(),
                 MeshBucket.textured(MeshBucket.Kind.BEAM, true, beam));
         return pipelines;
     }
@@ -129,8 +131,8 @@ public final class OverlayPipelines {
 
     private static Slot buildSlot(PipelineKey key) {
         String suffix = (key.depthTested() ? "depth" : "through") + (key.smooth() ? "_smooth" : "");
-        RenderPipeline inWorld = build(key, "gpu/" + key.kind().name().toLowerCase(java.util.Locale.ROOT) + "_" + suffix);
-        RenderPipeline postWorld = build(key, "gpu_post/" + key.kind().name().toLowerCase(java.util.Locale.ROOT) + "_" + suffix);
+        RenderPipeline inWorld = build(key, "gpu/" + key.kind().name().toLowerCase(Locale.ROOT) + "_" + suffix);
+        RenderPipeline postWorld = build(key, "gpu_post/" + key.kind().name().toLowerCase(Locale.ROOT) + "_" + suffix);
         MeshLayout layout = VertexLayoutCompat.describe(inWorld);
         return new Slot(inWorld, postWorld, layout, VertexLayoutCompat.formatIdentity(inWorld));
     }

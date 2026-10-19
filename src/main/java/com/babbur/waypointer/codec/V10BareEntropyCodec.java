@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Direct-A entropy descriptors for V10 kind-2 coordinate bodies. */
 final class V10BareEntropyCodec {
 
     static final int MAX_QUOTIENT_WAYPOINTS = 1_024;
@@ -24,7 +23,6 @@ final class V10BareEntropyCodec {
         QUOTIENT
     }
 
-    /** Inspect the reserved ten-bit descriptor without trial-decoding bodies. */
     static DirectDescriptor descriptor(byte[] semantic) throws IOException {
         V10BareRouteCodec.ByteReader reader = new V10BareRouteCodec.ByteReader(semantic);
         V10BareRouteCodec.Prefix prefix = V10BareRouteCodec.decodePrefix(reader);
@@ -73,7 +71,7 @@ final class V10BareEntropyCodec {
         V10BareRouteCodec.Prefix prefix = V10BareRouteCodec.decodePrefix(reader);
         int count = prefix.count();
         if (count <= 1) throw new IOException("v10 quotient descriptor is redundant");
-        // Normative safety gate: before marker, cardinality, rank, or block work.
+
         if (count > MAX_QUOTIENT_WAYPOINTS) {
             throw new IOException("v10 quotient route exceeds 1024-waypoint limit");
         }

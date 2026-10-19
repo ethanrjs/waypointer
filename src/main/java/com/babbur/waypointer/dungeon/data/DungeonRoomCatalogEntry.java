@@ -35,9 +35,6 @@ public record DungeonRoomCatalogEntry(
 
     public boolean hasCoreHashes() { return !coreHashes.isEmpty(); }
     public boolean hasFingerprints() { return !fingerprints.isEmpty(); }
-    public boolean hasSecretCount() { return secretCount >= 0; }
-    public boolean hasCryptCount() { return cryptCount >= 0; }
-    public boolean hasTrappedChestCount() { return trappedChestCount >= 0; }
 
     public static String normalizeId(String id) {
         if (id == null) return "";

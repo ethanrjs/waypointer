@@ -4,6 +4,7 @@ import com.babbur.waypointer.crystal.compass.Crystal;
 import com.babbur.waypointer.crystal.compass.CrystalState;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,8 +23,8 @@ public final class CrystalHollowsTabList {
             if (line == null) continue;
             Matcher matcher = CRYSTAL_LINE.matcher(CrystalHollowsSidebar.stripFormatting(line));
             if (!matcher.find()) continue;
-            Crystal crystal = Crystal.valueOf(matcher.group(1).toUpperCase(java.util.Locale.ROOT));
-            CrystalState state = switch (matcher.group(2).toLowerCase(java.util.Locale.ROOT)) {
+            Crystal crystal = Crystal.valueOf(matcher.group(1).toUpperCase(Locale.ROOT));
+            CrystalState state = switch (matcher.group(2).toLowerCase(Locale.ROOT)) {
                 case "placed" -> CrystalState.PLACED;
                 case "not placed" -> CrystalState.COLLECTED;
                 default -> CrystalState.MISSING;

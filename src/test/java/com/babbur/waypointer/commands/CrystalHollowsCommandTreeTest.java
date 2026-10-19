@@ -1,9 +1,16 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.crystal.CrystalHollowsShare;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.SightingConfidence;
+import com.babbur.waypointer.crystal.StructureSighting;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
@@ -27,17 +34,17 @@ class CrystalHollowsCommandTreeTest {
         assertNull(dispatcher.getRoot().getChild("wpch").getCommand());
         assertEquals(Set.of("add", "defocus", "sendcoords"),
                 dispatcher.getRoot().getChild("wpch").getChildren().stream()
-                        .map(node -> node.getName()).collect(java.util.stream.Collectors.toSet()));
+                        .map(node -> node.getName()).collect(Collectors.toSet()));
     }
 
     @Test
     void shareClickParsesCapturedCoordinatesWithoutRestoringShareCommand() {
         var dispatcher = new CommandDispatcher<FabricClientCommandSource>();
         new CrystalHollowsCommands(null, null, null).register(dispatcher);
-        var sighting = new com.babbur.waypointer.crystal.StructureSighting(
+        var sighting = new StructureSighting(
                 CrystalHollowsStructure.FAIRY_GROTTO, 253, 107, 618,
-                com.babbur.waypointer.crystal.SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
-        String command = com.babbur.waypointer.crystal.CrystalHollowsShare.share(sighting).command().substring(1);
+                SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
+        String command = CrystalHollowsShare.share(sighting).command().substring(1);
         var parsed = dispatcher.parse(command, null);
         assertFalse(parsed.getReader().canRead());
         assertTrue(parsed.getExceptions().isEmpty());
@@ -92,8 +99,8 @@ class CrystalHollowsCommandTreeTest {
 
     @Test
     void crystalHelpListsOnlyManualAdditionWithCoordinates() {
-        java.util.List<Component> feedback = new java.util.ArrayList<>();
-        FabricClientCommandSource source = (FabricClientCommandSource) java.lang.reflect.Proxy.newProxyInstance(
+        List<Component> feedback = new ArrayList<>();
+        FabricClientCommandSource source = (FabricClientCommandSource) Proxy.newProxyInstance(
                 getClass().getClassLoader(), new Class<?>[]{FabricClientCommandSource.class},
                 (proxy, method, args) -> {
                     if (method.getName().equals("sendFeedback")) {
@@ -103,7 +110,7 @@ class CrystalHollowsCommandTreeTest {
                     throw new AssertionError("Unexpected source call: " + method.getName());
                 });
         assertEquals(1, WaypointerCommandHelp.run(source, "wp", "crystal"));
-        assertEquals(java.util.List.of("/wpch add <structure> <x> <y> <z>"), feedback.stream()
+        assertEquals(List.of("/wpch add <structure> <x> <y> <z>"), feedback.stream()
                 .map(Component::getString).map(String::trim)
                 .filter(line -> line.startsWith("/wpch")).toList());
     }

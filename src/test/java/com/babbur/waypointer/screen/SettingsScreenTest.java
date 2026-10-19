@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
@@ -8,6 +9,9 @@ import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
@@ -58,7 +62,7 @@ class SettingsScreenTest {
         var settings = SettingsScreen.appearanceCategories(target::includes).stream()
                 .flatMap(category -> category.groups().stream())
                 .flatMap(section -> section.settings().stream()).map(Setting::id).toList();
-        for (String id : java.util.List.of("showRouteLines", "routeLineWidth", "routeLineOpacity", "routeLineDashed")) {
+        for (String id : List.of("showRouteLines", "routeLineWidth", "routeLineOpacity", "routeLineDashed")) {
             assertFalse(settings.contains(id), id);
         }
         assertTrue(settings.contains("labelScale"));
@@ -71,9 +75,9 @@ class SettingsScreenTest {
         group.add(new Waypoint(1, 2, 3, "&aDrop down", 0xFFFFFF, 0, 0.0));
         manager.add(group);
         WaypointerConfig config = new WaypointerConfig();
-        assertEquals("Drop down", net.minecraft.ChatFormatting.stripFormatting(
+        assertEquals("Drop down", ChatFormatting.stripFormatting(
                 AppearanceTarget.waypoint(manager, config, group, 0, () -> { }).name().getString()));
-        assertEquals("Blue route", net.minecraft.ChatFormatting.stripFormatting(
+        assertEquals("Blue route", ChatFormatting.stripFormatting(
                 AppearanceTarget.route(manager, config, group, () -> { }).name().getString()));
     }
 
@@ -138,7 +142,7 @@ class SettingsScreenTest {
 
     @Test
     void presetsAppearAsMinimalDefaultAndNothing() {
-        assertEquals(java.util.List.of("minimal", "default", "nothing"),
+        assertEquals(List.of("minimal", "default", "nothing"),
                 SettingsValuePolicy.visiblePresetIds());
     }
 
@@ -264,22 +268,22 @@ class SettingsScreenTest {
     }
     @Test
     void scopedAppearanceListsOnlyStylePropertiesGroupedBySection() {
-        java.util.List<SettingsCatalog.Category> all = SettingsScreen.appearanceCategories(id -> true);
-        java.util.Set<String> ids = new java.util.HashSet<>();
+        List<SettingsCatalog.Category> all = SettingsScreen.appearanceCategories(id -> true);
+        Set<String> ids = new HashSet<>();
         for (SettingsCatalog.Category category : all) {
             for (SettingsCatalog.Group group : category.groups()) {
                 assertNull(group.label(), "the sidebar section names the group");
                 group.settings().forEach(setting -> ids.add(setting.id()));
             }
         }
-        assertTrue(com.babbur.waypointer.config.WaypointStyles.supportedProperties().containsAll(ids));
+        assertTrue(WaypointStyles.supportedProperties().containsAll(ids));
         assertTrue(ids.contains("showTracer"));
         assertTrue(ids.contains("hideWaypointsNearPlayer"), "appearance properties from other categories stay reachable");
         assertFalse(ids.contains("renderAntialiasing"), "global-only render settings are not per-route");
         assertEquals(SettingsScreen.SCOPED_SECTION_PREFIX + "waypoint_marker", all.getFirst().id());
         assertEquals(SettingsScreen.SCOPED_VISIBILITY_ID, all.getLast().id());
 
-        java.util.List<SettingsCatalog.Category> waypointOnly =
+        List<SettingsCatalog.Category> waypointOnly =
                 SettingsScreen.appearanceCategories(id -> !id.equals("defaultWaypointColor"));
         assertTrue(waypointOnly.stream().flatMap(c -> c.groups().stream())
                 .flatMap(g -> g.settings().stream()).noneMatch(s -> s.id().equals("defaultWaypointColor")));

@@ -7,12 +7,13 @@ import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
 
-/** Finds bounded route, config, and dungeon shares in chat, trimming trailing punctuation. */
 public final class CodecScanner {
 
     private static final int MIN_BODY = 3;
@@ -94,7 +95,7 @@ public final class CodecScanner {
     private static List<Match> scanCatalogLinks(String message) {
         if (message == null || message.isEmpty()) return List.of();
         List<Match> out = new ArrayList<>();
-        java.util.regex.Matcher matcher = CatalogShareLink.find(message);
+        Matcher matcher = CatalogShareLink.find(message);
         while (matcher.find() && out.size() < MAX_MATCHES_PER_MESSAGE) {
             if (!isAtLinkBoundary(message, matcher.start())) continue;
             out.add(new Match(matcher.start(), matcher.end(), matcher.group(), true,
@@ -112,7 +113,7 @@ public final class CodecScanner {
     private static List<Match> merge(List<Match> first, List<Match> second) {
         List<Match> all = new ArrayList<>(first);
         all.addAll(second);
-        all.sort(java.util.Comparator.comparingInt(Match::start));
+        all.sort(Comparator.comparingInt(Match::start));
         List<Match> out = new ArrayList<>();
         int lastEnd = -1;
         for (Match match : all) {
@@ -161,7 +162,7 @@ public final class CodecScanner {
                 }
             }
             if (type == null) {
-                // Surface broken codes too, so the user sees an import error.
+
                 bodyEnd = greedyBodyEnd;
             }
             int bodyLen = bodyEnd - bodyStart;

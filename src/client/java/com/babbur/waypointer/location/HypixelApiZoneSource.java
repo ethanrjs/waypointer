@@ -2,6 +2,7 @@ package com.babbur.waypointer.location;
 
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsSidebar;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.hypixel.modapi.HypixelModAPI;
@@ -118,7 +119,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
                 ? Zone.tryResolveMineshaftTypeFromSidebarBlob(sidebarText) != null
                 : hasSidebarRefinement(lastRawPacketZone, sidebarText);
         boolean missingAreaLine =
-                com.babbur.waypointer.crystal.CrystalHollowsSidebar.areaName(sidebarText) == null;
+                CrystalHollowsSidebar.areaName(sidebarText) == null;
         if ((lastRawPacketZone != null || lastEmitted != null) && missingAreaLine && !hasPacketRefinement) {
             retainingSidebarZone = true;
             return;

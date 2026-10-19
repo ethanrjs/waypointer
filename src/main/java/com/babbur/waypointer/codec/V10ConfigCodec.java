@@ -6,7 +6,6 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import java.io.IOException;
 import java.util.zip.Deflater;
 
-/** Universal {@code WP:} wire-v10 kind-3 configuration codec. */
 final class V10ConfigCodec {
 
     private V10ConfigCodec() {}

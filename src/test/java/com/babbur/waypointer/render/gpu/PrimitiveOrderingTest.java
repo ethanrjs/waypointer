@@ -4,21 +4,17 @@ import java.nio.ByteBuffer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PrimitiveOrderingTest {
     @Test
-    void staticAndDynamicGeometryCanInterleaveFromFarToNear() {
+    void quadsSortFromFarToNearAndResortWhenTheCameraMoves() {
         float[] centers = {159, 0, 0, 262, 0, 0, 280, 0, 0};
-        double[] distances = new double[3];
+        float[] distances = new float[3];
         int[] order = new int[3];
-        QuadSorter.sortBackToFront(centers, order, distances, new int[3], 3, false, 0, 0, 0);
+        QuadSorter.sortBackToFront(centers, order, distances, new long[3], 3, false, 0, 0, 0);
         assertArrayEquals(new int[]{2, 1, 0}, order);
-        int firstEnd = QuadSorter.batchEnd(distances, order, 0, 3, 200 * 200);
-        assertEquals(2, firstEnd);
-        assertEquals(3, QuadSorter.batchEnd(distances, order, firstEnd, 3, Double.NEGATIVE_INFINITY));
-        assertTrue(QuadSorter.sortBackToFront(centers, order, distances, new int[3], 3, true, 300, 0, 0));
+        assertTrue(QuadSorter.sortBackToFront(centers, order, distances, new long[3], 3, true, 300, 0, 0));
         assertArrayEquals(new int[]{0, 1, 2}, order);
         for (MeshBucket.Kind kind : MeshBucket.Kind.values()) assertTrue(kind.sorted());
     }

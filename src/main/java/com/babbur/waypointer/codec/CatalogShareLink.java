@@ -4,7 +4,6 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Catalog links resolve like kind-6 subtype-2 {@code WP:} references. */
 public final class CatalogShareLink {
 
     public static final String HOST = "waypointermod.com";
@@ -29,7 +28,7 @@ public final class CatalogShareLink {
         Matcher matcher = LINK.matcher(trimmed);
         if (!matcher.lookingAt()) return Optional.empty();
         String rest = trimmed.substring(matcher.end());
-        // Allow only a bare trailing slash or a query/fragment after the id.
+
         if (!rest.isEmpty() && !rest.equals("/") && rest.charAt(0) != '?' && rest.charAt(0) != '#') {
             return Optional.empty();
         }

@@ -4,6 +4,7 @@ import com.babbur.waypointer.color.GradientColorizer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 
 public final class WaypointGroup {
 
@@ -36,7 +39,7 @@ public final class WaypointGroup {
     private final String id;
     private String name;
     private String zoneId;
-    private final List<Waypoint> waypoints;
+    private final VersionedList waypoints;
     private final List<Integer> manualColors;
     private int currentIndex;
     private boolean enabled;
@@ -69,12 +72,16 @@ public final class WaypointGroup {
     private transient long standSkipHoldStartedAtMillis;
     private transient boolean staticCycleJustCompleted;
     private transient ProximityIndex proximityIndex;
+    private transient MainIndex mainIndex;
+    private transient int reachedVersion;
+    private transient Object resolvedStyleCache;
+    private transient Object fadeState;
 
         public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
         this.name = name == null ? "" : name;
         this.zoneId = Zone.canonicalId(Objects.requireNonNull(zoneId));
-        this.waypoints = new ArrayList<>();
+        this.waypoints = new VersionedList();
         this.manualColors = new ArrayList<>();
         this.currentIndex = 0;
         this.enabled = true;
@@ -165,18 +172,47 @@ public final class WaypointGroup {
     }
 
     public boolean hasSubwaypoints() {
-        for (Waypoint waypoint : waypoints) {
-            if (waypoint.isSubwaypoint()) return true;
-        }
-        return false;
+        return mainIndex().mainCount < waypoints.size();
+    }
+
+    public boolean hasWaypointStyleOverrides() {
+        return mainIndex().anyStyleOverride;
+    }
+
+    public boolean anySubwaypointHasFlag(int flag) {
+        return (mainIndex().subwaypointFlags & flag) != 0;
+    }
+
+    public boolean anyWaypointHasFlag(int flag) {
+        return (mainIndex().anyFlags & flag) != 0;
+    }
+
+    public boolean everyWaypointHasFlag(int flag) {
+        return (mainIndex().everyFlags & flag) == flag;
+    }
+
+    public long contentVersion() {
+        return ((long) waypoints.version << 32) | (reachedVersion & 0xFFFFFFFFL);
+    }
+
+    public Object resolvedStyleCache() {
+        return resolvedStyleCache;
+    }
+
+    public void setResolvedStyleCache(Object cache) {
+        resolvedStyleCache = cache;
+    }
+
+    public Object fadeState() {
+        return fadeState;
+    }
+
+    public void setFadeState(Object state) {
+        fadeState = state;
     }
 
     public int mainWaypointCount() {
-        int count = 0;
-        for (Waypoint waypoint : waypoints) {
-            if (!waypoint.isSubwaypoint()) count++;
-        }
-        return count;
+        return mainIndex().mainCount;
     }
 
     public int enabledMainWaypointCount() {
@@ -212,12 +248,7 @@ public final class WaypointGroup {
     public int mainOrdinal(int index) {
         int mainIndex = isSubwaypoint(index) ? parentMainIndex(index) : index;
         if (mainIndex < 0 || mainIndex >= waypoints.size()) return 0;
-
-        int ordinal = 0;
-        for (int i = 0; i <= mainIndex; i++) {
-            if (!isSubwaypoint(i)) ordinal++;
-        }
-        return ordinal;
+        return mainIndex().mainsThrough[mainIndex];
     }
 
     public int childOrdinal(int index) {
@@ -247,10 +278,8 @@ public final class WaypointGroup {
     }
 
     public int previousMainIndexBefore(int index) {
-        for (int i = Math.min(index - 1, waypoints.size() - 1); i >= 0; i--) {
-            if (!isSubwaypoint(i)) return i;
-        }
-        return -1;
+        int before = Math.min(index - 1, waypoints.size() - 1);
+        return before < 0 ? -1 : mainIndex().lastMainThrough[before];
     }
 
     public int previousEnabledMainIndexBefore(int index) {
@@ -591,6 +620,7 @@ public final class WaypointGroup {
         waypoints.set(index, current.withFlags(flags));
         if (!disabled && staticReached != null && index < staticReached.length) {
             staticReached[index] = false;
+            reachedVersion++;
         }
         normalizeCurrentIndexToEnabledTarget();
         if (focusedVisibleIndex != null && !isWaypointEnabled(focusedVisibleIndex)) {
@@ -1013,6 +1043,7 @@ public final class WaypointGroup {
         if (staticReached[index]) return false;
 
         staticReached[index] = true;
+        reachedVersion++;
         if (allStaticWaypointsReached()) {
             resetStaticReachState();
             staticCycleJustCompleted = true;
@@ -1029,6 +1060,7 @@ public final class WaypointGroup {
     public void resetStaticReachState() {
         staticCycleJustCompleted = false;
         staticReached = null;
+        reachedVersion++;
     }
 
     public void focusNewWaypoint(int index) {
@@ -1237,6 +1269,7 @@ public final class WaypointGroup {
         }
         clearStandSkipHold();
         staticReached = null;
+        reachedVersion++;
         stepDone = null;
         invalidateProximityIndex();
     }
@@ -1443,6 +1476,92 @@ public final class WaypointGroup {
         System.arraycopy(staticReached, 0, next, 0, index);
         System.arraycopy(staticReached, index, next, index + 1, oldSize - index);
         staticReached = next;
+    }
+
+    private MainIndex mainIndex() {
+        MainIndex index = mainIndex;
+        if (index == null || index.version != waypoints.version) {
+            index = MainIndex.build(waypoints);
+            mainIndex = index;
+        }
+        return index;
+    }
+
+    private static final class MainIndex {
+        final int version;
+        final int mainCount;
+        final boolean anyStyleOverride;
+
+        final int subwaypointFlags;
+
+        final int anyFlags;
+        final int everyFlags;
+
+        final int[] mainsThrough;
+
+        final int[] lastMainThrough;
+
+        private MainIndex(int version, int mainCount, boolean anyStyleOverride, int subwaypointFlags,
+                          int anyFlags, int everyFlags, int[] mainsThrough, int[] lastMainThrough) {
+            this.version = version;
+            this.mainCount = mainCount;
+            this.anyStyleOverride = anyStyleOverride;
+            this.subwaypointFlags = subwaypointFlags;
+            this.anyFlags = anyFlags;
+            this.everyFlags = everyFlags;
+            this.mainsThrough = mainsThrough;
+            this.lastMainThrough = lastMainThrough;
+        }
+
+        static MainIndex build(VersionedList waypoints) {
+            int size = waypoints.size();
+            int[] mainsThrough = new int[size];
+            int[] lastMainThrough = new int[size];
+            int mains = 0;
+            int lastMain = -1;
+            boolean anyStyleOverride = false;
+            int subwaypointFlags = 0;
+            int anyFlags = 0;
+            int everyFlags = ~0;
+            for (int i = 0; i < size; i++) {
+                Waypoint waypoint = waypoints.get(i);
+                anyFlags |= waypoint.flags();
+                everyFlags &= waypoint.flags();
+                if (!waypoint.isSubwaypoint()) {
+                    mains++;
+                    lastMain = i;
+                } else {
+                    subwaypointFlags |= waypoint.flags();
+                }
+                anyStyleOverride |= !waypoint.styleOverride().isEmpty();
+                mainsThrough[i] = mains;
+                lastMainThrough[i] = lastMain;
+            }
+            return new MainIndex(waypoints.version, mains, anyStyleOverride, subwaypointFlags,
+                    anyFlags, everyFlags, mainsThrough, lastMainThrough);
+        }
+    }
+
+    private static final class VersionedList extends ArrayList<Waypoint> {
+        int version;
+
+        @Override public Waypoint set(int index, Waypoint element) { version++; return super.set(index, element); }
+        @Override public boolean add(Waypoint element) { version++; return super.add(element); }
+        @Override public void add(int index, Waypoint element) { version++; super.add(index, element); }
+        @Override public boolean addAll(Collection<? extends Waypoint> elements) { version++; return super.addAll(elements); }
+        @Override public boolean addAll(int index, Collection<? extends Waypoint> elements) {
+            version++;
+            return super.addAll(index, elements);
+        }
+        @Override public Waypoint remove(int index) { version++; return super.remove(index); }
+        @Override public boolean remove(Object element) { version++; return super.remove(element); }
+        @Override public boolean removeIf(Predicate<? super Waypoint> filter) { version++; return super.removeIf(filter); }
+        @Override public boolean removeAll(Collection<?> elements) { version++; return super.removeAll(elements); }
+        @Override public boolean retainAll(Collection<?> elements) { version++; return super.retainAll(elements); }
+        @Override public void clear() { version++; super.clear(); }
+        @Override protected void removeRange(int from, int to) { version++; super.removeRange(from, to); }
+        @Override public void replaceAll(UnaryOperator<Waypoint> operator) { version++; super.replaceAll(operator); }
+        @Override public void sort(Comparator<? super Waypoint> comparator) { version++; super.sort(comparator); }
     }
 
     private void invalidateProximityIndex() {

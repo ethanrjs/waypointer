@@ -53,15 +53,15 @@ final class V9CompactCodec {
     };
 
     private static final short[] BASE_ZERO_PROBABILITIES = {
-            // X: 12 trained bit priors followed by 19 neutral priors.
+
             2145, 2212, 2034, 2177, 3087, 3683, 3946, 3983, 4058, 4053, 4001, 3810,
             2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
             2048, 2048, 2048, 2048, 2048, 2048, 2048,
-            // Y: 8 trained bit priors followed by 23 neutral priors.
+
             2336, 2341, 2312, 2554, 3471, 3885, 4015, 3734,
             2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
             2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
-            // Z: 10 trained bit priors followed by 21 neutral priors.
+
             2163, 2131, 1986, 2119, 3053, 3701, 3949, 3992, 4057, 4087,
             2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048,
             2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048
@@ -862,7 +862,7 @@ final class V9CompactCodec {
         private void renormalize() {
             while (true) {
                 if ((low ^ (low + range)) < RANGE_TOP) {
-                    // Stable top byte.
+
                 } else if (range < RANGE_BOTTOM) {
                     range = (-low) & (RANGE_BOTTOM - 1L);
                 } else {
@@ -934,7 +934,7 @@ final class V9CompactCodec {
         private void renormalize() {
             while (true) {
                 if ((low ^ (low + range)) < RANGE_TOP) {
-                    // Stable top byte.
+
                 } else if (range < RANGE_BOTTOM) {
                     range = (-low) & (RANGE_BOTTOM - 1L);
                 } else {

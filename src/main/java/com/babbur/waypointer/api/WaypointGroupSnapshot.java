@@ -1,9 +1,9 @@
 package com.babbur.waypointer.api;
 
-import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 public record WaypointGroupSnapshot(
         String id,
@@ -38,7 +38,7 @@ public record WaypointGroupSnapshot(
     }
 
     public List<WaypointReference> waypointReferences() {
-        return java.util.stream.IntStream.range(0, waypoints.size())
+        return IntStream.range(0, waypoints.size())
                 .mapToObj(index -> new WaypointReference(id, index, waypoints.get(index)))
                 .toList();
     }

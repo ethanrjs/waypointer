@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.*;
 import java.util.List;
+import java.util.stream.IntStream;
 
 record RouteEditState(String name, String zoneId, boolean enabled, WaypointGroup.LoadMode loadMode,
                       WaypointGroup.GradientMode gradientMode, int staticColor,
@@ -13,7 +14,7 @@ record RouteEditState(String name, String zoneId, boolean enabled, WaypointGroup
                 group.staticColor(), group.gradientStartColor(), group.gradientEndColor(),
                 group.defaultRadius(), group.skipAheadEnabled(), List.copyOf(group.waypoints()),
                 group.manualColorSnapshot(), group.currentIndex(),
-                java.util.stream.IntStream.range(0, group.size()).filter(group::isStaticWaypointReached).boxed().toList(),
+                IntStream.range(0, group.size()).filter(group::isStaticWaypointReached).boxed().toList(),
                 group.stylePresetId(),
                 group.styleOverride(), group.paint(), group.paintEnabled());
     }

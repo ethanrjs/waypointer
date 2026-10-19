@@ -5,6 +5,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -115,7 +116,7 @@ class DungeonRoomRouteLibraryTest {
         assertTrue(DungeonRoomRouteLibrary.installRoutes(null, List.of(imported)).isEmpty());
         assertTrue(DungeonRoomRouteLibrary.installRoutes(manager, List.of()).isEmpty());
         assertEquals(List.of(imported), DungeonRoomRouteLibrary.installRoutes(
-                manager, java.util.Arrays.asList(null, dungeon("empty-import", "new"), imported)));
+                manager, Arrays.asList(null, dungeon("empty-import", "new"), imported)));
 
         assertTrue(existing.enabled());
         assertFalse(sameRoom.enabled());
@@ -136,7 +137,7 @@ class DungeonRoomRouteLibraryTest {
         assertEquals(0, DungeonRoomRouteLibrary.installMissingLegacyRoutes(null, List.of(legacy)));
         assertEquals(0, DungeonRoomRouteLibrary.installMissingLegacyRoutes(manager, null));
         assertEquals(1, DungeonRoomRouteLibrary.installMissingLegacyRoutes(
-                manager, java.util.Arrays.asList(null, dungeon("empty", "room"), legacy)));
+                manager, Arrays.asList(null, dungeon("empty", "room"), legacy)));
         assertEquals(WaypointGroup.RouteKind.DUNGEON, legacy.routeKind());
         assertEquals(0, DungeonRoomRouteLibrary.installMissingLegacyRoutes(
                 manager, List.of(legacy)));

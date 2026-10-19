@@ -1,5 +1,7 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.WaypointerClient;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -59,7 +61,7 @@ public final class GuiTokens {
     }
 
     public static float menuOpacity() {
-        var config = com.babbur.waypointer.WaypointerClient.config();
+        var config = WaypointerClient.config();
         return config == null ? 1.0f : (float) config.menuOpacity();
     }
 
@@ -78,7 +80,7 @@ public final class GuiTokens {
         return true;
     }
 
-    public static String ellipsize(net.minecraft.client.gui.Font font, String text, int maxWidth) {
+    public static String ellipsize(Font font, String text, int maxWidth) {
         if (font.width(text) <= maxWidth) return text;
         String dots = "...";
         int room = maxWidth - font.width(dots);
@@ -116,7 +118,7 @@ public final class GuiTokens {
             this.iconOnly = iconOnly && icon != null;
         }
 
-        boolean showsIcon(net.minecraft.client.gui.Font font, String label) {
+        boolean showsIcon(Font font, String label) {
             if (icon == null || getHeight() < Icons.SIZE) return false;
             int needed = Icons.SIZE + (label.isEmpty() ? 0 : ICON_GAP + font.width(label));
             return needed <= getWidth() - 10;
@@ -267,7 +269,7 @@ public final class GuiTokens {
         return button;
     }
 
-    public static int iconButtonWidth(net.minecraft.client.gui.Font font, Component label, Icons.Icon icon) {
+    public static int iconButtonWidth(Font font, Component label, Icons.Icon icon) {
         int text = font.width(label);
         if (icon == null) return text + 16;
         return Icons.SIZE + (text > 0 ? StyledButton.ICON_GAP + text : 0) + 16;
@@ -313,7 +315,7 @@ public final class GuiTokens {
         g.fill(x2 - 1, y1, x2, y2, BORDER);
     }
 
-    public static void drawInfoButton(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
+    public static void drawInfoButton(GuiGraphicsExtractor g, Font font,
                                       int x, int y, int size, boolean hovered) {
         g.fill(x, y, x + size, y + size, hovered ? 0xB0FFFFFF : BORDER);
         g.fill(x + 1, y + 1, x + size - 1, y + size - 1,
@@ -323,7 +325,7 @@ public final class GuiTokens {
                 hovered ? ACCENT : TEXT_DIM, false);
     }
 
-    public static void drawInfoTooltip(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
+    public static void drawInfoTooltip(GuiGraphicsExtractor g, Font font,
                                        String title, String[] labels, String[] descriptions,
                                        int[] labelColors, int mouseX, int mouseY,
                                        int maxRight, int maxBottom) {
@@ -404,17 +406,17 @@ public final class GuiTokens {
     public static void layoutFooter(int screenW, int footerY,
                                     List<ButtonSpec> left, ButtonSpec right,
                                     Consumer<Button> sink,
-                                    net.minecraft.client.gui.Font font) {
+                                    Font font) {
         layoutFooter(screenW, footerY, left, right, sink, font, PAD_OUTER, GAP_SECTION);
     }
 
     public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                   net.minecraft.client.gui.Font font) {
+                                   Font font) {
         return footerHeight(screenW, left, right, font, PAD_OUTER, GAP_SECTION);
     }
 
     public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                   net.minecraft.client.gui.Font font,
+                                   Font font,
                                    int startX, int rightInset) {
         left = fittedSpecs(screenW, left, right, font, startX, rightInset);
         return needsFooterWrap(screenW, left, right, font, startX, rightInset)
@@ -425,7 +427,7 @@ public final class GuiTokens {
     public static void layoutFooter(int screenW, int footerY,
                                     List<ButtonSpec> left, ButtonSpec right,
                                     Consumer<Button> sink,
-                                    net.minecraft.client.gui.Font font,
+                                    Font font,
                                     int startX, int rightInset) {
         for (FooterPlacement placement : footerPlacements(
                 screenW, footerY, left, right, font, startX, rightInset)) {
@@ -435,7 +437,7 @@ public final class GuiTokens {
 
     static List<FooterPlacement> footerPlacements(int screenW, int footerY,
                                                   List<ButtonSpec> left, ButtonSpec right,
-                                                  net.minecraft.client.gui.Font font,
+                                                  Font font,
                                                   int startX, int rightInset) {
         left = fittedSpecs(screenW, left, right, font, startX, rightInset);
         int rightW = right == null ? 0 : measureWidth(right, font);
@@ -493,7 +495,7 @@ public final class GuiTokens {
     }
 
     static List<ButtonSpec> fittedSpecs(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                        net.minecraft.client.gui.Font font,
+                                        Font font,
                                         int startX, int rightInset) {
         if (!needsFooterWrap(screenW, left, right, font, startX, rightInset)) return left;
         List<ButtonSpec> plain = left.stream()
@@ -507,7 +509,7 @@ public final class GuiTokens {
     private static final int TIGHT_BUTTON_MIN_W = 36;
 
     private static boolean needsFooterWrap(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                           net.minecraft.client.gui.Font font,
+                                           Font font,
                                            int startX, int rightInset) {
         int rightW = right == null ? 0 : measureWidth(right, font);
         int rightX = right == null ? screenW - rightInset : screenW - rightInset - rightW;
@@ -518,7 +520,7 @@ public final class GuiTokens {
         return needed > leftLimit - startX;
     }
 
-    private static int measureWidth(ButtonSpec spec, net.minecraft.client.gui.Font font) {
+    private static int measureWidth(ButtonSpec spec, Font font) {
         if (spec.width > 0) return spec.width;
         int icon = spec.icon == null ? 0 : Icons.SIZE + (spec.label.isEmpty() ? 0 : StyledButton.ICON_GAP);
         return Math.max(60, font.width(spec.label) + icon + 16);

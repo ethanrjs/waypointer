@@ -2,6 +2,7 @@ package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -47,7 +48,7 @@ class WaypointImporterTest {
 
     @Test
     void rejectsJsonContainerBombBeforeBuildingAGsonTree() {
-        String json = "[" + "[],".repeat(WaypointImporter.MAX_JSON_CONTAINERS) + "[]]";
+        String json = "[" + "[],".repeat(BoundedJson.MAX_CONTAINERS) + "[]]";
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny(json));
@@ -57,7 +58,7 @@ class WaypointImporterTest {
 
     @Test
     void rejectsJsonTokenBombBeforeBuildingAGsonTree() {
-        String json = "{" + "\"a\":null,".repeat(WaypointImporter.MAX_JSON_TOKENS / 2)
+        String json = "{" + "\"a\":null,".repeat(BoundedJson.MAX_TOKENS / 2)
                 + "\"a\":null}";
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -68,7 +69,7 @@ class WaypointImporterTest {
 
     @Test
     void rejectsJsonScalarBombBeforeBuildingAGsonTree() {
-        String json = "[" + "0,".repeat(WaypointImporter.MAX_JSON_SCALAR_VALUES) + "0]";
+        String json = "[" + "0,".repeat(BoundedJson.MAX_SCALAR_VALUES) + "0]";
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny(json));
@@ -79,7 +80,7 @@ class WaypointImporterTest {
     @Test
     void rejectsExcessiveJsonStringContentBeforeBuildingAGsonTree() {
         String json = "[{\"x\":0,\"y\":0,\"z\":0,\"ignored\":\""
-                + "a".repeat(WaypointImporter.MAX_JSON_STRING_CHARS + 1) + "\"}]";
+                + "a".repeat(BoundedJson.MAX_STRING_CHARS + 1) + "\"}]";
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny(json));
@@ -126,7 +127,7 @@ class WaypointImporterTest {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(native_);
         assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
         assertEquals(1, result.groups().size());
-        // Missing labels use an empty string so the UI can omit the label line.
+
         assertEquals("", result.label());
     }
 
@@ -184,7 +185,7 @@ class WaypointImporterTest {
 
     @Test
     void non_waypointer_sources_default_label_to_empty_string() {
-        // Third-party imports have an empty label, never null.
+
         String json = "{\"name\":\"x\",\"island\":\"hub\",\"waypoints\":[{\"x\":0,\"y\":0,\"z\":0}]}";
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
         assertNotNull(result.label());
@@ -219,7 +220,7 @@ class WaypointImporterTest {
         assertEquals(1, result.groups().size());
         WaypointGroup g = result.groups().get(0);
         assertEquals("Fetchur", g.name());
-        assertEquals("mining_hub", g.zoneId()); // dashes normalized
+        assertEquals("mining_hub", g.zoneId());
         assertEquals(2, g.size());
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         assertEquals(0x102030, g.get(0).color());
@@ -376,8 +377,7 @@ class WaypointImporterTest {
 
     @Test
     void parses_skyhanni_flat_array_with_options_name() {
-        // SkyHanni uses the same flat route schema as legacy Coleweight:
-        // float 0-1 r/g/b, options.name holds the step index.
+
         String json = "["
                 + "{\"x\":100,\"y\":64,\"z\":200,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}},"
                 + "{\"x\":110,\"y\":64,\"z\":210,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":2}},"
@@ -393,10 +393,10 @@ class WaypointImporterTest {
         assertEquals("1", g.get(0).name());
         assertEquals(100, g.get(0).x());
         assertEquals(220, g.get(2).z());
-        // SkyHanni leaves the area UNKNOWN for the caller to assign the current area.
-        assertEquals(com.babbur.waypointer.core.Zone.UNKNOWN.id(), g.zoneId());
+
+        assertEquals(Zone.UNKNOWN.id(), g.zoneId());
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
-        // AUTO rewrites inserted colors, so assert the mode rather than its generated colors.
+
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
     }
 
@@ -472,19 +472,19 @@ class WaypointImporterTest {
 
     @Test
     void retargeting_unknown_groups_to_current_zone_preserves_zoned_groups() {
-        // Assign the current area only to UNKNOWN; preserve explicit source areas.
+
         WaypointGroup fromColeweight = WaypointGroup.create("cw",
-                com.babbur.waypointer.core.Zone.UNKNOWN.id());
+                Zone.UNKNOWN.id());
         WaypointGroup fromOtherZone  = WaypointGroup.create("zoned", "dungeon_f7");
 
-        java.util.List<WaypointGroup> groups = new java.util.ArrayList<>();
+        List<WaypointGroup> groups = new ArrayList<>();
         groups.add(fromColeweight);
         groups.add(fromOtherZone);
 
-        com.babbur.waypointer.core.Zone target = com.babbur.waypointer.core.Zone.fromId("the_park");
+        Zone target = Zone.fromId("the_park");
         int retargeted = 0;
         for (WaypointGroup g : groups) {
-            if (com.babbur.waypointer.core.Zone.UNKNOWN.id().equals(g.zoneId())) {
+            if (Zone.UNKNOWN.id().equals(g.zoneId())) {
                 g.setZoneId(target.id());
                 retargeted++;
             }
@@ -496,7 +496,7 @@ class WaypointImporterTest {
 
     @Test
     void sorts_coleweight_by_numeric_option_name_regardless_of_array_order() {
-        // JSON arrays list steps 3, 1, 2 -- importer should sort back to 1, 2, 3.
+
         String json = "["
                 + "{\"x\":30,\"y\":64,\"z\":0,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":3}},"
                 + "{\"x\":10,\"y\":64,\"z\":0,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}},"
@@ -525,36 +525,24 @@ class WaypointImporterTest {
 
     @Test
     void converts_coleweight_float_rgb_to_byte_channels() {
-        // The coleweight importer stamps AUTO gradient on the group, which overwrites
-        // per-point colors on add(), so we exercise the pure color conversion directly.
+
         assertEquals(0xFF8000, WaypointImporter.coleweightRgb(1.0, 0.5, 0.0));
         assertEquals(0x00FF00, WaypointImporter.coleweightRgb(0.0, 1.0, 0.0));
         assertEquals(0x000000, WaypointImporter.coleweightRgb(0.0, 0.0, 0.0));
         assertEquals(0xFFFFFF, WaypointImporter.coleweightRgb(1.0, 1.0, 1.0));
-        // Out-of-range channels clamp to [0, 255].
+
         assertEquals(0xFF0000, WaypointImporter.coleweightRgb(2.5, -1.0, 0.0));
     }
 
     @Test
     void does_not_misclassify_skyblocker_byte_rgb_as_coleweight() {
-        // Skyblocker uses r/g/b but no `options` key -- must still route to the legacy
-        // loose-waypoint path so byte colors aren't mangled as [0,1] floats.
+
         String json = "[{\"x\":1,\"y\":2,\"z\":3,\"r\":255,\"g\":128,\"b\":64,\"name\":\"a\"}]";
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
         assertEquals(WaypointImporter.Source.JSON, result.source());
         assertEquals(0xFF8040, result.groups().get(0).get(0).color());
     }
 
-    // --- Skyblocker V1 format ---------------------------------------------------------------
-
-    /**
-     * Real payload copied from the Skyblocker mod's share-string UI. Locks the
-     * on-wire format so changes to the importer don't silently regress
-     * compatibility with shared routes already circulating in chat screenshots
-     * and reddit threads.
-     * 
-     * Thanks Amelia for the sample.
-     */
     private static final String SKYBLOCKER_V1_SAMPLE =
             "[Skyblocker-Waypoint-Data-V1]H4sIAAAAAAAA/9WSTQuDIBjH730K8dwiW3tp1x1222EMdogOUrIEU+mFiLHvPmvZdIzRNUH0" +
             "eX4P/v3rEzsAPNQEALa4k4Ly+tpJAg8A5vSeMzVr6L4LOC4GcCYtOJWikRrQimGe9SjrVBFNNdBHVorFQ0qrDTgVTJRHUUjBiV3UD9/z" +
@@ -570,7 +558,7 @@ class WaypointImporterTest {
 
         WaypointGroup g = result.groups().get(0);
         assertEquals("New Group", g.name());
-        // "dynamic" aliases Private Island.
+
         assertEquals("private_island", g.zoneId());
         assertEquals(4, g.size());
 
@@ -583,7 +571,7 @@ class WaypointImporterTest {
 
     @Test
     void parses_skyblocker_v1_synthetic_payload_with_pos_and_colorComponents() throws Exception {
-        // Non-default colors catch channel conversion errors that the all-green upstream fixture misses.
+
         String json = "[{"
                 + "\"name\":\"Route\","
                 + "\"island\":\"foraging_1\","
@@ -599,11 +587,11 @@ class WaypointImporterTest {
         assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
         WaypointGroup g = result.groups().get(0);
         assertEquals("Route", g.name());
-        assertEquals("the_park", g.zoneId());    // foraging_1 -> the_park alias
+        assertEquals("the_park", g.zoneId());
         assertEquals(2, g.size());
         assertEquals(10, g.get(0).x());
         assertEquals("A", g.get(0).name());
-        // Skyblocker renders all points in unordered groups; MANUAL preserves explicit colors.
+
         assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode());
         assertEquals(WaypointGroup.GradientMode.MANUAL, g.gradientMode());
         assertEquals(0xFF8000, g.get(0).color());
@@ -625,8 +613,7 @@ class WaypointImporterTest {
 
     @Test
     void skyblocker_ordered_groups_preserve_explicit_colors() throws Exception {
-        // The upstream codec carries both order and per-point colors. Sequence mode
-        // represents the order without overwriting the sender's colors.
+
         String json = "[{"
                 + "\"name\":\"Path\","
                 + "\"island\":\"hub\","
@@ -673,17 +660,17 @@ class WaypointImporterTest {
         assertEquals("gold_mine",         WaypointImporter.normalizeZone("mining_1"));
         assertEquals("deep_caverns",      WaypointImporter.normalizeZone("mining_2"));
         assertEquals("dwarven_mines",     WaypointImporter.normalizeZone("mining_3"));
-        // Generic dungeon imports use UNKNOWN because Waypointer areas are floor-specific.
-        assertEquals(com.babbur.waypointer.core.Zone.UNKNOWN.id(),
+
+        assertEquals(Zone.UNKNOWN.id(),
                 WaypointImporter.normalizeZone("dungeon"));
-        // Unrecognized IDs are normalized without inventing aliases.
+
         assertEquals("some_future_island",
                 WaypointImporter.normalizeZone("Some-Future-Island"));
     }
 
     @Test
     void skyblocker_v1_body_without_base64_errors_usefully() {
-        // A recognized prefix must produce a format-specific decode error.
+
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny("[Skyblocker-Waypoint-Data-V1]!!!not-base64!!!"));
         assertTrue(ex.getMessage().contains("Skyblocker"),
@@ -692,7 +679,7 @@ class WaypointImporterTest {
 
     @Test
     void skyblocker_legacy_ordered_map_parses_as_per_route_groups() {
-        // Pre-V1 shape: {groupName: {name, enabled, waypoints}}.
+
         String json = "{"
                 + "\"Dragon Path\":{"
                 + "  \"name\":\"Dragon Path\","

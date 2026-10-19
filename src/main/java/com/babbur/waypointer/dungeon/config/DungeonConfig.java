@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class DungeonConfig {
@@ -210,7 +212,7 @@ public final class DungeonConfig {
         boolean notifyEnabledListeners = enabled != defaults.enabled;
         boolean changed = notifyEnabledListeners
                 || debugLogRoomChanges != defaults.debugLogRoomChanges
-                || !java.util.Objects.equals(defaultDirection, defaults.defaultDirection)
+                || !Objects.equals(defaultDirection, defaults.defaultDirection)
                 || hideCompletedRooms != defaults.hideCompletedRooms
                 || showDungeonRouteLines != defaults.showDungeonRouteLines
                 || showDungeonTracers != defaults.showDungeonTracers
@@ -279,7 +281,7 @@ public final class DungeonConfig {
     }
     public void setDefaultDirection(String v) {
         if (v == null) return;
-        String upper = v.trim().toUpperCase(java.util.Locale.ROOT);
+        String upper = v.trim().toUpperCase(Locale.ROOT);
         if (upper.equals("NW") || upper.equals("NE") || upper.equals("SW") || upper.equals("SE")) {
             if (upper.equals(defaultDirection)) return;
             defaultDirection = upper;

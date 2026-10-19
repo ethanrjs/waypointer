@@ -7,13 +7,12 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Base-85 round trips across padding lengths and malformed input. */
 class AsciiPackCodecTest {
 
     @Test
     void round_trips_arbitrary_byte_patterns() {
         Random r = new Random(0xCA7CAFE);
-        // Cover all four padding lengths.
+
         for (int trial = 0; trial < 300; trial++) {
             int len = r.nextInt(400);
             byte[] input = new byte[len];
@@ -66,7 +65,7 @@ class AsciiPackCodecTest {
 
     @Test
     void output_never_contains_period() {
-        // Periods can form URL-like text that triggers Hypixel's advertising filter.
+
         Random r = new Random(0x4D4F4453);
         for (int trial = 0; trial < 200; trial++) {
             byte[] input = new byte[256 + r.nextInt(256)];
@@ -111,7 +110,7 @@ class AsciiPackCodecTest {
 
     @Test
     void rejects_malformed_pad_marker() {
-        // Padding must be 0..3 bytes.
+
         String s = AsciiPackCodec.encode(new byte[]{1});
         String bad = s.substring(0, s.length() - 1) + '4';
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(bad));
@@ -126,21 +125,21 @@ class AsciiPackCodecTest {
 
     @Test
     void rejects_overflowing_group() {
-        // The largest base-85 group is 85^5 - 1, exceeding unsigned 32-bit range.
-        String overflow = "#####" + AsciiPackCodec.encode(new byte[0]);  // valid pad=0 trailer
+
+        String overflow = "#####" + AsciiPackCodec.encode(new byte[0]);
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(overflow),
                 "a 5-digit group whose integer value exceeds 2^32 must be rejected");
     }
 
     @Test
     void wire_density_beats_cjk_on_utf8_bytes() {
-        // Base-85 carries about 6.41 bits per UTF-8 byte; CJK carries 4.67.
+
         byte[] input = "The quick brown fox jumps over the lazy dog's back 0123456789"
                 .getBytes(StandardCharsets.UTF_8);
         String packed = AsciiPackCodec.encode(input);
-        // Single-byte ASCII so char count == UTF-8 byte count.
+
         int packWireBytes = packed.length();
-        // For reference: CJK would emit ceil(n/7)*4 + 1 chars at 3 UTF-8 bytes each.
+
         int cjkWireBytes = (((input.length + 6) / 7) * 4 + 1) * 3;
         assertTrue(packWireBytes < cjkWireBytes,
                 "expected base-85 wire bytes (" + packWireBytes + ") < CJK wire bytes (" + cjkWireBytes + ")");
@@ -149,8 +148,8 @@ class AsciiPackCodecTest {
     @Test
     void isValidBody_matches_alphabet() {
         assertTrue(AsciiPackCodec.isValidBody(AsciiPackCodec.encode(new byte[]{42})));
-        assertTrue(AsciiPackCodec.isValidBody("0"));  // minimal valid empty-input output
-        assertFalse(AsciiPackCodec.isValidBody("hello world"));  // contains space
+        assertTrue(AsciiPackCodec.isValidBody("0"));
+        assertFalse(AsciiPackCodec.isValidBody("hello world"));
         assertFalse(AsciiPackCodec.isValidBody(""));
         assertFalse(AsciiPackCodec.isValidBody(null));
         assertFalse(AsciiPackCodec.isValidBody("abc~"), "~ is outside the base-85 alphabet");
@@ -162,7 +161,7 @@ class AsciiPackCodecTest {
     void decodes_all_residue_classes() {
         for (int n = 0; n <= 12; n++) {
             byte[] input = new byte[n];
-            for (int i = 0; i < n; i++) input[i] = (byte) (0x80 | i);  // high-bit bytes
+            for (int i = 0; i < n; i++) input[i] = (byte) (0x80 | i);
             byte[] decoded = AsciiPackCodec.decode(AsciiPackCodec.encode(input));
             assertArrayEquals(input, decoded, "residue " + (n % 4) + " (n=" + n + ")");
         }
@@ -170,7 +169,7 @@ class AsciiPackCodecTest {
 
     @Test
     void alphabet_excludes_hostile_characters() {
-        // Exclude chat-invalid and paste-sensitive characters; semicolon replaces period.
+
         char[] hostile = { ' ', '\t', '\n', '\r', '\u00A7', '\\', '\'', '"', '|', ',', '`', '~', '.' };
         for (char c : hostile) {
             assertFalse(AsciiPackCodec.isAlphabetChar(c),

@@ -10,6 +10,9 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 final class RouteTargets {
 
@@ -135,9 +138,9 @@ final class RouteTargets {
     }
 
     private static <T> Lookup<T> byName(List<T> items, String reference,
-                                        java.util.function.Function<T, String> name,
-                                        java.util.function.IntFunction<Component> ambiguous,
-                                        java.util.function.Supplier<Component> missing) {
+                                        Function<T, String> name,
+                                        IntFunction<Component> ambiguous,
+                                        Supplier<Component> missing) {
         String wanted = reference.toLowerCase(Locale.ROOT);
         List<T> exact = new ArrayList<>();
         List<T> prefix = new ArrayList<>();

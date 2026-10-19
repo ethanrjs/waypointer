@@ -5,6 +5,7 @@ import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -170,7 +171,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Objects.requireNonNull(waypoint, "waypoint");
         return callOnClientThread(() -> {
             WaypointGroup group = manager.getOrCreateTempGroup();
-            com.babbur.waypointer.core.Waypoint ownedWaypoint = waypoint.toTempWaypoint();
+            Waypoint ownedWaypoint = waypoint.toTempWaypoint();
             group.add(ownedWaypoint);
             manager.fireTransientDataChanged();
             return closeOnce(() -> removeCapturedWaypoint(group, ownedWaypoint));
@@ -293,7 +294,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
 
     private void removeCapturedWaypoint(
             WaypointGroup capturedGroup,
-            com.babbur.waypointer.core.Waypoint capturedWaypoint) {
+            Waypoint capturedWaypoint) {
         callOnClientThread(() -> {
             if (manager.get(capturedGroup.id()) != capturedGroup) return null;
             for (int i = 0; i < capturedGroup.size(); i++) {
@@ -328,7 +329,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         group.setEnabled(route.enabled());
         group.setLoadMode(route.loadMode().toCore());
         group.setDefaultRadius(route.defaultRadius());
-        List<com.babbur.waypointer.core.Waypoint> waypoints = new ArrayList<>(route.waypoints().size());
+        List<Waypoint> waypoints = new ArrayList<>(route.waypoints().size());
         for (WaypointSpec waypoint : route.waypoints()) waypoints.add(waypoint.toWaypoint());
         group.addAll(waypoints);
         return group;
@@ -339,7 +340,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         WaypointGroup group = new WaypointGroup(id, overlay.name(), overlay.zoneId());
         group.setTemp(true);
         group.setLoadMode(overlay.loadMode().toCore());
-        List<com.babbur.waypointer.core.Waypoint> waypoints = new ArrayList<>(overlay.waypoints().size());
+        List<Waypoint> waypoints = new ArrayList<>(overlay.waypoints().size());
         for (WaypointSpec waypoint : overlay.waypoints()) waypoints.add(waypoint.toTempWaypoint());
         group.addAll(waypoints);
         return group;

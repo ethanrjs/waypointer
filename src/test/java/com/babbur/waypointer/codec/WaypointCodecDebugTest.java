@@ -4,11 +4,11 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Checks debug fields against decoded routes and their wire representation. */
 class WaypointCodecDebugTest {
 
     @Test
@@ -43,7 +43,6 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.WITH_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // Low nibble carries v10 and bits 4..6 identify the general-route kind.
         assertEquals(WaypointCodec.V10_WIRE_VERSION, d.version(),
                 "encoder must stamp the current wire version");
         assertEquals(0, d.headerByte() & 0b1100_0000,
@@ -59,8 +58,6 @@ class WaypointCodecDebugTest {
         String encoded = encodeGeneral(sampleGroup(), WaypointCodec.Options.NO_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // Group metadata remains requested, so the lossless V10 general body is
-        // the only body equivalent to this projection.
         assertEquals(WaypointCodec.V10_WIRE_VERSION, d.version());
         assertEquals(V10GeneralRouteCodec.CONTENT_KIND,
                 WaypointCodec.v9ContentKind(d.headerByte()));
@@ -96,10 +93,10 @@ class WaypointCodecDebugTest {
     void group_flags_byte_decodes_into_labeled_fields() {
         WaypointGroup g = WaypointGroup.create("custom", "zone");
         g.add(Waypoint.at(10, 70, 20));
-        g.setDefaultRadius(5.5);                                 // customRadius
-        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);          // loadSequence
-        g.setGradientMode(WaypointGroup.GradientMode.AUTO);      // gradientAuto
-        g.setEnabled(true);                                      // enabled
+        g.setDefaultRadius(5.5);
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        g.setEnabled(true);
 
         WaypointCodec.Options opts = WaypointCodec.Options.builder()
                 .includeColors(true)
@@ -120,9 +117,9 @@ class WaypointCodecDebugTest {
 
     @Test
     void coord_mode_debug_round_trips_in_bounds_yoyo_routes() {
-        // Repetitive coordinates compress similarly in several modes; any valid, lossless choice is acceptable.
+
         WaypointGroup g = WaypointGroup.create("yoyo", "zone");
-        g.setGradientMode(WaypointGroup.GradientMode.MANUAL); // keep colors clean for flag tests elsewhere
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         for (int i = 0; i < 20; i++) {
             int sign = (i % 2 == 0) ? 1 : -1;
             g.add(new Waypoint(sign * 1500, 70, sign * 1800, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
@@ -166,7 +163,7 @@ class WaypointCodecDebugTest {
 
         assertTrue(gd.coordBlockBytes() > 0, "coord block must be non-empty");
         assertTrue(gd.bodyBlockBytes()  > 0, "body block must be non-empty");
-        // Sum can't exceed the whole raw body.
+
         DecodeDebug full = WaypointCodec.debugDecode(
                 encodeGeneral(g, WaypointCodec.Options.FULL_FIDELITY));
         assertTrue(gd.coordBlockBytes() + gd.bodyBlockBytes() < full.rawBodyBytes());
@@ -175,15 +172,14 @@ class WaypointCodecDebugTest {
     @Test
     void waypoint_flag_byte_reflects_per_point_fields() {
         WaypointGroup g = WaypointGroup.create("flags", "zone");
-        // MANUAL gradient keeps the DEFAULT_COLOR we pass in; the default AUTO mode
-        // would recolor every waypoint on add, flipping the HAS_COLOR bit on.
+
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        g.add(Waypoint.at(0, 70, 0)); // bare
-        g.add(new Waypoint(10, 70, 10, "named", Waypoint.DEFAULT_COLOR, 0, 0.0)); // name only
-        g.add(new Waypoint(20, 70, 20, "",      0xFF5577, 0, 0.0));               // color only
-        g.add(new Waypoint(30, 70, 30, "",      Waypoint.DEFAULT_COLOR, 0, 7.5)); // radius only
+        g.add(Waypoint.at(0, 70, 0));
+        g.add(new Waypoint(10, 70, 10, "named", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        g.add(new Waypoint(20, 70, 20, "",      0xFF5577, 0, 0.0));
+        g.add(new Waypoint(30, 70, 30, "",      Waypoint.DEFAULT_COLOR, 0, 7.5));
         g.add(new Waypoint(40, 70, 40, "",      Waypoint.DEFAULT_COLOR,
-                Waypoint.FLAG_HIDE_BEACON, 0.0));                                 // extended flags only
+                Waypoint.FLAG_HIDE_BEACON, 0.0));
 
         WaypointCodec.Options full = WaypointCodec.Options.builder()
                 .includeNames(true)
@@ -250,7 +246,7 @@ class WaypointCodecDebugTest {
     @Test
     void rejects_truncated_payload() {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()));
-        // Lop off half the body; the trimmed string is still magic-prefixed but cannot inflate.
+
         String truncated = encoded.substring(0, WaypointCodec.MAGIC.length()
                 + (encoded.length() - WaypointCodec.MAGIC.length()) / 2);
         assertThrows(IllegalArgumentException.class, () -> WaypointCodec.debugDecode(truncated));
@@ -271,7 +267,7 @@ class WaypointCodecDebugTest {
         try {
             return WaypointCodec.MAGIC
                     + V10GeneralRouteCodec.encodeCandidate(List.of(group), options).transport();
-        } catch (java.io.IOException failure) {
+        } catch (IOException failure) {
             throw new AssertionError(failure);
         }
     }

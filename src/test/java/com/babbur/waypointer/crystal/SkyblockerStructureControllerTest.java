@@ -2,12 +2,19 @@ package com.babbur.waypointer.crystal;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.http.WebSocket;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.client.Minecraft;
@@ -22,7 +29,7 @@ class SkyblockerStructureControllerTest {
         controller.recordHandshakeFailure(2L, new SkyblockerAuthentication.Rejected(403));
         var rejection = controller.diagnostics(0);
         assertEquals(403, rejection.lastFailureStatus());
-        controller.recordHandshakeFailure(1L, new java.util.concurrent.CancellationException());
+        controller.recordHandshakeFailure(1L, new CancellationException());
         assertEquals(rejection, controller.diagnostics(0));
     }
 
@@ -141,8 +148,8 @@ class SkyblockerStructureControllerTest {
     @Test void emptyProfileKeysProduceASpecificSafeCauseWithoutAnExchange() throws Exception {
         var attempt = new SkyblockerStructureController.AuthAttempt(ProfileKeyPairManager.EMPTY_KEY_MANAGER,
                 UUID.randomUUID(), "test", "test", "Waypointer/test");
-        var failure = assertThrows(java.util.concurrent.ExecutionException.class,
-                () -> attempt.result.get(5, java.util.concurrent.TimeUnit.SECONDS));
+        var failure = assertThrows(ExecutionException.class,
+                () -> attempt.result.get(5, TimeUnit.SECONDS));
         var cause = SkyblockerAuthentication.failureCause(failure);
         assertEquals(SkyblockerAuthentication.FailureCause.PROFILE_KEYS_UNAVAILABLE, cause);
         var exchange = attempt.getClass().getDeclaredField("exchange");
@@ -159,7 +166,7 @@ class SkyblockerStructureControllerTest {
         set(controller, "nextAttempt", 5000L);
         set(controller, "generation", 12L);
         set(controller, "failures", 2);
-        set(controller, "published", java.util.EnumSet.of(CrystalHollowsStructure.MINES_OF_DIVAN));
+        set(controller, "published", EnumSet.of(CrystalHollowsStructure.MINES_OF_DIVAN));
         set(controller, "lastFailureCause", SkyblockerAuthentication.FailureCause.TIMEOUT);
         set(controller, "lastFailureStage", "authentication");
         var first = controller.diagnostics(3000);
@@ -233,7 +240,7 @@ class SkyblockerStructureControllerTest {
 
     @Test void remoteRevocationCancelsAuthAndClearsOnlySkyblockerSightings() throws Exception {
         var config = new WaypointerConfig();
-        var tracker = new CrystalHollowsTracker(new com.babbur.waypointer.core.ActiveGroupManager(), config, null);
+        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), config, null);
         var lobby = new CrystalHollowsLobbyState("test", 0, 0);
         var local = new StructureSighting(CrystalHollowsStructure.ODAWA, 300, 100, 300,
                 SightingConfidence.ENTITY, "local", 1);
@@ -258,7 +265,7 @@ class SkyblockerStructureControllerTest {
         assertFalse(controller.allowRemoteSharing());
         assertTrue(attempt.result.isCancelled());
         assertEquals("none", controller.diagnostics(0).authentication());
-        assertEquals(java.util.List.of(local, relay), lobby.sightings());
+        assertEquals(List.of(local, relay), lobby.sightings());
         assertTrue(config.crystalHollowsSkyblockerSharing());
     }
 
@@ -279,7 +286,7 @@ class SkyblockerStructureControllerTest {
     }
 
     @Test void rejectedStatusSurvivesFutureWrappingWithoutLoggingBodies() {
-        assertEquals(403, SkyblockerStructureController.status(new java.util.concurrent.CompletionException(
+        assertEquals(403, SkyblockerStructureController.status(new CompletionException(
                 new SkyblockerAuthentication.Rejected(403))));
         assertEquals(0, SkyblockerStructureController.status(new IllegalStateException("unavailable")));
     }

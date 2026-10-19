@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
 import org.junit.jupiter.api.Test;
 
@@ -175,7 +176,7 @@ class GroupEditScreenTest {
     @Test
     void summarySeparatorIsAMiddleDotAndMarksAWaypointWithItsOwnLook() {
         Waypoint styled = Waypoint.at(0, 70, 0).withFlags(Waypoint.FLAG_DEPTH_CHECKED)
-                .withStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY.with("labelScale", 2.0));
+                .withStyleOverride(WaypointStyle.EMPTY.with("labelScale", 2.0));
         String summary = GroupEditPolicy.waypointControlSummary(styled, false, false);
         assertEquals("LOS \u00b7 \u25c6 Own look", summary);
         assertFalse(summary.contains("\u00c2"), "the separator must not be double-encoded (#153)");
@@ -289,11 +290,11 @@ class GroupEditScreenTest {
     void dungeonRouteInfoExplainsTriggerAndRadiusSkipBehaviors() {
         assertEquals(11, GroupEditPolicy.routeInfoLabels(false).size());
         assertTrue(GroupEditPolicy.routeInfoLabels(false).containsAll(
-                java.util.List.of("{distance}", "{index}", "{total}", "{route}")));
+                List.of("{distance}", "{index}", "{total}", "{route}")));
         assertEquals(17, GroupEditPolicy.routeInfoLabels(true).size());
         assertTrue(GroupEditPolicy.routeInfoLabels(true).containsAll(
-                java.util.List.of("Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
-        assertEquals(java.util.List.of(
+                List.of("Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
+        assertEquals(List.of(
                 "Select a waypoint row",
                 "Rename that waypoint",
                 "Open the waypoint menu",
@@ -306,7 +307,7 @@ class GroupEditScreenTest {
                 "Name: total main waypoints",
                 "Name: route name"
         ), GroupEditPolicy.routeInfoDescriptions(false));
-        assertTrue(GroupEditPolicy.routeInfoDescriptions(true).containsAll(java.util.List.of(
+        assertTrue(GroupEditPolicy.routeInfoDescriptions(true).containsAll(List.of(
                 "Skip when near",
                 "Skip when standing for 0.5 seconds",
                 "Right-click to skip",

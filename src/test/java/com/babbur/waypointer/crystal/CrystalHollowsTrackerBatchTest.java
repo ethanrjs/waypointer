@@ -8,7 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Zone;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -77,9 +80,9 @@ class CrystalHollowsTrackerBatchTest {
         for (int i = 0; i < 29; i++) {
             assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true).isEmpty());
         }
-        assertEquals(java.util.List.of(remote.structure()),
+        assertEquals(List.of(remote.structure()),
                 tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true));
-        assertEquals(java.util.List.of(local), lobby.sightings());
+        assertEquals(List.of(local), lobby.sightings());
         assertNull(tracker.compassTargetSighting());
         var repeated = new StructureSighting(remote.structure(), 600, 100, 600,
                 SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 100);
@@ -101,7 +104,7 @@ class CrystalHollowsTrackerBatchTest {
         for (int i = 0; i < 29; i++) {
             assertTrue(tracker.checkIncorrectStructures("Mithril Deposits", 731.3, 97, 421.3, true).isEmpty());
         }
-        assertEquals(java.util.List.of(CrystalHollowsStructure.FAIRY_GROTTO),
+        assertEquals(List.of(CrystalHollowsStructure.FAIRY_GROTTO),
                 tracker.checkIncorrectStructures("Mithril Deposits", 731.3, 97, 421.3, true));
         assertTrue(lobby.sightings().isEmpty());
         assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(remote));
@@ -127,7 +130,7 @@ class CrystalHollowsTrackerBatchTest {
             if (confidence == SightingConfidence.ENTITY || confidence == SightingConfidence.COMPASS
                     || confidence == SightingConfidence.NPC_CHAT) {
                 var remote = new StructureSighting(CrystalHollowsStructure.ODAWA, 301, 100, 301,
-                        SightingConfidence.SHARED_REMOTE, "relay", 2, java.util.List.of(), "", confidence);
+                        SightingConfidence.SHARED_REMOTE, "relay", 2, List.of(), "", confidence);
                 assertFalse(tracker.detectionEnabled(remote), "Remote evidence must not bypass preference: " + confidence);
             }
         }
@@ -149,7 +152,7 @@ class CrystalHollowsTrackerBatchTest {
         assertNotNull(manager.get(generatedId));
         set(tracker, "lastRoughPosition", new CrystalHollowsPosition(300, 100, 300));
         @SuppressWarnings("unchecked")
-        var processed = (java.util.Set<Integer>) get(tracker, "processedEntityIds");
+        var processed = (Set<Integer>) get(tracker, "processedEntityIds");
         processed.add(42);
         config.setCrystalHollowsDetectionEnabled("odawa", false);
         refresh.invoke(tracker);
@@ -201,7 +204,7 @@ class CrystalHollowsTrackerBatchTest {
                 SightingConfidence.COMPASS, "compass", now);
         var relay = new StructureSighting(local.structure(), 610, 100, 300,
                 SightingConfidence.SHARED_REMOTE, "relay:45fdbbc1-e3dd-4a82-a898-1d43b48ebf07",
-                now - 6 * 60 * 60_000L, java.util.List.of(), "", SightingConfidence.ENTITY);
+                now - 6 * 60 * 60_000L, List.of(), "", SightingConfidence.ENTITY);
         var otherProvider = new StructureSighting(CrystalHollowsStructure.ODAWA, 400, 100, 300,
                 SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, now);
         var removed = new StructureSighting(CrystalHollowsStructure.KING_YOLKAR, 400, 100, 400,
@@ -216,13 +219,13 @@ class CrystalHollowsTrackerBatchTest {
             assertTrue(lobby.sightings().contains(relay));
             tracker.applyRelayUpdate(null);
             assertTrue(lobby.sightings().contains(removed));
-            tracker.applyRelayUpdate(new StructureRelayProtocol.Update(true, java.util.List.of(relay)));
+            tracker.applyRelayUpdate(new StructureRelayProtocol.Update(true, List.of(relay)));
             assertEquals(2, lobby.sightings().size());
             assertTrue(lobby.sightings().contains(relay));
             assertTrue(lobby.sightings().contains(otherProvider));
             assertNull(tracker.compassTargetSighting());
-            tracker.applyRelayUpdate(new StructureRelayProtocol.Update(true, java.util.List.of()));
-            assertEquals(java.util.Set.of(local, otherProvider), java.util.Set.copyOf(lobby.sightings()));
+            tracker.applyRelayUpdate(new StructureRelayProtocol.Update(true, List.of()));
+            assertEquals(Set.of(local, otherProvider), Set.copyOf(lobby.sightings()));
         } finally {
             store.discardPendingSave();
         }
@@ -231,7 +234,7 @@ class CrystalHollowsTrackerBatchTest {
     @Test
     void removedCompassWaypointStopsMinimapNavigationEvenWhenTheGroupRemains() {
         ActiveGroupManager manager = new ActiveGroupManager();
-        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
         CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
         StructureSighting target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                 606, 88, 265, SightingConfidence.COMPASS, "compass", 1L);
@@ -251,7 +254,7 @@ class CrystalHollowsTrackerBatchTest {
     @Test
     void compassAutoFocusCanBeDisabledWithoutArrivalOrStealingManualFocus() {
         ActiveGroupManager manager = new ActiveGroupManager();
-        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
         WaypointerConfig config = new WaypointerConfig();
         CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, config, null);
         StructureSighting target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
@@ -285,14 +288,14 @@ class CrystalHollowsTrackerBatchTest {
     @Test
     void expiredRemoteNavigationWithoutLocalEvidenceIsRemoved() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
-        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
         CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
         CrystalHollowsLobbyState lobby = new CrystalHollowsLobbyState("test", 0, 0);
         set(tracker, "active", true);
         set(tracker, "lobby", lobby);
         StructureSighting remote = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                 606, 88, 265, SightingConfidence.SHARED_REMOTE, "relay", 1L,
-                java.util.List.of(), "", SightingConfidence.ENTITY);
+                List.of(), "", SightingConfidence.ENTITY);
         lobby.merge(remote);
         tracker.focusCompassTarget(remote);
         lobby.clearRemoteSightings();
@@ -306,7 +309,7 @@ class CrystalHollowsTrackerBatchTest {
     void sharedEntityRefinesCompassInEitherArrivalOrderWithoutEndingNavigation() throws Exception {
         for (boolean sharedFirst : new boolean[] {true, false}) {
             ActiveGroupManager manager = new ActiveGroupManager();
-            manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+            manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
             CrystalHollowsStore store = new CrystalHollowsStore(directory.resolve("shared-" + sharedFirst + ".json"));
             CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), store);
             set(tracker, "active", true);
@@ -314,7 +317,7 @@ class CrystalHollowsTrackerBatchTest {
             StructureSighting compass = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                     606, 100, 265, SightingConfidence.COMPASS, "compass", 1L);
             StructureSighting shared = new StructureSighting(compass.structure(), 610, 88, 269,
-                    SightingConfidence.SHARED_REMOTE, "relay", 2L, java.util.List.of(), "",
+                    SightingConfidence.SHARED_REMOTE, "relay", 2L, List.of(), "",
                     SightingConfidence.ENTITY);
             try {
                 if (sharedFirst) tracker.merge(shared, false);

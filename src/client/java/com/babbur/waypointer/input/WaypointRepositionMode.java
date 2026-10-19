@@ -3,7 +3,6 @@ package com.babbur.waypointer.input;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -12,7 +11,6 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.render.RenderHelpers;
 import com.babbur.waypointer.render.RenderSubmission;
@@ -20,6 +18,7 @@ import com.babbur.waypointer.render.WaypointerRenderPipelines;
 import com.babbur.waypointer.screen.AddNamedWaypointScreen;
 import com.babbur.waypointer.screen.GroupEditScreen;
 import com.babbur.waypointer.screen.WaypointerScreen;
+import java.util.Locale;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPreAttackCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
@@ -46,8 +45,6 @@ import net.minecraft.world.level.block.EnderChestBlock;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.List;
-
 public final class WaypointRepositionMode {
 
     private static final int OUTLINE_COLOR = 0x4FB3C4;
@@ -55,9 +52,6 @@ public final class WaypointRepositionMode {
     private static final float OUTLINE_WIDTH = 4.0f;
     private static final double OUTLINE_EXPAND = 0.002;
     private static final double PRECISE_SMALL_SIZE = 1.0 / 16.0;
-    private static final Component HELP_ADD_WHERE_LOOKING = Component.translatable(
-            "waypointer.input.reposition.add_named")
-            .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_EDIT_ON = Component.translatable(
             "waypointer.input.edit_mode.enabled")
             .withStyle(ChatFormatting.AQUA);
@@ -217,14 +211,9 @@ public final class WaypointRepositionMode {
         boolean preciseSmallPlacement = waypoint.isSubwaypoint()
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
         active = new Session(manager, config, group, waypointIndex,
-                Mode.MOVE_EXISTING, preciseSmallPlacement, reopenEditorAfterCommit);
+                preciseSmallPlacement, reopenEditorAfterCommit);
         resetPlacementOffset();
         MinecraftCompat.setScreen(mc, null);
-        showHelp(mc);
-    }
-
-    public static void startAddWhereLooking(ActiveGroupManager manager, WaypointerConfig config) {
-        startAddSession(manager, config, Mode.ADD_WHERE_LOOKING, false);
     }
 
     public static void openAddWhereLooking(ActiveGroupManager manager, WaypointerConfig config) {
@@ -232,7 +221,6 @@ public final class WaypointRepositionMode {
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
-        if (addBlockedByInstalledSecrets(mc, manager)) return;
 
         BlockPos pos = targetedBlock(mc);
         PreciseTarget precise = targetedPrecise(mc);
@@ -246,22 +234,6 @@ public final class WaypointRepositionMode {
         AddNamedWaypointScreen.openWhereLooking(null, manager, config, group,
                 pos.getX(), pos.getY(), pos.getZ(),
                 precise.preciseX(), precise.preciseY(), precise.preciseZ(), flags);
-    }
-
-    private static void startAddSession(ActiveGroupManager manager, WaypointerConfig config,
-                                        Mode mode, boolean preciseSmallPlacement) {
-        if (manager == null || config == null) return;
-        if (mode == null) return;
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null) return;
-        if (addBlockedByInstalledSecrets(mc, manager)) return;
-
-        WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        active = new Session(manager, config, group, -1, mode, preciseSmallPlacement, true);
-        resetPlacementOffset();
-        MinecraftCompat.setScreen(mc, null);
-        showHelp(mc);
     }
 
     private static void onTick(Minecraft mc) {
@@ -364,7 +336,6 @@ public final class WaypointRepositionMode {
         }
 
         if (isDuplicateEditModeAction(mc.level)) return InteractionResult.FAIL;
-        if (addBlockedByInstalledSecrets(mc, editManager)) return InteractionResult.FAIL;
         rememberEditModeAction(mc.level);
 
         WaypointGroup group = editModeAddTarget(editManager);
@@ -466,26 +437,13 @@ public final class WaypointRepositionMode {
         Session session = active;
         if (session == null) return;
 
-        if (session.mode == Mode.MOVE_EXISTING && session.preciseSmallPlacement) {
+        if (session.preciseSmallPlacement) {
             PreciseTarget target = targetedPrecise(mc);
-            if (target == null) {
-                showHelp(mc);
-                return;
-            }
-            moveExistingPrecise(mc, session, target);
+            if (target != null) moveExistingPrecise(mc, session, target);
             return;
         }
         BlockPos pos = targetedBlock(mc);
-        if (pos == null) {
-            showHelp(mc);
-            return;
-        }
-
-        switch (session.mode) {
-            case MOVE_EXISTING -> moveExisting(mc, session, pos);
-            case ADD_WHERE_LOOKING -> openWhereLookingPrompt(mc, session, pos,
-                    targetedPrecise(mc));
-        }
+        if (pos != null) moveExisting(mc, session, pos);
     }
 
     private static void moveExisting(Minecraft mc, Session session, BlockPos pos) {
@@ -550,23 +508,6 @@ public final class WaypointRepositionMode {
         }
     }
 
-    private static boolean addBlockedByInstalledSecrets(Minecraft mc, ActiveGroupManager manager) {
-        return false;
-    }
-
-    private static void openWhereLookingPrompt(Minecraft mc, Session session, BlockPos pos,
-                                               PreciseTarget preciseTarget) {
-        ClientLevel level = mc == null ? null : mc.level;
-        int flags = defaultDungeonEditFlags(session.group, level, pos);
-        active = null;
-        if (mc == null || preciseTarget == null) return;
-        mc.execute(
-                () -> AddNamedWaypointScreen.openWhereLooking(null, session.manager, session.config,
-                session.group, pos.getX(), pos.getY(), pos.getZ(),
-                preciseTarget.preciseX(), preciseTarget.preciseY(), preciseTarget.preciseZ(),
-                flags));
-    }
-
     private static void cancel(Minecraft mc) {
         WaypointerConfig soundConfig = active == null ? editConfig : active.config();
         active = null;
@@ -584,11 +525,6 @@ public final class WaypointRepositionMode {
             GroupEditScreen.openFocused(parent, session.manager, session.config,
                     editTarget, session.waypointIndex);
         });
-    }
-
-    private static void showHelp(Minecraft mc) {
-        if (mc == null || active == null || active.mode() == Mode.MOVE_EXISTING) return;
-        showStatus(mc, active.help());
     }
 
     private static void showStatus(Minecraft mc, Component message) {
@@ -707,7 +643,7 @@ public final class WaypointRepositionMode {
                 WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH);
         if (mc.gui != null) {
             MinecraftCompat.setOverlayMessage(mc, Component.translatable(
-                    "waypointer.input.edit_mode.distance", String.format(java.util.Locale.ROOT, "%.1f", distance))
+                    "waypointer.input.edit_mode.distance", String.format(Locale.ROOT, "%.1f", distance))
                     .withStyle(ChatFormatting.AQUA), false);
         }
         return true;
@@ -773,11 +709,6 @@ public final class WaypointRepositionMode {
                 ClipContext.Block.OUTLINE, ClipContext.Fluid.ANY, context));
     }
 
-    private enum Mode {
-        MOVE_EXISTING,
-        ADD_WHERE_LOOKING
-    }
-
     record PreciseTarget(int preciseX, int preciseY, int preciseZ) {
         double x() {
             return preciseX / (double) Waypoint.PRECISE_SCALE;
@@ -793,13 +724,7 @@ public final class WaypointRepositionMode {
     }
 
     private record Session(ActiveGroupManager manager, WaypointerConfig config,
-                           WaypointGroup group, int waypointIndex, Mode mode,
+                           WaypointGroup group, int waypointIndex,
                            boolean preciseSmallPlacement, boolean reopenEditorAfterCommit) {
-        Component help() {
-            return switch (mode) {
-                case ADD_WHERE_LOOKING -> HELP_ADD_WHERE_LOOKING;
-                case MOVE_EXISTING -> null;
-            };
-        }
     }
 }

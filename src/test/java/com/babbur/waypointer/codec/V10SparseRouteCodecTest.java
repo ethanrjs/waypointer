@@ -219,18 +219,16 @@ class V10SparseRouteCodecTest {
         assertCommittedKind5Failure(reserved.toByteArray(), "reserved");
 
         ByteArrayOutputStream paddedPresence = splitPrefix(coordinateBody, 0x01);
-        paddedPresence.write(0x82); // point 1 plus a non-zero bit outside count=2
+        paddedPresence.write(0x82);
         assertCommittedKind5Failure(
                 paddedPresence.toByteArray(), "non-zero subwaypoint presence padding");
 
         ByteArrayOutputStream firstSubwaypoint = splitPrefix(coordinateBody, 0x02);
-        firstSubwaypoint.write(1); // one ordinal
-        firstSubwaypoint.write(0); // gap 0 selects waypoint 0
+        firstSubwaypoint.write(1);
+        firstSubwaypoint.write(0);
         assertCommittedKind5Failure(
                 firstSubwaypoint.toByteArray(), "first waypoint cannot be a subwaypoint");
 
-        // Unified selector 0; one exception at index 0 whose entire metadata
-        // bit record is zero is an alternate spelling of no exception.
         assertCommittedKind5Failure(
                 new byte[]{0x5A, 0, 1, 0, 0, 1, 0, 0, 0},
                 "no-op unified exception is non-canonical");
@@ -264,7 +262,7 @@ class V10SparseRouteCodecTest {
                 if (V10BareRouteCodec.decodeCoordinateBody(body, V10Transport.MODE_DIRECT).length
                         == pointCount) return body;
             } catch (IOException | IllegalArgumentException ignored) {
-                // Unified metadata occupies the prefix; try the next boundary.
+
             }
         }
         throw new IOException("sparse coordinate body was not found");

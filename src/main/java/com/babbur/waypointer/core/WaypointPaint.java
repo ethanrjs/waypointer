@@ -104,11 +104,6 @@ public final class WaypointPaint {
         return palette[paletteIndex(face, x, y)];
     }
 
-    public int paletteColor(int slot) {
-        checkPaletteSlot(slot);
-        return palette[slot];
-    }
-
     public int paletteIndex(Face face, int x, int y) {
         return Byte.toUnsignedInt(pixels[pixelOffset(face, x, y)]);
     }
@@ -157,12 +152,6 @@ public final class WaypointPaint {
             throw new IndexOutOfBoundsException("waypoint paint pixel outside 16x16 face");
         }
         return face.ordinal() * FACE_PIXELS + y * SIZE + x;
-    }
-
-    private static void checkPaletteSlot(int slot) {
-        if (slot < 0 || slot >= PALETTE_SIZE) {
-            throw new IndexOutOfBoundsException("waypoint paint palette slot outside 0..15");
-        }
     }
 
     @Override

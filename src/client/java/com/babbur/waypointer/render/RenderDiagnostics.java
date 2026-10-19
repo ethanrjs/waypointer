@@ -3,7 +3,6 @@ package com.babbur.waypointer.render;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.minecraft.core.BlockPos;
 
 import java.util.ArrayList;

@@ -5,10 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CompassMarkerState;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
+import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.crystal.MetalDetectorController;
 import com.babbur.waypointer.progression.ProximityTracker;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 class TracerRendererTest {
@@ -43,7 +50,7 @@ class TracerRendererTest {
         var config = new WaypointerConfig();
         config.setShowTracer(true);
         var generated = new WaypointGroup(
-                com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.GROUP_PREFIX + "mines_of_divan",
+                CrystalHollowsStructureFolder.GROUP_PREFIX + "mines_of_divan",
                 "Mines of Divan", "crystal_hollows");
         generated.setRuntimeOnly(true);
         generated.add(Waypoint.at(606, 88, 265));
@@ -53,7 +60,7 @@ class TracerRendererTest {
         generated.setRuntimeOnly(false);
         assertTrue(TracerRenderer.tracersEnabled(generated, config, null));
         var marker = Waypoint.at(100, 80, 100);
-        var markTarget = com.babbur.waypointer.crystal.CompassMarkerState.class
+        var markTarget = CompassMarkerState.class
                 .getDeclaredMethod("markTarget", Waypoint.class);
         markTarget.setAccessible(true);
         markTarget.invoke(null, marker);
@@ -73,22 +80,22 @@ class TracerRendererTest {
     void defocusedCoordinateHidesTracerUntilExplicitlyFocusedAgain() throws Exception {
         var config = new WaypointerConfig();
         config.setShowTracer(true);
-        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
-        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        var manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
         var group = manager.addTempWaypoint(300, 100, 300, "Coordinate");
         manager.focusTempWaypoint(group, 0);
-        var tracker = new com.babbur.waypointer.crystal.CrystalHollowsTracker(manager, config, null);
+        var tracker = new CrystalHollowsTracker(manager, config, null);
         tracker.defocus();
         var renderer = new TracerRenderer(manager, config);
         var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
-                WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
-                net.minecraft.world.phys.Vec3.class, boolean.class, boolean.class);
+                WaypointGroup.class, boolean.class, LocalPlayer.class,
+                Vec3.class, boolean.class, boolean.class);
         select.setAccessible(true);
         org.junit.jupiter.api.Assertions.assertNull(select.invoke(renderer, group, false, null,
-                net.minecraft.world.phys.Vec3.ZERO, false, false));
+                Vec3.ZERO, false, false));
         manager.focusTempWaypoint(group, 0);
         org.junit.jupiter.api.Assertions.assertSame(group.get(0), select.invoke(renderer, group, true, null,
-                net.minecraft.world.phys.Vec3.ZERO, false, false));
+                Vec3.ZERO, false, false));
     }
 
     @Test
@@ -98,17 +105,17 @@ class TracerRendererTest {
         var group = new WaypointGroup("temp", "Temporary", "crystal_hollows");
         group.add(Waypoint.at(300, 100, 300));
         var marker = group.get(0);
-        var markExited = com.babbur.waypointer.crystal.CompassMarkerState.class
+        var markExited = CompassMarkerState.class
                 .getDeclaredMethod("markRegionExited", Waypoint.class);
         markExited.setAccessible(true);
         markExited.invoke(null, marker);
-        var renderer = new TracerRenderer(new com.babbur.waypointer.core.ActiveGroupManager(), config);
+        var renderer = new TracerRenderer(new ActiveGroupManager(), config);
         var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
-                WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
-                net.minecraft.world.phys.Vec3.class, boolean.class, boolean.class);
+                WaypointGroup.class, boolean.class, LocalPlayer.class,
+                Vec3.class, boolean.class, boolean.class);
         select.setAccessible(true);
         org.junit.jupiter.api.Assertions.assertNull(select.invoke(renderer, group, true, null,
-                net.minecraft.world.phys.Vec3.ZERO, false, false));
+                Vec3.ZERO, false, false));
     }
 
     @Test
@@ -119,14 +126,14 @@ class TracerRendererTest {
         config.setRouteMaxRenderDistance(10);
         var group = new WaypointGroup("route", "Route", "crystal_hollows");
         group.add(Waypoint.at(0, 0, 0));
-        var renderer = new TracerRenderer(new com.babbur.waypointer.core.ActiveGroupManager(), config);
+        var renderer = new TracerRenderer(new ActiveGroupManager(), config);
         var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
-                WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
-                net.minecraft.world.phys.Vec3.class, boolean.class, boolean.class);
+                WaypointGroup.class, boolean.class, LocalPlayer.class,
+                Vec3.class, boolean.class, boolean.class);
         select.setAccessible(true);
         var target = group.current();
         for (double distance : new double[]{4, 5, 10, 11}) {
-            var camera = new net.minecraft.world.phys.Vec3(
+            var camera = new Vec3(
                     target.centerX() + distance, target.centerY(), target.centerZ());
             assertEquals(distance >= 5 && distance <= 10 ? target : null,
                     select.invoke(renderer, group, true, null, camera, false, false));

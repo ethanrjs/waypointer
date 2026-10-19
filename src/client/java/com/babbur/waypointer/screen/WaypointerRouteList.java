@@ -1,7 +1,7 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.core.RouteIcon;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
-import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
@@ -19,7 +19,9 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
@@ -559,7 +561,7 @@ final class WaypointerRouteList {
             if (candidate.routeKind() != target.routeKind()
                     || !candidate.zoneId().equals(target.zoneId())) continue;
             if (candidate.routeKind() == WaypointGroup.RouteKind.REGULAR
-                    && !java.util.Objects.equals(
+                    && !Objects.equals(
                     folderId, screen.manager.folderIdForGroup(candidate.id()))) continue;
             return candidate.id();
         }
@@ -598,7 +600,7 @@ final class WaypointerRouteList {
             } else if (row.group != null && !row.group.temp() && !row.group.runtimeOnly()
                     && row.group.routeKind() == source.routeKind()
                     && row.group.zoneId().equals(source.zoneId())
-                    && java.util.Objects.equals(dropTarget.folderId,
+                    && Objects.equals(dropTarget.folderId,
                     manager.folderIdForGroup(row.group.id()))) {
                 insertion = i + 1;
             }
@@ -851,11 +853,11 @@ final class WaypointerRouteList {
 
     private String normalizedSearchQuery() {
         return screen.searchQuery == null
-                ? "" : screen.searchQuery.trim().toLowerCase(java.util.Locale.ROOT);
+                ? "" : screen.searchQuery.trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean containsSearch(String text, String query) {
-        return text != null && text.toLowerCase(java.util.Locale.ROOT).contains(query);
+        return text != null && text.toLowerCase(Locale.ROOT).contains(query);
     }
 
     private int installedSecretCountForRoom(String roomZoneId) {
@@ -965,7 +967,7 @@ final class WaypointerRouteList {
         int chipX = RouteListPresentation.routeToggleChipX(x2);
         int textX = RouteListPresentation.routeRowTextX(x1, indented, folderChild);
         if (!group.temp()) {
-            RouteIcons.draw(graphics, com.babbur.waypointer.core.RouteIcon.display(group.icon(), group.zoneId()),
+            RouteIcons.draw(graphics, RouteIcon.display(group.icon(), group.zoneId()),
                     textX, y1 + 4, 16);
             textX += 16 + GAP_TIGHT + 2;
         }

@@ -6,6 +6,7 @@ import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogPublishLifecycle;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.CatalogPublishResult;
+import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
@@ -15,7 +16,9 @@ import java.nio.file.Files;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.function.Consumer;
@@ -216,7 +219,7 @@ final class CatalogPublishSession {
                 failure = publishFailure;
             } else {
                 CatalogPublishLifecycle.Completion completion = published.completion();
-                var sources = com.babbur.waypointer.catalog.PublishedSources.active();
+                var sources = PublishedSources.active();
                 if (sources != null && completion.result() != null && completion.result().route() != null) {
                     sources.remember(completion.result().route().id(),
                             form.groups().stream().map(WaypointGroup::id).toList());
@@ -234,8 +237,8 @@ final class CatalogPublishSession {
 
     static boolean publisherNameNeedsEntry(Throwable failure) {
         Throwable cause = failure;
-        while ((cause instanceof java.util.concurrent.CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
+        while ((cause instanceof CompletionException
+                || cause instanceof ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }

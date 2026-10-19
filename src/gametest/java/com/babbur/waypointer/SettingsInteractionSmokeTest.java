@@ -8,13 +8,16 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import net.minecraft.client.gui.components.EditBox;
+import com.babbur.waypointer.screen.WaypointPainterScreen;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
+import java.util.Arrays;
 import java.util.List;
 
 @SuppressWarnings("UnstableApiUsage")
@@ -42,7 +45,7 @@ final class SettingsInteractionSmokeTest {
                 context.runOnClient(client -> {
                     if (config.crystalHollowsEnabled() != enabled) throw new AssertionError("Settings checkbox did not toggle");
                     int[] next = positions((SettingsScreen) MinecraftCompat.screen(client));
-                    if (!java.util.Arrays.equals(original, next))
+                    if (!Arrays.equals(original, next))
                         throw new AssertionError("Crystal Hollows caption or master checkbox moved on toggle");
                 });
                 context.takeScreenshot("settings-crystal-hollows-" + (enabled ? "enabled" : "disabled"));
@@ -78,7 +81,7 @@ final class SettingsInteractionSmokeTest {
                 AbstractWidget painter = control(screen, SettingsCatalog.ACTION_WAYPOINT_PAINT);
                 screen.mouseClicked(new MouseButtonEvent(painter.getX() + painter.getWidth() / 2.0,
                         painter.getY() + painter.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
-                if (!(MinecraftCompat.screen(client) instanceof com.babbur.waypointer.screen.WaypointPainterScreen))
+                if (!(MinecraftCompat.screen(client) instanceof WaypointPainterScreen))
                     throw new AssertionError("Painter must open without enabling Extras");
             });
             context.runOnClient(client -> MinecraftCompat.setScreen(client,
@@ -145,14 +148,14 @@ final class SettingsInteractionSmokeTest {
         }
     }
 
-    private static void press(net.minecraft.client.gui.screens.Screen screen, String label) {
+    private static void press(Screen screen, String label) {
         AbstractWidget button = screen.children().stream()
                 .filter(child -> child instanceof AbstractWidget widget && widget.getMessage().getString().equals(label))
                 .map(child -> (AbstractWidget) child).findFirst().orElseThrow();
         click(screen, button);
     }
 
-    private static void click(net.minecraft.client.gui.screens.Screen screen, AbstractWidget widget) {
+    private static void click(Screen screen, AbstractWidget widget) {
         screen.mouseClicked(new MouseButtonEvent(widget.getX() + widget.getWidth() / 2.0,
                 widget.getY() + widget.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
     }

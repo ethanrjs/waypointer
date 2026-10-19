@@ -13,6 +13,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class RoutePreviewWidget extends AbstractWidget {
 
@@ -55,10 +56,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
     private int fitHeight = -1;
     private int lastMouseX;
     private int lastMouseY;
-    private boolean hoverPickingEnabled = true;
     private boolean headerDetailVisible = true;
-    private boolean selfOcclusion = true;
-    private double preferredPixelsPerBlock = Double.NaN;
 
     public RoutePreviewWidget(int x, int y, int width, int height,
                               RoutePreviewScene scene, String routeCounter,
@@ -101,28 +99,12 @@ public final class RoutePreviewWidget extends AbstractWidget {
         this.navigationVisible = shown;
     }
 
-    public void setHoverPickingEnabled(boolean enabled) {
-        this.hoverPickingEnabled = enabled;
-        if (!enabled) hoveredIndex = -1;
-    }
-
     public void setHeaderDetailVisible(boolean visible) {
         headerDetailVisible = visible;
     }
 
-    public void setSelfOcclusion(boolean enabled) {
-        selfOcclusion = enabled;
-    }
-
     int headerHeight() {
         return headerDetailVisible ? HEADER_HEIGHT : SINGLE_LINE_HEADER_HEIGHT;
-    }
-
-    public void setPreferredPixelsPerBlock(double pixels) {
-        preferredPixelsPerBlock = Double.isFinite(pixels) && pixels > 0.0
-                ? pixels : Double.NaN;
-        fitWidth = -1;
-        fitHeight = -1;
     }
 
     public void setPreviewVisible(boolean shown) {
@@ -232,11 +214,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
         int renderH = Math.max(1, getHeight() - headerHeight - 2);
         g.fill(renderX, renderY, renderX + renderW, renderY + renderH, VIEWPORT);
         if (fitWidth != renderW || fitHeight != renderH) {
-            double safeScale = RoutePreviewProjection.viewportSafeScale(
-                    scene, renderW, renderH);
-            fitScale = Double.isFinite(preferredPixelsPerBlock)
-                    ? Math.min(preferredPixelsPerBlock, safeScale)
-                    : RoutePreviewProjection.rotationSafeScale(scene, renderW, renderH);
+            fitScale = RoutePreviewProjection.rotationSafeScale(scene, renderW, renderH);
             fitWidth = renderW;
             fitHeight = renderH;
         }
@@ -244,8 +222,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
         double scale = Math.min(
                 fitScale * zoom.factor(),
                 RoutePreviewProjection.depthSafeScale(depthEnvelope, guiScale));
-        boolean pointerInside = hoverPickingEnabled
-                && contains(mouseX, mouseY, renderX, renderY, renderW, renderH);
+        boolean pointerInside = contains(mouseX, mouseY, renderX, renderY, renderW, renderH);
         boolean paused = shouldPauseOrbit(pointerInside, hoveredIndex, visible,
                 Minecraft.getInstance().isWindowActive());
         currentYaw = orbit.update(System.nanoTime(), !paused);
@@ -272,7 +249,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
             RoutePreviewGuiBridge.submit(g, RoutePreviewRenderState.create(
                     scene, (float) currentYaw, hoveredWaypointIndex(),
                     renderX, renderY, renderX + renderW, renderY + renderH,
-                    (float) scale, guiScale, selfOcclusion, availability, scissor));
+                    (float) scale, guiScale, true, availability, scissor));
         }
 
         g.nextStratum();
@@ -365,7 +342,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
     }
 
     public static String zoomFactorText(double factor) {
-        return String.format(java.util.Locale.ROOT, "%.1f", factor);
+        return String.format(Locale.ROOT, "%.1f", factor);
     }
 
     static boolean shouldPauseOrbit(boolean pointerInside, int previousHoveredIndex,
@@ -374,8 +351,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
     }
 
     private boolean showsScrollHint() {
-        return hoverPickingEnabled
-                && !scene.markers().isEmpty()
+        return !scene.markers().isEmpty()
                 && hoveredIndex < 0
                 && !availability.unavailable()
                 && zoom.factor() == RoutePreviewZoom.DEFAULT_FACTOR

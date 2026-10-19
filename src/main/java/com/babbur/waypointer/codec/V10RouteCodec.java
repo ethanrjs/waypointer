@@ -5,7 +5,6 @@ import com.babbur.waypointer.core.WaypointGroup;
 import java.io.IOException;
 import java.util.List;
 
-/** Typed V10 route selector/dispatcher for route content kinds. */
 final class V10RouteCodec {
 
     private V10RouteCodec() {}
@@ -26,8 +25,7 @@ final class V10RouteCodec {
 
     static String encode(List<WaypointGroup> groups, WaypointCodec.Options options)
             throws IOException {
-        // All-off options prefer coordinate-only kinds. Only implicit requests may
-        // fall back to kind 0; explicit BARE_COORDINATES must fail if ineligible.
+
         boolean exactAllOff = options.hasAllExportFieldsOff();
         if (canEncodeBareSelection(groups, options)) {
             if (groups.size() == 1
@@ -77,8 +75,7 @@ final class V10RouteCodec {
     private static WaypointCodec.Decoded decodeKind6(V10Transport.CheckedFrame frame)
             throws IOException {
         if (V10CatalogReferenceCodec.isReferenceSemantic(frame.semantic())) {
-            // Valid share, but it points at the catalog rather than carrying a
-            // route. Only the universal importer can resolve it.
+
             String routeId = V10CatalogReferenceCodec.decode(frame);
             throw new IOException("catalog reference to route " + routeId
                     + "; install it through the route catalog");
@@ -87,7 +84,7 @@ final class V10RouteCodec {
             return new WaypointCodec.Decoded(V10BareRoutePackCodec.decode(frame), "");
         }
         RouteLibraryCodec.Decoded library = V10RouteLibraryCodec.decode(frame);
-        // Apply colors and paint here; leave folder metadata for the route manager.
+
         try {
             library.metadata().applyTo(library.groups());
         } catch (IllegalArgumentException failure) {

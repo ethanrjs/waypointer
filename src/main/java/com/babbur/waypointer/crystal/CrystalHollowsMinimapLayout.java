@@ -1,5 +1,7 @@
 package com.babbur.waypointer.crystal;
 
+import java.util.List;
+
 public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean navigation) {
     public static final int PADDING = 6;
     public static final int HEADER = 20;
@@ -91,11 +93,11 @@ public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean naviga
         return (float) Math.clamp(0.5 + fraction * (size - 1) / 2.0, 5.5, size - 5.5);
     }
 
-    public Rect label(int markerX, int markerY, int width, java.util.List<Rect> occupied) {
+    public Rect label(int markerX, int markerY, int width, List<Rect> occupied) {
         return label(markerX, markerY, width, occupied, 8);
     }
 
-    public Rect label(int markerX, int markerY, int width, java.util.List<Rect> occupied, int clearance) {
+    public Rect label(int markerX, int markerY, int width, List<Rect> occupied, int clearance) {
         for (Rect candidate : new Rect[]{
                 new Rect(markerX + clearance, markerY - 4, width, 9),
                 new Rect(markerX - clearance + 1 - width, markerY - 4, width, 9),

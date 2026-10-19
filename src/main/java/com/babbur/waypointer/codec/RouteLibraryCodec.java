@@ -15,6 +15,7 @@ import com.google.gson.stream.JsonToken;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -33,7 +34,6 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
-/** Versioned wrapper for native routes plus local route-library metadata. */
 public final class RouteLibraryCodec {
     public static final String MAGIC = "WPL:1:";
 
@@ -64,15 +64,13 @@ public final class RouteLibraryCodec {
             WaypointImporter.enforceTextPayloadLimit(library);
             return library;
         } catch (V10ProfileLimitException profileLimit) {
-            // The only outbound WPL escape: the library exceeds the bounded V10
-            // frame profile, mirroring the route writer's V9 fallback.
+
         } catch (IOException failure) {
             throw new IllegalStateException("route library export failed", failure);
         }
         return encodeLegacyWrapper(groups, options, safeMetadata);
     }
 
-    /** Legacy {@code WPL:1:} wrapper for libraries exceeding V10 limits and compatibility tests. */
     static String encodeLegacyWrapper(
             List<WaypointGroup> groups,
             WaypointCodec.Options options,
@@ -87,8 +85,7 @@ public final class RouteLibraryCodec {
         root.addProperty("payload", payload);
         root.add("manualColors", encodeManualColors(safeMetadata.manualColors()));
         root.add("folders", encodeFolders(safeMetadata.folders()));
-        // Written only when present so unpainted codes keep the pre-paint shape
-        // and older clients (which ignore unknown keys) stay compatible.
+
         if (!safeMetadata.paints().isEmpty()) {
             root.add("paints", encodePaints(safeMetadata.paints()));
         }
@@ -132,7 +129,7 @@ public final class RouteLibraryCodec {
                 requireArray(root, "manualColors"));
         List<RouteLibraryMetadata.FolderDefinition> folders = decodeFolders(
                 requireArray(root, "folders"));
-        // Optional: codes written before waypoint paints existed omit the key.
+
         List<RouteLibraryMetadata.PaintEntry> paints = root.has("paints")
                 ? decodePaints(requireArray(root, "paints"))
                 : List.of();
@@ -150,7 +147,6 @@ public final class RouteLibraryCodec {
         return new Decoded(groups, nativePayload.label(), metadata);
     }
 
-    /** Decode a V10 route-library share. */
     private static Decoded decodeUniversal(String payload) {
         WaypointImporter.enforceTextPayloadLimit(payload);
         String transport = payload.substring(WaypointCodec.MAGIC.length());
@@ -256,7 +252,7 @@ public final class RouteLibraryCodec {
         }
     }
 
-    private static byte[] readLimited(java.io.InputStream input) throws IOException {
+    private static byte[] readLimited(InputStream input) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int total = 0;

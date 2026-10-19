@@ -1,6 +1,10 @@
 package com.babbur.waypointer.location;
 
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ScoreboardZoneResolverTest {
     @Test
     void missingAreaLineDoesNotHideALateMineshaftCode() {
-        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        var manager = new ActiveGroupManager();
         var source = new ScoreboardZoneResolver(manager::onZoneChanged);
         source.updateWorld(new Object());
         source.acceptSidebar("\uE067 Glacite Mineshafts\n09/12/26 m96M UMBE_1");
@@ -31,23 +35,23 @@ class ScoreboardZoneResolverTest {
 
     @Test
     void missingUpdatesKeepRoutesOnlyWithinTheSameWorld() {
-        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
-        var route = new com.babbur.waypointer.core.WaypointGroup("mining", "Mining", "crystal_hollows");
-        route.add(com.babbur.waypointer.core.Waypoint.at(400, 100, 400));
+        var manager = new ActiveGroupManager();
+        var route = new WaypointGroup("mining", "Mining", "crystal_hollows");
+        route.add(Waypoint.at(400, 100, 400));
         manager.add(route);
         var source = new ScoreboardZoneResolver(manager::onZoneChanged);
         source.updateWorld(new Object());
         source.acceptSidebar("⏣ Jungle");
-        assertEquals(java.util.List.of(route), manager.activeGroups());
+        assertEquals(List.of(route), manager.activeGroups());
         for (int i = 0; i < 1_000; i++) source.acceptSidebar(i % 2 == 0 ? "" : "Purse: 10");
-        assertEquals(java.util.List.of(route), manager.activeGroups());
+        assertEquals(List.of(route), manager.activeGroups());
         source.acceptSidebar("⏣ Hub");
         assertEquals(Zone.fromId("hub"), manager.currentZone());
         source.acceptSidebar("⏣ Jungle");
         source.updateWorld(new Object());
         source.acceptSidebar("");
         assertNull(manager.currentZone());
-        assertEquals(java.util.List.of(), manager.activeGroups());
+        assertEquals(List.of(), manager.activeGroups());
         source.acceptSidebar("⏣ Jungle");
         source.updateWorld(null);
         assertNull(manager.currentZone());
@@ -56,7 +60,7 @@ class ScoreboardZoneResolverTest {
 
     @Test
     void playerListAreaStandsInOnlyWhileNothingElseIsKnown() {
-        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        var manager = new ActiveGroupManager();
         var source = new ScoreboardZoneResolver(manager::onZoneChanged);
         source.updateWorld(new Object());
         for (int poll = 1; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
@@ -84,7 +88,7 @@ class ScoreboardZoneResolverTest {
 
     @Test
     void confirmedLayoutsSurviveDroppedCodeLinesUntilRealEvidenceReplacesThem() {
-        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        var manager = new ActiveGroupManager();
         var source = new ScoreboardZoneResolver(manager::onZoneChanged);
         source.updateWorld(new Object());
         source.acceptSidebar("\u23e3 Glacite Mineshafts\nUMBE_1");

@@ -2,13 +2,16 @@ package com.babbur.waypointer.commands;
 
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.RouteIcon;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.screen.GroupEditScreen;
 import com.babbur.waypointer.screen.RoutePublishScreen;
 import com.babbur.waypointer.screen.SettingsScreen;
@@ -17,17 +20,25 @@ import com.babbur.waypointer.screen.WaypointerZoneCatalog;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 import static com.babbur.waypointer.commands.CommandHelpers.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
@@ -203,9 +214,9 @@ final class WaypointerRouteCommands {
                 }));
     }
 
-    private java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestAppearanceZones(
-            com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> ctx,
-            com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    private CompletableFuture<Suggestions> suggestAppearanceZones(
+            CommandContext<FabricClientCommandSource> ctx,
+            SuggestionsBuilder builder) {
         String typed = builder.getRemaining().toLowerCase(Locale.ROOT);
         for (String key : SettingsScreen.appearanceZoneKeys(manager, config)) {
             if (key.startsWith(typed)) {
@@ -246,7 +257,7 @@ final class WaypointerRouteCommands {
                         ? "waypointer.command.list.target_hover"
                         : "waypointer.command.list.pick_hover")));
         row.append(Component.literal(route.name()).withStyle(nameStyle));
-        row.append(Component.literal("  ").append(com.babbur.waypointer.i18n.Counts.of(
+        row.append(Component.literal("  ").append(Counts.of(
                 "waypoint", route.size())).withStyle(ChatFormatting.DARK_GRAY));
         if (!route.enabled()) {
             row.append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY))
@@ -340,7 +351,7 @@ final class WaypointerRouteCommands {
         if (route == null) return 0;
         if (!confirmed) {
             warn(src, Component.translatable("waypointer.command.route.delete_ask",
-                    routeName(route), com.babbur.waypointer.i18n.Counts.of("waypoint", route.size())));
+                    routeName(route), Counts.of("waypoint", route.size())));
             return 0;
         }
         manager.remove(route.id());
@@ -377,7 +388,7 @@ final class WaypointerRouteCommands {
         success(src, Component.translatable(shown
                         ? "waypointer.command.route.shown_all"
                         : "waypointer.command.route.hidden_all",
-                com.babbur.waypointer.i18n.Counts.of("route", count), targets.zoneName()));
+                Counts.of("route", count), targets.zoneName()));
         return count;
     }
 
@@ -416,11 +427,11 @@ final class WaypointerRouteCommands {
         return 1;
     }
 
-    private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestItems(
-            com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> ctx,
-            com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+    private static CompletableFuture<Suggestions> suggestItems(
+            CommandContext<FabricClientCommandSource> ctx,
+            SuggestionsBuilder builder) {
         String typed = builder.getRemaining().toLowerCase(Locale.ROOT);
-        for (net.minecraft.resources.Identifier id : net.minecraft.core.registries.BuiltInRegistries.ITEM.keySet()) {
+        for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
             String shown = id.getNamespace().equals("minecraft") ? id.getPath() : id.toString();
             if (!shown.equals("air") && (shown.startsWith(typed) || id.toString().startsWith(typed))) {
                 builder.suggest(shown);
@@ -433,23 +444,23 @@ final class WaypointerRouteCommands {
         WaypointGroup route = targetOrError(src);
         if (route == null) return 0;
         if (rawItem.isEmpty()) {
-            route.setIcon(com.babbur.waypointer.core.RouteIcon.NONE);
+            route.setIcon(RouteIcon.NONE);
             changed(route);
             routeSuccess(src, route, Component.translatable("waypointer.command.route.icon_none"));
             return 1;
         }
-        String spec = com.babbur.waypointer.core.RouteIcon.of(rawItem, glint);
-        var item = spec.isEmpty() ? null : net.minecraft.core.registries.BuiltInRegistries.ITEM
-                .getOptional(net.minecraft.resources.Identifier.tryParse(
-                        com.babbur.waypointer.core.RouteIcon.itemId(spec))).orElse(null);
-        if (item == null || item == net.minecraft.world.item.Items.AIR) {
+        String spec = RouteIcon.of(rawItem, glint);
+        var item = spec.isEmpty() ? null : BuiltInRegistries.ITEM
+                .getOptional(Identifier.tryParse(
+                        RouteIcon.itemId(spec))).orElse(null);
+        if (item == null || item == Items.AIR) {
             error(src, Component.translatable("waypointer.command.error.icon_value", rawItem));
             return 0;
         }
         route.setIcon(spec);
         changed(route);
         routeSuccess(src, route, Component.translatable("waypointer.command.route.icon",
-                new net.minecraft.world.item.ItemStack(item).getHoverName()));
+                new ItemStack(item).getHoverName()));
         return 1;
     }
 
@@ -616,12 +627,12 @@ final class WaypointerRouteCommands {
         }
         if (!confirmed) {
             warn(src, Component.translatable("waypointer.command.clear.ask",
-                    com.babbur.waypointer.i18n.Counts.of("route", here.size()), zone.displayName()));
+                    Counts.of("route", here.size()), zone.displayName()));
             return 0;
         }
         int cleared = clearCurrentZoneGroups(manager, true);
         success(src, Component.translatable("waypointer.command.clear.done",
-                com.babbur.waypointer.i18n.Counts.of("route", cleared), zone.displayName()));
+                Counts.of("route", cleared), zone.displayName()));
         return cleared;
     }
 
@@ -744,7 +755,7 @@ final class WaypointerRouteCommands {
         if (reference == null || reference.isBlank()) {
             Zone zone = manager.currentZone();
             List<String> own = zone == null ? List.of()
-                    : com.babbur.waypointer.config.WaypointStyles.zoneKeys(zone.id());
+                    : WaypointStyles.zoneKeys(zone.id());
             if (!own.isEmpty() && keys.contains(own.getLast())) key = own.getLast();
             else if (!own.isEmpty() && keys.contains(own.getFirst())) key = own.getFirst();
         } else {

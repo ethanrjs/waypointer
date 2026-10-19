@@ -36,3 +36,6 @@ replay_*.log
 # local / Gradle noise
 *.log
 *.log.gz
+
+outputs/
+artifacts/

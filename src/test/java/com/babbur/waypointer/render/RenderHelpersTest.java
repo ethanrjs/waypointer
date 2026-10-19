@@ -1,5 +1,6 @@
 package com.babbur.waypointer.render;
 
+import com.babbur.waypointer.core.WaypointPaint;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.junit.jupiter.api.Test;
@@ -68,9 +69,9 @@ class RenderHelpersTest {
 
     @Test
     void paintedBoxSelectsOnlyTheThreeCameraFacingPlanes() {
-        int expected = 1 << com.babbur.waypointer.core.WaypointPaint.Face.UP.ordinal()
-                | 1 << com.babbur.waypointer.core.WaypointPaint.Face.SOUTH.ordinal()
-                | 1 << com.babbur.waypointer.core.WaypointPaint.Face.EAST.ordinal();
+        int expected = 1 << WaypointPaint.Face.UP.ordinal()
+                | 1 << WaypointPaint.Face.SOUTH.ordinal()
+                | 1 << WaypointPaint.Face.EAST.ordinal();
 
         assertEquals(expected, RenderHelpers.visibleTexturedFaces(
                 0, 0, 0, 1, 1, 1, 2, 2, 2));
@@ -99,10 +100,10 @@ class RenderHelpersTest {
                 0.5, 0.5, 2.0);
 
         float halfTexel = 0.5f / WaypointPaintTextureCache.ATLAS_WIDTH;
-        float textureLeft = com.babbur.waypointer.core.WaypointPaint.Face.SOUTH.atlasX()
+        float textureLeft = WaypointPaint.Face.SOUTH.atlasX()
                 / (float) WaypointPaintTextureCache.ATLAS_WIDTH + halfTexel;
-        float textureRight = (com.babbur.waypointer.core.WaypointPaint.Face.SOUTH.atlasX()
-                + com.babbur.waypointer.core.WaypointPaint.SIZE)
+        float textureRight = (WaypointPaint.Face.SOUTH.atlasX()
+                + WaypointPaint.SIZE)
                 / (float) WaypointPaintTextureCache.ATLAS_WIDTH - halfTexel;
 
         assertEquals(List.of(textureRight, textureRight, textureLeft, textureLeft),
@@ -113,11 +114,11 @@ class RenderHelpersTest {
     void paddedPreviewFaceSamplesEveryPaintedColumnAtItsIntendedWidth() {
         RecordingConsumer consumer = new RecordingConsumer();
         int padding = 1;
-        int stride = com.babbur.waypointer.core.WaypointPaint.SIZE + padding * 2;
+        int stride = WaypointPaint.SIZE + padding * 2;
         int width = stride * 4;
         int height = stride * 3;
-        var face = com.babbur.waypointer.core.WaypointPaint.Face.SOUTH;
-        int faceX = face.atlasX() / com.babbur.waypointer.core.WaypointPaint.SIZE * stride + padding;
+        var face = WaypointPaint.Face.SOUTH;
+        int faceX = face.atlasX() / WaypointPaint.SIZE * stride + padding;
 
         RenderHelpers.emitTexturedBox(consumer, new PoseStack(),
                 0, 0, 0, 1, 1, 1, 1,

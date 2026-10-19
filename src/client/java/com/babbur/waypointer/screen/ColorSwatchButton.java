@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import java.util.Locale;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
@@ -83,7 +84,7 @@ public final class ColorSwatchButton extends AbstractButton {
     }
 
     static String hex(int rgb) {
-        return String.format(java.util.Locale.ROOT, "#%06X", rgb & 0xFFFFFF);
+        return String.format(Locale.ROOT, "#%06X", rgb & 0xFFFFFF);
     }
 
 

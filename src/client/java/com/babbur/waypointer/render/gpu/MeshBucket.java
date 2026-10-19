@@ -64,4 +64,14 @@ public record MeshBucket(Kind kind, boolean depthTested, Identifier texture) {
     public int drawOrder() {
         return kind.ordinal() * 2 + (depthTested ? 1 : 0);
     }
+
+    int bandOrder() {
+        int rank = switch (kind) {
+            case BEAM -> 0;
+            case LINES -> 1;
+            case PAINTED -> 2;
+            case QUADS -> 3;
+        };
+        return rank * 2 + (depthTested ? 1 : 0);
+    }
 }

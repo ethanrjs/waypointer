@@ -6,11 +6,13 @@ import javax.imageio.stream.ImageInputStream;
 import java.awt.AlphaComposite;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.Locale;
 
 public final class FeedbackImage {
     private final byte[] bytes;
@@ -44,12 +46,12 @@ public final class FeedbackImage {
             byte[] source = stream.readNBytes(FeedbackSubmission.MAX_IMAGE_BYTES + 1);
             if (source.length > FeedbackSubmission.MAX_IMAGE_BYTES)
                 throw new IOException("The image is larger than 5 MiB.");
-            try (ImageInputStream input = ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(source))) {
+            try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(source))) {
                 Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
                 if (!readers.hasNext()) throw new IOException("Choose a PNG or JPEG image.");
                 ImageReader reader = readers.next();
                 try {
-                    String format = reader.getFormatName().toLowerCase(java.util.Locale.ROOT);
+                    String format = reader.getFormatName().toLowerCase(Locale.ROOT);
                     if (!format.equals("png") && !format.equals("jpeg"))
                         throw new IOException("Only PNG and JPEG images are supported.");
                     reader.setInput(input, true, true);

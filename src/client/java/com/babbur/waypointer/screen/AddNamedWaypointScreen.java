@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -23,6 +22,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
@@ -305,7 +305,7 @@ public final class AddNamedWaypointScreen extends Screen {
                 ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
                 : targetGroup;
         if (useFixedPosition && target.routeKind() == WaypointGroup.RouteKind.DUNGEON
-                && !java.util.Objects.equals(fixedDungeonRoomIdentity, currentDungeonRoomIdentity())) {
+                && !Objects.equals(fixedDungeonRoomIdentity, currentDungeonRoomIdentity())) {
             placementError = DungeonRoomWaypointPlacement.unavailableMessage();
             return;
         }
@@ -409,7 +409,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     static synchronized DungeonWaypointType selectionForRoom(
             String roomKey, DungeonWaypointType suggestedType) {
-        if (!java.util.Objects.equals(rememberedDungeonRoomKey, roomKey)) {
+        if (!Objects.equals(rememberedDungeonRoomKey, roomKey)) {
             rememberedDungeonRoomKey = roomKey;
             rememberedDungeonType = suggestedType;
         }

@@ -4,6 +4,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
+import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.data.V10DungeonBodyCodec;
 import org.junit.jupiter.api.Test;
 
@@ -113,7 +114,7 @@ class V10DungeonCodecTest {
                 UniversalShareCodec.decode("```text\n" + universal + "\n```"));
         assertEquals(source.stream().mapToInt(WaypointGroup::size).sum(),
                 result.result().waypointCount());
-        assertEquals(com.babbur.waypointer.dungeon.data.DungeonRouteImporter.Format.WAYPOINTER,
+        assertEquals(DungeonRouteImporter.Format.WAYPOINTER,
                 result.result().format());
         assertGroupsEqual(DungeonRoomShareCodec.decode(legacy).routes(), result.result().groups());
         assertThrows(IllegalArgumentException.class, () -> DungeonRoomShareCodec.decode(universal));
@@ -170,8 +171,6 @@ class V10DungeonCodecTest {
                 () -> V10DungeonCodec.decode(badDeflateCrcCode))
                 .getMessage().contains("CRC-16"));
 
-        // payload = header, compressed bytes, checksum; the last compressed byte
-        // therefore sits at index compressedLength.
         int compressedLength = compressed.length - 1 - V10Transport.CHECKSUM_BYTES;
         byte[] badCompressedTail = compressed.clone();
         badCompressedTail[compressedLength] ^= 1;
@@ -241,8 +240,6 @@ class V10DungeonCodecTest {
         assertTrue(varintFailure.getMessage().contains("committed v10 kind 4"));
         assertTrue(varintFailure.getMessage().contains("non-canonical"));
 
-        // Every kind value is assigned; the reserved space lives in kind-4 and
-        // kind-6 subtypes. A reserved kind-6 subtype must fail as a V10 error.
         String reservedSubtype = codeForSemantic(new byte[] {(byte) 0x6A, 0x04});
         IllegalArgumentException kindFailure = assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(reservedSubtype));

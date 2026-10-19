@@ -17,7 +17,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Optional semantic V10 round-trip check against an external route corpus. */
 class V10ExternalCorpusRoundTripTest {
 
     @Test

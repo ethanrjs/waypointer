@@ -1,6 +1,9 @@
 package com.babbur.waypointer.crystal;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class StructureRelayProtocolTest {
@@ -25,7 +28,7 @@ class StructureRelayProtocolTest {
         assertEquals("&protocol=2", StructureRelayProtocol.connectionTiming(-1, -1, -1));
         assertEquals("&protocol=2", StructureRelayProtocol.connectionTiming(Integer.MAX_VALUE,
                 StructureRelayProtocol.MAX_AGE + 1, 3600));
-        var sync = com.google.gson.JsonParser.parseString(StructureRelayProtocol.sync(
+        var sync = JsonParser.parseString(StructureRelayProtocol.sync(
                 60_000_000, 17, 410_000, 0)).getAsJsonObject();
         assertEquals(60_000_000, sync.get("age").getAsLong());
         assertEquals(17, sync.get("day").getAsInt());
@@ -36,7 +39,7 @@ class StructureRelayProtocolTest {
 
     @Test
     void retainedObservationsUseFreshDeliveryContextAndPreserveObservationTime() {
-        var json = com.google.gson.JsonParser.parseString(message("\"x\":600,\"y\":100,\"z\":300", 10_000))
+        var json = JsonParser.parseString(message("\"x\":600,\"y\":100,\"z\":300", 10_000))
                 .getAsJsonObject();
         long old = NOW - 6 * 60 * 60_000L;
         json.addProperty("observedAt", old);
@@ -90,7 +93,7 @@ class StructureRelayProtocolTest {
     private static StructureSighting remote(SightingConfidence evidence, int x, long at) {
         return new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                 x, 100, 300, SightingConfidence.SHARED_REMOTE, "relay", at,
-                java.util.List.of(), "", evidence);
+                List.of(), "", evidence);
     }
 
     @Test
@@ -100,7 +103,7 @@ class StructureRelayProtocolTest {
                 SightingConfidence.NPC_CHAT, SightingConfidence.COMPASS, SightingConfidence.ENTITY}) {
             var local = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                     600, 100, 300, evidence, "local", NOW);
-            var json = com.google.gson.JsonParser.parseString(StructureRelayProtocol.encode(local, 1)).getAsJsonObject();
+            var json = JsonParser.parseString(StructureRelayProtocol.encode(local, 1)).getAsJsonObject();
             json.addProperty("at", NOW);
             json.addProperty("reporter", reporter);
             var decoded = StructureRelayProtocol.decode(json.toString(), 1, NOW).getFirst();
@@ -130,10 +133,10 @@ class StructureRelayProtocolTest {
             lobby.merge(remoteFirst ? confirmed : compass);
             lobby.merge(remoteFirst ? compass : confirmed);
             assertEquals(confirmed, lobby.sightings().getFirst());
-            assertEquals(java.util.List.of(compass), lobby.localSightings());
+            assertEquals(List.of(compass), lobby.localSightings());
             var encode = CrystalHollowsStore.class.getDeclaredMethod("encodeLobby", CrystalHollowsLobbyState.class);
             encode.setAccessible(true);
-            var saved = (com.google.gson.JsonObject) encode.invoke(null, lobby);
+            var saved = (JsonObject) encode.invoke(null, lobby);
             var savedSighting = saved.getAsJsonArray("sightings").get(0).getAsJsonObject();
             assertEquals("COMPASS", savedSighting.get("confidence").getAsString());
             assertEquals(compass.x(), savedSighting.get("x").getAsInt());
@@ -214,21 +217,21 @@ class StructureRelayProtocolTest {
                 lobby.merge(remoteFirst ? remote : local);
                 lobby.merge(remoteFirst ? local : remote);
                 assertEquals(remote, lobby.sightings().getFirst());
-                assertEquals(java.util.List.of(local), lobby.localSightings());
+                assertEquals(List.of(local), lobby.localSightings());
                 assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(local));
                 var encode = CrystalHollowsStore.class.getDeclaredMethod("encodeLobby", CrystalHollowsLobbyState.class);
                 encode.setAccessible(true);
-                var json = (com.google.gson.JsonObject) encode.invoke(null, lobby);
+                var json = (JsonObject) encode.invoke(null, lobby);
                 assertEquals(confidence.name(), json.getAsJsonArray("sightings").get(0)
                         .getAsJsonObject().get("confidence").getAsString());
                 for (boolean restored : new boolean[] {false, true}) {
                     var identified = CrystalHollowsLobbyState.identify("m123a", 1, NOW,
                             restored ? lobby : null, restored ? null : lobby);
                     assertTrue(identified.expireRemoteSightings(NOW + 1));
-                    assertEquals(java.util.List.of(local), identified.sightings());
+                    assertEquals(List.of(local), identified.sightings());
                 }
                 assertTrue(lobby.clearRemoteSightings());
-                assertEquals(java.util.List.of(local), lobby.sightings());
+                assertEquals(List.of(local), lobby.sightings());
             }
         }
     }
@@ -245,13 +248,13 @@ class StructureRelayProtocolTest {
         lobby.merge(rough);
         lobby.merge(remote);
         lobby.merge(refreshed);
-        assertEquals(java.util.List.of(rough), lobby.localSightings());
+        assertEquals(List.of(rough), lobby.localSightings());
         var local = new StructureSighting(rough.structure(), 521, 100, 300,
                 SightingConfidence.ENTITY, "entity", NOW + 2);
         lobby.merge(local);
         assertFalse(lobby.clearRemoteSightings());
-        assertEquals(java.util.List.of(local), lobby.sightings());
-        assertEquals(java.util.List.of(local), lobby.localSightings());
+        assertEquals(List.of(local), lobby.sightings());
+        assertEquals(List.of(local), lobby.localSightings());
     }
 
     @Test
@@ -267,7 +270,7 @@ class StructureRelayProtocolTest {
         lobby.merge(refined);
         assertEquals(1, lobby.sightings().size());
         assertTrue(lobby.clearRemoteSightings());
-        assertEquals(java.util.List.of(refined), lobby.sightings());
+        assertEquals(List.of(refined), lobby.sightings());
     }
 
     @Test
@@ -293,7 +296,7 @@ class StructureRelayProtocolTest {
         lobby.merge(StructureRelayProtocol.decode(message("\"x\":600,\"y\":100,\"z\":300", 1), 1, NOW).getFirst());
         var encode = CrystalHollowsStore.class.getDeclaredMethod("encodeLobby", CrystalHollowsLobbyState.class);
         encode.setAccessible(true);
-        var json = (com.google.gson.JsonObject) encode.invoke(null, lobby);
+        var json = (JsonObject) encode.invoke(null, lobby);
         assertTrue(json.getAsJsonArray("sightings").isEmpty());
     }
 }

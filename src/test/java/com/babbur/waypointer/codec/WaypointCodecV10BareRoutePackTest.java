@@ -48,8 +48,7 @@ class WaypointCodecV10BareRoutePackTest {
 
         assertEquals(V10BareRoutePackCodec.SEMANTIC_HEADER, frame.header());
         assertEquals(V10BareRoutePackCodec.CONTENT_KIND, frame.contentKind());
-        // header, subtype, route-count, child-length, then the headerless kind-2
-        // body begins directly with this route's point count (3), not 0x2A.
+
         assertEquals(3, frame.semantic()[4] & 0xFF);
         assertEquals(10, debug.version());
         assertEquals(3, debug.groups().size());
@@ -183,10 +182,10 @@ class WaypointCodecV10BareRoutePackTest {
     @Test
     void committed_kind6_rejects_noncanonical_truncated_and_malformed_children_terminally()
             throws Exception {
-        // Subtype 1 is the route library; a bare subtype byte is a truncated library.
+
         assertTerminalFailure(new byte[] {0x6A, 0x01},
                 "truncated v10 route library");
-        // Subtype 2 is the catalog reference; a bare subtype byte is a truncated one.
+
         assertTerminalFailure(new byte[] {0x6A, 0x02},
                 "truncated v10 catalog reference");
         assertTerminalFailure(new byte[] {0x6A, 0x03},

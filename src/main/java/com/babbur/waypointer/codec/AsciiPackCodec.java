@@ -1,14 +1,9 @@
 package com.babbur.waypointer.codec;
 
-/**
- * Packs four bytes into five printable base-85 characters. The alphabet is
- * Z85 with {@code .} replaced by {@code ;} so route codes do not look like
- * URLs to Hypixel's chat filter. A final character stores the number of padded
- * bytes, so inputs of any length round-trip exactly.
- */
+import java.util.Arrays;
+
 public final class AsciiPackCodec {
 
-    /** Z85 alphabet with {@code ";"} replacing {@code "."} at digit 62. */
     private static final char[] ALPHABET = {
             '0','1','2','3','4','5','6','7','8','9',
             'a','b','c','d','e','f','g','h','i','j',
@@ -25,7 +20,7 @@ public final class AsciiPackCodec {
     private static final int[] DECODE_TABLE = new int[128];
 
     static {
-        java.util.Arrays.fill(DECODE_TABLE, -1);
+        Arrays.fill(DECODE_TABLE, -1);
         for (int i = 0; i < ALPHABET.length; i++) {
             DECODE_TABLE[ALPHABET[i]] = i;
         }
@@ -58,7 +53,7 @@ public final class AsciiPackCodec {
     public static String encode(byte[] input) {
         if (input == null) throw new IllegalArgumentException("null input");
         if (input.length == 0) {
-            // Every payload has a trailer, including an empty payload.
+
             return String.valueOf(ALPHABET[0]);
         }
 
@@ -125,7 +120,7 @@ public final class AsciiPackCodec {
                 }
                 v = v * BASE + digit;
             }
-            // Five base-85 digits can exceed 32 bits, so reject overflow.
+
             if (v > 0xFFFFFFFFL) {
                 throw new IllegalArgumentException(
                         "group " + g + " overflows 32 bits (v=" + v + ")");

@@ -1,7 +1,9 @@
 package com.babbur.waypointer.input;
 
+import com.babbur.waypointer.config.WaypointerConfig;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Blocks;
@@ -46,7 +48,7 @@ class WaypointPlacementRayTest {
 
     @Test
     void configuredReachExtendsMidAirPlacementButNeverShortensVanillaReach() {
-        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        var config = new WaypointerConfig();
         assertEquals(5.0, WaypointRepositionMode.placementReach(config, 4.5));
         assertEquals(5.0, WaypointRepositionMode.placementReach(null, 4.5));
         assertEquals(6.0, WaypointRepositionMode.placementReach(config, 6.0));
@@ -65,7 +67,7 @@ class WaypointPlacementRayTest {
         Vec3 eye = new Vec3(0.5, 80.0, 0.5);
         Vec3 direction = new Vec3(0, 0, 1);
         BlockHitResult block = new BlockHitResult(new Vec3(0.5, 80.0, 5.0),
-                net.minecraft.core.Direction.NORTH, new BlockPos(0, 80, 5), false);
+                Direction.NORTH, new BlockPos(0, 80, 5), false);
         assertEquals(block, WaypointRepositionMode.applyPlacementOffset(block, eye, direction, 0, 64.0));
         BlockHitResult closer = WaypointRepositionMode.applyPlacementOffset(block, eye, direction, 1, 64.0);
         assertEquals(HitResult.Type.MISS, closer.getType());
@@ -83,7 +85,7 @@ class WaypointPlacementRayTest {
         assertEquals(1, WaypointRepositionMode.nextPlacementOffset(2, 1, true, 4.5, 64.0));
 
         BlockHitResult air = BlockHitResult.miss(new Vec3(0.5, 80.0, 5.5),
-                net.minecraft.core.Direction.UP, new BlockPos(0, 80, 5));
+                Direction.UP, new BlockPos(0, 80, 5));
         int out = WaypointRepositionMode.nextPlacementOffset(0, 1, false, 5.0, 64.0);
         assertEquals(-1, out);
         assertEquals(new Vec3(0.5, 80.0, 6.5),

@@ -1,67 +1,59 @@
 package com.babbur.waypointer.render.gpu;
 
+import java.util.Arrays;
+
 final class QuadSorter {
 
     private QuadSorter() {}
 
-    static int batchEnd(double[] distances, int[] order, int start, int count, double nextDistance) {
-        if (nextDistance == Double.NEGATIVE_INFINITY) return count;
-        int end = start;
-        while (end < count && distances[order[end]] >= nextDistance) end++;
-        return end;
-    }
+    private static final int INSERTION_MOVES_PER_QUAD = 8;
 
-    static boolean sortBackToFront(float[] centers, int[] order, double[] distances,
-                                int[] scratch, int count, boolean reuseOrder,
-                                double cameraX, double cameraY, double cameraZ) {
+    static boolean sortBackToFront(float[] centers, int[] order, float[] distances,
+                                   long[] keys, int count, boolean reuseOrder,
+                                   double cameraX, double cameraY, double cameraZ) {
         for (int i = 0; i < count; i++) {
-            if (!reuseOrder) order[i] = i;
-            distances[i] = squaredDistance(centers, i * 3, cameraX, cameraY, cameraZ);
+            distances[i] = (float) squaredDistance(centers, i * 3, cameraX, cameraY, cameraZ);
         }
         if (reuseOrder) {
-            boolean ordered = true;
-            for (int i = 1; i < count; i++) {
-                if (compare(order[i - 1], order[i], distances) > 0) {
-                    ordered = false;
-                    break;
-                }
+            if (isOrdered(order, distances, count)) return false;
+            for (int i = 0; i < count; i++) keys[i] = sortKey(distances[order[i]], order[i]);
+            if (!insertionSort(keys, count, (long) count * INSERTION_MOVES_PER_QUAD)) {
+                Arrays.sort(keys, 0, count);
             }
-            if (ordered) return false;
+        } else {
+            for (int i = 0; i < count; i++) keys[i] = sortKey(distances[i], i);
+            Arrays.sort(keys, 0, count);
         }
-        if (count < 2) return true;
-
-        int[] source = order;
-        int[] target = scratch;
-        for (int width = 1; width < count; width = nextWidth(width, count)) {
-            for (int start = 0; start < count; start += width * 2) {
-                int middle = Math.min(start + width, count);
-                int end = Math.min(start + width * 2, count);
-                int left = start;
-                int right = middle;
-                for (int output = start; output < end; output++) {
-                    if (right >= end || left < middle
-                            && compare(source[left], source[right], distances) <= 0) {
-                        target[output] = source[left++];
-                    } else {
-                        target[output] = source[right++];
-                    }
-                }
-            }
-            int[] swap = source;
-            source = target;
-            target = swap;
-        }
-        if (source != order) System.arraycopy(source, 0, order, 0, count);
+        for (int i = 0; i < count; i++) order[i] = (int) keys[i];
         return true;
     }
 
-    private static int nextWidth(int width, int count) {
-        return width > count / 2 ? count : width * 2;
+    private static boolean insertionSort(long[] keys, int count, long budget) {
+        for (int i = 1; i < count; i++) {
+            long key = keys[i];
+            int j = i - 1;
+            while (j >= 0 && keys[j] > key) {
+                keys[j + 1] = keys[j];
+                j--;
+                budget--;
+            }
+            keys[j + 1] = key;
+            if (budget < 0) return false;
+        }
+        return true;
     }
 
-    private static int compare(int left, int right, double[] distances) {
-        int distanceOrder = Double.compare(distances[right], distances[left]);
-        return distanceOrder != 0 ? distanceOrder : Integer.compare(left, right);
+    private static long sortKey(float distance, int index) {
+        return ((long) ~Float.floatToRawIntBits(distance) << 32) | index;
+    }
+
+    private static boolean isOrdered(int[] order, float[] distances, int count) {
+        for (int i = 1; i < count; i++) {
+            if (sortKey(distances[order[i - 1]], order[i - 1]) > sortKey(distances[order[i]], order[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static double squaredDistance(float[] centers, int offset,

@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Wire-v10 kind 1: one compact route with either full or no-names semantics. */
 final class V10CompactRouteCodec {
 
     static final int CONTENT_KIND = 1;
@@ -50,7 +49,6 @@ final class V10CompactRouteCodec {
                 WaypointCodec.Options.FULL_FIDELITY);
     }
 
-    /** Apply export toggles before choosing the compact representation. */
     private static WaypointGroup projectFull(WaypointGroup group, WaypointCodec.Options options) {
         if (options.includeNames && options.includeColors && options.includeZone
                 && options.includeRadii && options.includeWaypointFlags && options.includeGroupMeta) {

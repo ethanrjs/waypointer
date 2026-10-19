@@ -1,5 +1,15 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.PublisherIdentityStore;
+import com.babbur.waypointer.crystal.SkyblockerAuthentication;
+import com.babbur.waypointer.crystal.SkyblockerStructureController;
+import com.babbur.waypointer.crystal.StructureRelayController;
+import com.babbur.waypointer.debug.ServerTickEstimator;
+import com.babbur.waypointer.debug.ServerTimingDiagnostics;
+import com.babbur.waypointer.i18n.RemoteLocales;
+import com.babbur.waypointer.input.WaypointRepositionMode;
+import com.babbur.waypointer.location.LocationTracker;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -21,7 +31,9 @@ import com.babbur.waypointer.debug.DebugSignals;
 import com.babbur.waypointer.debug.PerformanceStats;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.input.WaypointerKeybinds;
+import com.babbur.waypointer.render.RenderCost;
 import com.babbur.waypointer.render.RenderDiagnostics;
+import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.dungeon.DungeonCoreSignature;
@@ -37,7 +49,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.world.entity.player.Player;
 
+import java.lang.management.ManagementFactory;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -355,7 +370,7 @@ public final class DebugInspectScreen extends Screen {
 
     private void buildReportSummary() {
         addSection(rows, sections, "Troubleshooting Report", "schema 2");
-        rows.add(new Row.KV("Captured", java.time.Instant.now().toString()));
+        rows.add(new Row.KV("Captured", Instant.now().toString()));
         rows.add(new Row.KV("Report schema", "2"));
         rows.add(new Row.KV("Waypointer", loadedModVersion(Waypointer.MOD_ID)));
         rows.add(new Row.KV("Minecraft", loadedModVersion("minecraft")));
@@ -381,7 +396,7 @@ public final class DebugInspectScreen extends Screen {
                 : oneLine(cpuModel)));
         rows.add(new Row.KV("Logical CPUs", String.valueOf(runtime.availableProcessors())));
         try {
-            var operatingSystem = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            var operatingSystem = ManagementFactory.getOperatingSystemMXBean();
             if (operatingSystem instanceof com.sun.management.OperatingSystemMXBean extended) {
                 rows.add(new Row.KV("System memory", formatBytes(extended.getTotalMemorySize())));
             }
@@ -459,7 +474,7 @@ public final class DebugInspectScreen extends Screen {
                     player.getYRot(), player.getXRot())));
         }
         rows.add(new Row.KVDim("Hypixel Mod API", DebugSignals.hypixelApiLine()));
-        rows.add(new Row.KVDim("Location detection", com.babbur.waypointer.location.LocationTracker.debugLine()));
+        rows.add(new Row.KVDim("Location detection", LocationTracker.debugLine()));
     }
 
     private void buildCrystalHollowsDiagnosticsReport() {
@@ -500,7 +515,7 @@ public final class DebugInspectScreen extends Screen {
 
     private void buildStructureSharingDiagnosticsReport() {
         addSection(rows, sections, "Structure Sharing Diagnostics", null, DebugReportExport.Category.SERVER_CONTEXT);
-        var relay = com.babbur.waypointer.crystal.StructureRelayController.debugSnapshot();
+        var relay = StructureRelayController.debugSnapshot();
         rows.add(new Row.KVStatus("Waypointer relay", relay.status(), socketStatusColor(relay.status())));
         rows.add(new Row.KV("Relay availability", "installed=" + relay.installed() + ", enabled="
                 + relay.enabled() + ", lobby=" + relay.lobbyActive()));
@@ -512,7 +527,7 @@ public final class DebugInspectScreen extends Screen {
                 + relay.publicationWindowCount() + ", generation=" + relay.generation()));
         rows.add(new Row.KV("Relay inbound queue", queueCount(relay.inboundQueueCount())));
 
-        var skyblocker = com.babbur.waypointer.crystal.SkyblockerStructureController.debugSnapshot();
+        var skyblocker = SkyblockerStructureController.debugSnapshot();
         rows.add(new Row.KVStatus("Skyblocker", skyblocker.status(), socketStatusColor(skyblocker.status())));
         rows.add(new Row.KV("Skyblocker flags", "installed=" + skyblocker.installed() + ", enabled="
                 + skyblocker.enabled() + ", lobby=" + skyblocker.lobbyActive()));
@@ -526,7 +541,7 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Skyblocker queue", queueCount(skyblocker.inboundQueueCount())));
         rows.add(new Row.KVStatus("Skyblocker last failure", skyblocker.lastFailureCause()
                 + " / " + skyblocker.lastFailureStage() + " / status " + skyblocker.lastFailureStatus(),
-                skyblocker.lastFailureCause() == com.babbur.waypointer.crystal.SkyblockerAuthentication.FailureCause.NONE
+                skyblocker.lastFailureCause() == SkyblockerAuthentication.FailureCause.NONE
                         ? TEXT_DIM : ERROR_TONE));
     }
 
@@ -559,7 +574,7 @@ public final class DebugInspectScreen extends Screen {
         String catalogFailure = DebugSignals.catalogFailureLine();
         rows.add(new Row.KVStatus("Last catalog failure", catalogFailure,
                 catalogFailure.equals("None") ? SUCCESS_TONE : ERROR_TONE));
-        var diagnostics = com.babbur.waypointer.catalog.PublisherIdentityStore.defaultLocation().inspect();
+        var diagnostics = PublisherIdentityStore.defaultLocation().inspect();
         addPublisherIdentity("Active", diagnostics.profile());
         addPublisherIdentity("Shared", diagnostics.shared());
         String comparison = switch (diagnostics.comparison()) {
@@ -573,7 +588,7 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private void addPublisherIdentity(String label,
-            com.babbur.waypointer.catalog.PublisherIdentityStore.IdentityStatus identity) {
+            PublisherIdentityStore.IdentityStatus identity) {
         boolean valid = identity.publisherId() != null;
         rows.add(new Row.KVStatus(label + " signing key", valid ? "Valid" : identity.status(),
                 valid ? SUCCESS_TONE : identity.status().equals("unreadable or invalid") ? ERROR_TONE : WARN_TONE));
@@ -586,7 +601,7 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private void buildServerTimingReport() {
-        var timing = com.babbur.waypointer.debug.ServerTimingDiagnostics.estimator().snapshot(System.nanoTime());
+        var timing = ServerTimingDiagnostics.estimator().snapshot(System.nanoTime());
         addSection(rows, sections, "Server Timing", null, DebugReportExport.Category.SERVER_CONTEXT);
         rows.add(new Row.KVStatus("Quality", timing.quality(), timingQualityColor(timing.quality())));
         rows.add(new Row.KVDim("Measurement", "Server-clock estimate"));
@@ -609,7 +624,7 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Clock resets", timing.discontinuities() + " / " + timing.resetReason()));
     }
 
-    private void addTimingWindow(String label, com.babbur.waypointer.debug.ServerTickEstimator.Window window) {
+    private void addTimingWindow(String label, ServerTickEstimator.Window window) {
         rows.add(new Row.KV(label, timingNumber(window.observedTps(), " TPS") + " / "
                 + window.samples() + " samples / " + timingNumber(window.seconds(), " s")));
     }
@@ -632,7 +647,7 @@ public final class DebugInspectScreen extends Screen {
         addFileHealth("Main config", configDirectory.resolve("config.json"));
         addFileHealth("Dungeon config", configDirectory.resolve("dungeon.json"));
         addFileHealth("Crystal Hollows", configDirectory.resolve("crystal_hollows.json"));
-        addFileHealth("Publications", com.babbur.waypointer.catalog.CatalogPublicationRegistry.defaultLocation().file());
+        addFileHealth("Publications", CatalogPublicationRegistry.defaultLocation().file());
         Storage storage = WaypointerClient.storage();
         if (storage == null) {
             rows.add(new Row.KVWarn("Storage", "Unavailable"));
@@ -644,7 +659,7 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Size", snapshot.sizeBytes() < 0L
                 ? "unavailable" : formatBytes(snapshot.sizeBytes())));
         rows.add(new Row.KVDim("Modified", snapshot.modifiedAtMillis() < 0L
-                ? "unavailable" : java.time.Instant.ofEpochMilli(snapshot.modifiedAtMillis()).toString()));
+                ? "unavailable" : Instant.ofEpochMilli(snapshot.modifiedAtMillis()).toString()));
         rows.add(new Row.KV("Saver attached", String.valueOf(snapshot.attached())));
         rows.add(new Row.KV("Writes blocked", String.valueOf(snapshot.writesBlocked())));
         rows.add(new Row.KV("Snapshot ready", String.valueOf(snapshot.snapshotReady())));
@@ -676,18 +691,23 @@ public final class DebugInspectScreen extends Screen {
     private void buildClientRuntimeReport() {
         addSection(rows, sections, "Client Runtime", "current client state");
         rows.add(new Row.KV("FPS", String.valueOf(minecraft.getFps())));
+        rows.add(new Row.KV("Waypointer frame cost", String.format(Locale.ROOT, "%.2f ms (recent average)",
+                RenderCost.averageFrameMillis())));
+        OverlayRenderer overlay = OverlayRenderer.activeOrNull();
+        rows.add(new Row.KV("Overlay", overlay == null ? "not installed"
+                : overlay.effectiveCompositing() + ", " + overlay.lastDrawCalls() + " draw calls last frame"));
         rows.add(new Row.KV("Paused", String.valueOf(minecraft.isPaused())));
         rows.add(new Row.KV("Screen class", MinecraftCompat.screen(minecraft) == null ? "(none)"
                 : MinecraftCompat.screen(minecraft).getClass().getName()));
         rows.add(new Row.KV("Edit mode", String.valueOf(
-                com.babbur.waypointer.input.WaypointRepositionMode.isEditModeEnabled())));
+                WaypointRepositionMode.isEditModeEnabled())));
         rows.add(new Row.KV("Temporary focus", String.valueOf(manager.tempWaypointFocusActive())));
-        rows.add(new Row.KV("JVM uptime", java.lang.management.ManagementFactory.getRuntimeMXBean()
+        rows.add(new Row.KV("JVM uptime", ManagementFactory.getRuntimeMXBean()
                 .getUptime() + " ms"));
-        var threads = java.lang.management.ManagementFactory.getThreadMXBean();
+        var threads = ManagementFactory.getThreadMXBean();
         rows.add(new Row.KV("JVM threads", threads.getThreadCount() + " current / "
                 + threads.getPeakThreadCount() + " peak"));
-        for (var collector : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+        for (var collector : ManagementFactory.getGarbageCollectorMXBeans()) {
             rows.add(new Row.KVDim("GC " + collector.getName(), collector.getCollectionCount()
                     + " collections / " + collector.getCollectionTime() + " ms (session)"));
         }
@@ -697,7 +717,7 @@ public final class DebugInspectScreen extends Screen {
         addSection(rows, sections, "Language Loading", null,
                 DebugReportExport.Category.SETTINGS_AND_CHANGES);
         String selected = minecraft.getLanguageManager().getSelected();
-        var locale = com.babbur.waypointer.i18n.RemoteLocales.debugSnapshot(selected);
+        var locale = RemoteLocales.debugSnapshot(selected);
         rows.add(new Row.KV("Selected language", selected));
         rows.add(new Row.KV("Trust manifest", locale.manifestValid() ? "valid" : "unavailable or invalid"));
         rows.add(new Row.KV("Remote enabled", String.valueOf(locale.enabled())));
@@ -813,7 +833,7 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    private static String waypointLine(WaypointGroup group, int i, net.minecraft.world.entity.player.Player player) {
+    private static String waypointLine(WaypointGroup group, int i, Player player) {
         Waypoint waypoint = group.get(i);
         StringBuilder value = new StringBuilder();
         value.append("block=(").append(waypoint.x()).append(',').append(waypoint.y())

@@ -1,6 +1,10 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.core.RouteIcon;
 import com.babbur.waypointer.core.SafeText;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -10,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -64,7 +69,7 @@ final class CatalogJson {
         CatalogRouteSummary summary = parseSummary(route);
         String payload = requiredUtf8String(route, "payload", MAX_PAYLOAD);
         if (!payload.startsWith("WP:")
-                && !payload.startsWith(com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec.MAGIC)) {
+                && !payload.startsWith(DungeonRoomShareCodec.MAGIC)) {
             throw new IllegalArgumentException("Catalog route is not a Waypointer code");
         }
         return new CatalogRouteDetails(summary, payload);
@@ -206,6 +211,9 @@ final class CatalogJson {
         if (title.isEmpty()) throw new IllegalArgumentException("title has an invalid length");
         String zoneId = requiredString(route, "zoneId", 64);
         String zoneLabel = SafeText.line(requiredString(route, "zoneLabel", 80));
+
+        CrystalHollowsStructure structure = CrystalHollowsStructureZones.structureFor(zoneId);
+        if (structure != null) zoneLabel = structure.displayName();
         return new CatalogRouteSummary(
                 id,
                 title,
@@ -231,7 +239,7 @@ final class CatalogJson {
     private static String optionalIcon(JsonObject route) {
         JsonElement value = route.get("icon");
         if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "";
-        return com.babbur.waypointer.core.RouteIcon.normalize(value.getAsString());
+        return RouteIcon.normalize(value.getAsString());
     }
 
     private static final Pattern TAG = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");
@@ -243,7 +251,7 @@ final class CatalogJson {
         for (JsonElement element : value.getAsJsonArray()) {
             if (tags.size() >= 8) break;
             if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) continue;
-            String tag = element.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
+            String tag = element.getAsString().trim().toLowerCase(Locale.ROOT);
             if (TAG.matcher(tag).matches() && !tags.contains(tag)) tags.add(tag);
         }
         return List.copyOf(tags);

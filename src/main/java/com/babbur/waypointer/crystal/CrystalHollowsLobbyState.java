@@ -85,11 +85,6 @@ public final class CrystalHollowsLobbyState {
         for (Crystal crystal : Crystal.values()) crystals.put(crystal, CrystalState.MISSING);
     }
 
-    public void replaceCrystals(Map<Crystal, CrystalState> states) {
-        crystals.clear();
-        crystals.putAll(states);
-    }
-
     public void setDivanCentre(CrystalHollowsPosition position) {
         divanCentre = position;
     }
@@ -244,7 +239,8 @@ public final class CrystalHollowsLobbyState {
         for (int index = sightings.size() - 1; index >= 0; index--) {
             StructureSighting sighting = sightings.get(index);
             if (source != null && !source.equals(sighting.source())
-                    && !(source.equals("relay") && sighting.source().startsWith("relay:"))) continue;
+                    && !(source.equals(StructureRelayProtocol.SOURCE)
+                            && sighting.source().startsWith(StructureRelayProtocol.SOURCE + ":"))) continue;
             if (sighting.confidence() != SightingConfidence.SHARED_REMOTE || sighting.atMillis() >= before) continue;
             StructureSighting local = localFallbacks.remove(sighting);
             if (local == null) sightings.remove(index);

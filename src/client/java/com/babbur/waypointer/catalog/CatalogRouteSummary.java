@@ -1,5 +1,6 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.core.RouteIcon;
 import java.util.List;
 import java.util.Locale;
 
@@ -28,7 +29,7 @@ public record CatalogRouteSummary(
 
     public CatalogRouteSummary {
         tags = tags == null ? List.of() : List.copyOf(tags);
-        icon = com.babbur.waypointer.core.RouteIcon.normalize(icon);
+        icon = RouteIcon.normalize(icon);
     }
 
     public CatalogRouteSummary(String id, String title, String description, String authorName,
@@ -52,7 +53,7 @@ public record CatalogRouteSummary(
     }
 
     public String displayIcon() {
-        return com.babbur.waypointer.core.RouteIcon.display(icon, zoneId);
+        return RouteIcon.display(icon, zoneId);
     }
 
     public boolean hasTag(String tag) {
@@ -68,11 +69,6 @@ public record CatalogRouteSummary(
                 || contains(publisherId, normalized)
                 || contains(zoneId, normalized)
                 || contains(zoneLabel, normalized);
-    }
-
-    public String publisherLabel() {
-        if (authorName == null || authorName.isBlank()) return "Unknown publisher";
-        return publisherVerified ? authorName + " verified" : authorName;
     }
 
     private static boolean contains(String value, String query) {

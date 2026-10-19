@@ -12,6 +12,7 @@ import com.babbur.waypointer.crystal.compass.WishingCompassTarget;
 import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
@@ -142,7 +143,7 @@ public final class WishingCompassController {
 
     private void handleOutcomes() {
         for (WishingCompassSolver.Outcome outcome : solver.drainOutcomes()) {
-            lastEvent = outcome.event().name().toLowerCase(java.util.Locale.ROOT);
+            lastEvent = outcome.event().name().toLowerCase(Locale.ROOT);
             Waypointer.LOGGER.debug("Wishing Compass solver event: {}", outcome.event());
             switch (outcome.event()) {
                 case USE_RECORDED, RAY_CAPTURED -> {}

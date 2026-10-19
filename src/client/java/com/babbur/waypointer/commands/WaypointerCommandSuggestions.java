@@ -1,5 +1,9 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.dungeon.DungeonWaypointType;
+import com.babbur.waypointer.i18n.Counts;
+import com.babbur.waypointer.screen.RouteListPresentation;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.chat.ChatImportCache;
@@ -15,11 +19,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
-
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 final class WaypointerCommandSuggestions {
@@ -44,7 +45,7 @@ final class WaypointerCommandSuggestions {
             for (int i = 0; i < routes.size(); i++) {
                 WaypointGroup route = routes.get(i);
                 Component tip = Component.literal(route.name() + "  ")
-                        .append(com.babbur.waypointer.i18n.Counts.of("waypoint", route.size()));
+                        .append(Counts.of("waypoint", route.size()));
                 if (typed.isEmpty() || Integer.toString(i + 1).startsWith(typed)) {
                     if (!typed.isEmpty() || i < 9) builder.suggest(Integer.toString(i + 1), tip);
                 }
@@ -62,7 +63,7 @@ final class WaypointerCommandSuggestions {
             if (zone == null) return builder.buildFuture();
             for (var folder : manager.foldersForZone(zone.id())) {
                 String value = quoteIfNeeded
-                        ? com.mojang.brigadier.arguments.StringArgumentType.escapeIfRequired(folder.name())
+                        ? StringArgumentType.escapeIfRequired(folder.name())
                         : folder.name();
                 CommandHelpers.suggestText(builder, value, Component.literal(folder.name()));
             }
@@ -101,7 +102,7 @@ final class WaypointerCommandSuggestions {
 
     SuggestionProvider<FabricClientCommandSource> suggestDungeonTypes() {
         return (ctx, builder) -> {
-            for (var type : com.babbur.waypointer.dungeon.DungeonWaypointType.values()) {
+            for (var type : DungeonWaypointType.values()) {
                 CommandHelpers.suggestText(builder, type.name().toLowerCase(Locale.ROOT).replace('_', '-'),
                         Component.translatable(WaypointerWaypointCommands.typeKey(type)));
             }
@@ -189,7 +190,7 @@ final class WaypointerCommandSuggestions {
         return (ctx, builder) -> {
             Zone zone = manager.currentZone();
             if (zone != null) {
-                CommandHelpers.suggestText(builder, com.babbur.waypointer.screen.RouteListPresentation
+                CommandHelpers.suggestText(builder, RouteListPresentation
                                 .nextRouteName(manager.groupsForZone(zone.id())),
                         Component.translatable("waypointer.command.suggest.route_name"));
             }

@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Comparator;
 import java.util.List;
 
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
@@ -139,7 +140,7 @@ class RouteFolderEditLayoutTest {
                 .map(RouteFolderEditLayout.ActionPlacement::y).distinct().toList()) {
             List<RouteFolderEditLayout.ActionPlacement> row = layout.actions().stream()
                     .filter(placement -> placement.y() == y)
-                    .sorted(java.util.Comparator.comparingInt(
+                    .sorted(Comparator.comparingInt(
                             RouteFolderEditLayout.ActionPlacement::x))
                     .toList();
             for (int index = 1; index < row.size(); index++) {

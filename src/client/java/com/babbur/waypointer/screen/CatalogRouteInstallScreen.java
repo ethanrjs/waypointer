@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.api.ImportSummary;
 import com.babbur.waypointer.catalog.CatalogInstallState;
@@ -199,7 +200,7 @@ public final class CatalogRouteInstallScreen extends Screen {
                         "waypointer.screen.catalog_install.error.unsupported_reference");
             } else {
                 if (failure != null) {
-                    com.babbur.waypointer.Waypointer.LOGGER.warn(
+                    Waypointer.LOGGER.warn(
                             "Could not open catalog route {}", routeId, failure);
                 }
                 status = failure == null
@@ -239,7 +240,7 @@ public final class CatalogRouteInstallScreen extends Screen {
         try {
             summary = CatalogRouteInstaller.install(manager, catalogClient.apiRoot(), prepared);
         } catch (RuntimeException failure) {
-            com.babbur.waypointer.Waypointer.LOGGER.warn("Could not install catalog route {}", routeId, failure);
+            Waypointer.LOGGER.warn("Could not install catalog route {}", routeId, failure);
             phase = Phase.READY;
             refreshInstallState();
             status = RouteCatalogScreen.friendlyFailure(failure);

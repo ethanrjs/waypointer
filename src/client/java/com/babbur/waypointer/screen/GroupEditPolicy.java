@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -272,7 +273,7 @@ final class GroupEditPolicy {
             active.add(Component.translatableWithFallback(
                     "waypointer.screen.group_edit.control.los.label", "LOS").getString());
         }
-        if (com.babbur.waypointer.config.WaypointStyles.setCount(waypoint.styleOverride()) > 0) {
+        if (WaypointStyles.setCount(waypoint.styleOverride()) > 0) {
             active.add(Component.translatableWithFallback(
                     "waypointer.screen.group_edit.control.own_look", "\u25c6 Own look").getString());
         }

@@ -61,7 +61,6 @@ public final class CodecWorker {
         }
     }
 
-    /** Runs previews separately from imports, keeping only the newest pending request. */
     static final class LatestRunner {
         private final Executor worker;
         private final Executor clientThread;
@@ -90,7 +89,7 @@ public final class CodecWorker {
         private <T> void start(Request<T> request) {
             if (!CodecWorker.submit(worker, clientThread, request.work(),
                     result -> complete(request, result))) {
-                // Report executor failure on the client thread, then try the pending request.
+
                 clientThread.execute(() -> complete(request, null));
             }
         }

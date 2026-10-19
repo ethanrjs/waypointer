@@ -7,8 +7,6 @@ public final class CrystalHollowsGeometry {
     public static final int MIN_XZ = 201;
     public static final int MAX_XZ = 824;
 
-    public static final CrystalHollowsPosition NUCLEUS_TARGET =
-            new CrystalHollowsPosition(513, 106, 551);
     public static final double NUCLEUS_CENTRE_X = 513.5;
     public static final double NUCLEUS_CENTRE_Y = 107.0;
     public static final double NUCLEUS_CENTRE_Z = 513.5;

@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.zip.Deflater;
 
-/** Universal {@code WP:} wire-v10 kind-4 dungeon collection codec. */
 final class V10DungeonCodec {
 
     private V10DungeonCodec() {}

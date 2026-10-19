@@ -6,11 +6,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.crystal.CrystalHollowsPosition;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.minecraft.network.chat.Component;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public final class DungeonRoomWaypointPlacement {
 
@@ -129,17 +125,6 @@ public final class DungeonRoomWaypointPlacement {
                 storedWaypoint.preciseY(),
                 storedWaypoint.preciseZ());
         return true;
-    }
-
-    public static void normalizeActualWaypointsForCurrentRoom(WaypointGroup group) {
-        DungeonRoom room = currentRoomFor(group);
-        if (room == null || group.isEmpty()) return;
-
-        List<Waypoint> converted = new ArrayList<>(group.size());
-        for (Waypoint waypoint : group.waypoints()) {
-            converted.add(toStoredWaypoint(room, waypoint));
-        }
-        group.replaceWaypoints(converted);
     }
 
     static Waypoint toRoomLocal(DungeonRoom room, Waypoint actualWaypoint) {

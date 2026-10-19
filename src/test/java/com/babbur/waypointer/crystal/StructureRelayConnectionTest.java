@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.http.WebSocket;
+import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
@@ -32,13 +33,24 @@ class StructureRelayConnectionTest {
     }
 
     @Test
+    void closingAnOpenSocketSendsANormalCloseFrame() {
+        Stub stub = new Stub();
+        StructureRelayConnection connection = stub.connection();
+        connection.connect(ENDPOINT);
+        stub.listener.onOpen(stub.socket);
+        connection.close();
+        assertEquals(WebSocket.NORMAL_CLOSURE, stub.closeStatus);
+        assertFalse(connection.isOpen());
+    }
+
+    @Test
     void drainingStopsAtOneQueueEvenWhenThePeerKeepsSendingAndPreservesTheRemainder() {
         Stub stub = new Stub();
         StructureRelayConnection connection = stub.connection();
         connection.connect(ENDPOINT);
         stub.listener.onOpen(stub.socket);
         stub.listener.onText(stub.socket, "0", true);
-        var processed = new java.util.ArrayList<String>();
+        var processed = new ArrayList<String>();
         connection.drain(message -> {
             processed.add(message);
             assertTrue(processed.size() <= 32, "A continuously refilled queue must not stall the client tick");
@@ -89,10 +101,15 @@ class StructureRelayConnectionTest {
         CompletableFuture<WebSocket> pending;
         CompletableFuture<WebSocket> sent = new CompletableFuture<>();
         int aborts;
+        int closeStatus = -1;
         final WebSocket socket = (WebSocket) Proxy.newProxyInstance(WebSocket.class.getClassLoader(),
                 new Class<?>[]{WebSocket.class}, (proxy, method, args) -> {
                     if (method.getName().equals("abort")) aborts++;
                     if (method.getName().equals("sendText")) return sent;
+                    if (method.getName().equals("sendClose")) {
+                        closeStatus = (int) args[0];
+                        return CompletableFuture.completedFuture((WebSocket) proxy);
+                    }
                     return null;
                 });
 

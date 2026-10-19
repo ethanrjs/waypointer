@@ -9,6 +9,7 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -239,7 +240,7 @@ public final class CatalogPublicationRegistry {
             for (CatalogPublication record : records) array.add(serialize(record));
             root.add("publications", array);
             byte[] json = (root + System.lineSeparator()).getBytes(
-                    java.nio.charset.StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8);
             if (json.length > MAX_FILE_BYTES) throw invalidRegistry(null);
             CatalogAtomicFile.replace(file, json, "publications-");
         } catch (IOException failure) {

@@ -8,6 +8,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.network.chat.contents.PlainTextContents;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerContributorBadgeTest {
     private static final UUID BABBUR_ID = UUID.fromString("d0d70e3d-2475-4001-b27e-16b5118e5534");
     private static final UUID ACIDANGELS_ID = UUID.fromString("83ccd327-6c5c-49df-a826-a59b4b2e384b");
+    private static final UUID AQUAKURA_ID = UUID.fromString("c886048f-a6a9-4b6d-a600-d5841a97d9c4");
+    private static final UUID RAINEBOWBIT_ID = UUID.fromString("8e7ffc41-9479-4dc0-b4b2-d79ef7397b72");
     private static final UUID SOMEONE_ELSE_ID = UUID.fromString("68b3d8a2-0f62-48a5-a958-4fb0ab1899a2");
 
     @Test
@@ -92,6 +95,43 @@ class WaypointerContributorBadgeTest {
         assertEquals("[WP] acidangels", nametag.getString());
         assertEquals(TextColor.fromRgb(0x850C5A),
                 tab.getSiblings().getFirst().getStyle().getColor());
+    }
+
+    @Test
+    void aquakuraBadgeUsesTheirColorInChatTabAndNametag() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        Component chat = WaypointerContributorBadge.apply(Component.literal("[290] aquakura: hi"), config);
+        Component tab = WaypointerContributorBadge.applyTabName(Component.literal("[290] aquakura"), config);
+        Component nametag = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("[290] aquakura"), "", AQUAKURA_ID, config);
+
+        assertEquals("[WP] aquakura: hi", chat.getString());
+        assertEquals("[WP] aquakura", tab.getString());
+        assertEquals("[WP] aquakura", nametag.getString());
+        for (Component badged : List.of(chat, tab, nametag)) {
+            assertEquals(TextColor.fromRgb(0xFF9EFC), badgeColor(badged));
+        }
+    }
+
+    @Test
+    void rainebowbitBadgeUsesBabbursColor() {
+        Component nametag = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("[120] rainebowbit"), "", RAINEBOWBIT_ID, new WaypointerConfig());
+
+        assertEquals("[WP] rainebowbit", nametag.getString());
+        assertEquals(TextColor.fromRgb(0xAA0000), badgeColor(nametag));
+    }
+
+    private static TextColor badgeColor(Component component) {
+        if (component.getContents() instanceof PlainTextContents text && text.text().equals("WP")) {
+            return component.getStyle().getColor();
+        }
+        for (Component sibling : component.getSiblings()) {
+            TextColor color = badgeColor(sibling);
+            if (color != null) return color;
+        }
+        return null;
     }
 
     @Test

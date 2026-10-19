@@ -222,6 +222,23 @@ class CoordScannerTest {
     }
 
     @Test
+    void chatTempSenderCannotBeSpoofedByTypingAnotherNameBeforeTheCoordinates() {
+        String message = "[12:30] [MVP+] Attacker: Victim: 100 70 100";
+        int coordStart = message.indexOf("100");
+
+        assertEquals("Attacker", ChatCoordDetector.senderNameForChatTemp(message, coordStart));
+        String label = ChatCoordDetector.senderLabelForChatTemp(Component.literal(message), message, coordStart);
+        assertTrue(label.endsWith("[MVP+] Attacker"), label);
+    }
+
+    @Test
+    void chatTempSenderSkipsGuildRankBrackets() {
+        String message = "Guild > [VIP] Babbur [Officer]: meet here: 1 2 3";
+
+        assertEquals("Babbur", ChatCoordDetector.senderNameForChatTemp(message, message.indexOf("1 2 3")));
+    }
+
+    @Test
     void chatTempSenderNameReturnsEmptyWithoutChatColon() {
         String message = "Warp to x: 1, y: 1, z: 1";
         int coordStart = message.indexOf("x:");

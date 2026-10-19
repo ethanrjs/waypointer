@@ -18,15 +18,12 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.zip.Deflater;
-import java.util.zip.CRC32;
-
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Locked cross-language and hostile-input gates for the V10 profile. */
 class V10ProductionProfileTest {
 
     private static final String FIXTURE =
@@ -57,7 +54,7 @@ class V10ProductionProfileTest {
             WaypointGroup decoded = V10BareRouteCodec.decode(checked);
             assertEquals(vector.get("points").getAsInt(), decoded.size());
             assertEquals(vector.get("coordinateSha256").getAsString(), coordinateHash(decoded));
-            // A decoded semantic route must select the same canonical Java wire.
+
             assertEquals(expectedWire, WaypointCodec.MAGIC + V10BareRouteCodec.encode(decoded));
 
             switch (vector.get("mode").getAsString()) {
@@ -137,7 +134,6 @@ class V10ProductionProfileTest {
         assertFalse(Arrays.equals(payload, alternate));
         assertArrayEquals(semantic, V10Transport.inflateAndVerify(alternate));
 
-        // payload = header byte, compressed bytes, two checksum bytes.
         int compressedLength = payload.length - 1 - V10Transport.CHECKSUM_BYTES;
         byte[] lastDeflate = payload.clone();
         lastDeflate[1 + compressedLength / 2] ^= 1;
@@ -157,8 +153,6 @@ class V10ProductionProfileTest {
                 1 + compressedLength * 2, V10Transport.CHECKSUM_BYTES);
         assertBRejected(concatenated);
 
-        // A body one byte past the frame limit must be refused by the bounded
-        // inflater before the checksum is even consulted.
         byte[] bombBody = new byte[V10Transport.MAX_FRAME_BYTES + 1];
         byte[] bombCompressed = rawDeflate(bombBody, Deflater.BEST_COMPRESSION);
         byte[] bombPayload = new byte[1 + bombCompressed.length + V10Transport.CHECKSUM_BYTES];
@@ -169,7 +163,6 @@ class V10ProductionProfileTest {
         assertTrue(oversized.getMessage().contains("inflated payload exceeds"),
                 oversized.getMessage());
 
-        // Single-bit flips must reject or preserve the body (DEFLATE padding can change).
         List<String> silentlyChanged = new ArrayList<>();
         List<String> acceptedOutsidePadding = new ArrayList<>();
         int lastCompressedByte = payload.length - 1 - V10Transport.CHECKSUM_BYTES;

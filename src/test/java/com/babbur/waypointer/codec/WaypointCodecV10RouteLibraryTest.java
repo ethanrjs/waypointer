@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Kind 6 subtype 1: folders, manual colors, and paints under the universal {@code WP:} prefix. */
 class WaypointCodecV10RouteLibraryTest {
 
     @Test
@@ -48,7 +47,6 @@ class WaypointCodecV10RouteLibraryTest {
         assertEquals(V10RouteLibraryCodec.CONTENT_KIND, frame.contentKind());
         assertTrue(V10RouteLibraryCodec.isLibrarySemantic(frame.semantic()));
 
-        // Every import surface sees the same content.
         WaypointImporter.ImportResult imported = WaypointImporter.importAny(encoded);
         assertEquals("Mining pack", imported.label());
         assertEquals(fixture.metadata(), imported.libraryMetadata());
@@ -73,7 +71,6 @@ class WaypointCodecV10RouteLibraryTest {
         assertTrue(installed.collapsed());
         assertEquals(2, target.groupIdsInFolder(installed.id()).size());
 
-        // Chat UX: detected as a route share, hover label readable without a full decode.
         assertTrue(WaypointCodec.isValidCodec(encoded));
         CodecScanner.Match match = CodecScanner.scan("take this " + encoded + "!").getFirst();
         assertTrue(match.valid());
@@ -98,20 +95,19 @@ class WaypointCodecV10RouteLibraryTest {
         assertEquals(fixture.metadata(),
                 V10RouteLibraryCodec.decode(direct(semantic)).metadata());
 
-        // Subtype 4 is reserved.
         assertRejected(semantic, body -> { body[1] = 4; return body; });
-        // Trailing bytes.
+
         assertRejected(semantic, body -> Arrays.copyOf(body, body.length + 1));
-        // Truncation.
+
         assertRejected(semantic, body -> Arrays.copyOf(body, body.length - 1));
-        // Manual-color ordinal pushed out of bounds.
+
         int manualOrdinalOffset = manualColorOrdinalOffset(semantic);
         assertRejected(semantic, body -> { body[manualOrdinalOffset] = 9; return body; });
-        // Folder reserved flag bit.
+
         int folderFlagOffset = folderFlagOffset(semantic);
         assertEquals(V10RouteLibraryCodec.FOLDER_FLAG_COLLAPSED, semantic[folderFlagOffset]);
         assertRejected(semantic, body -> { body[folderFlagOffset] = 0x03; return body; });
-        // A committed V10 frame with a bad body must not fall back to legacy decoding.
+
         byte[] reserved = semantic.clone();
         reserved[1] = 4;
         String tampered = WaypointCodec.MAGIC + V10Transport.direct(reserved).transport();
@@ -157,7 +153,6 @@ class WaypointCodecV10RouteLibraryTest {
         assertThrows(IOException.class, () -> V10RouteLibraryCodec.decode(direct(mutated)));
     }
 
-    /** Offset of the first manual-color group ordinal: header, subtype, length varint, route, count. */
     private static int manualColorOrdinalOffset(byte[] semantic) {
         int offset = 2;
         int routeLength = 0;
@@ -172,16 +167,15 @@ class WaypointCodecV10RouteLibraryTest {
         return offset + 1;
     }
 
-    /** The fixture has one manual-color entry with two colors, then one folder. */
     private static int folderFlagOffset(byte[] semantic) {
         int offset = manualColorOrdinalOffset(semantic);
-        offset += 1; // ordinal
-        offset += 1; // color count (2)
-        offset += 2 * 3; // colors
-        offset += 1; // folder count
+        offset += 1;
+        offset += 1;
+        offset += 2 * 3;
+        offset += 1;
         int nameLength = semantic[offset] & 0xFF;
         offset += 1 + nameLength;
-        offset += 3; // folder color
+        offset += 3;
         return offset;
     }
 

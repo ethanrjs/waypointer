@@ -341,7 +341,7 @@ class WaypointCodecV9Test {
 
         int groupFlagsOffset = 1;
         while ((body[groupFlagsOffset++] & 0x80) != 0) {
-            // Skip the anonymous zone-reference varint.
+
         }
         body[groupFlagsOffset] |= (byte) 0x80;
 
@@ -459,12 +459,12 @@ class WaypointCodecV9Test {
     void compact_decoder_rejects_coordinates_the_waypoint_model_cannot_represent() throws Exception {
         byte[] body = {
                 (byte) ((WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE << 4) | 9),
-                2, // trained zone token: mining_3
-                1, // one waypoint
+                2,
+                1,
                 (byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 0x01,
-                0, 0, // y=0, z=0
-                0, 0, // three zero delta widths
-                0 // empty range payload
+                0, 0,
+                0, 0,
+                0
         };
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -478,17 +478,17 @@ class WaypointCodecV9Test {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
         output.writeByte(WaypointCodec.WIRE_VERSION);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 1); // group count
-        WaypointCodec.writeVarint(output, 0); // group name
-        WaypointCodec.writeVarint(output, 0); // custom zone = pool[0]
-        output.writeByte(0b0000_0101); // bodyless + sequence + VECTOR
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
+        output.writeByte(0b0000_0101);
         WaypointCodec.writeVarint(output, 2);
         WaypointCodec.writeZigzag(output, 134_217_727);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
-        WaypointCodec.writeZigzag(output, 1); // next x would be 134,217,728
+        WaypointCodec.writeZigzag(output, 1);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
         output.flush();
@@ -504,14 +504,14 @@ class WaypointCodecV9Test {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
         output.writeByte(WaypointCodec.WIRE_VERSION);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 1); // group count
-        WaypointCodec.writeVarint(output, 0); // group name
-        WaypointCodec.writeVarint(output, 0); // custom zone = pool[0]
-        output.writeByte(0b0010_0101); // bodyless + sequence + FIXED_COMPACT
         WaypointCodec.writeVarint(output, 1);
-        output.write(new byte[] { 0, 2, 0, 0, 1 }); // (0,0,0), then one nonzero padding bit
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
+        output.writeByte(0b0010_0101);
+        WaypointCodec.writeVarint(output, 1);
+        output.write(new byte[] { 0, 2, 0, 0, 1 });
         output.flush();
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -525,13 +525,13 @@ class WaypointCodecV9Test {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
         output.writeByte(WaypointCodec.WIRE_VERSION);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 1); // group count
-        WaypointCodec.writeVarint(output, 0); // group name
-        WaypointCodec.writeVarint(output, 0); // custom zone = pool[0]
-        output.writeByte(0b0011_0101); // bodyless + sequence + FIT_COMPACT
-        WaypointCodec.writeVarint(output, 0); // empty group
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
+        output.writeByte(0b0011_0101);
+        WaypointCodec.writeVarint(output, 0);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
@@ -558,12 +558,12 @@ class WaypointCodecV9Test {
         byte[] label = hostile.getBytes(StandardCharsets.UTF_8);
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
-        output.writeByte(0x80 | WaypointCodec.WIRE_VERSION); // label + general kind
+        output.writeByte(0x80 | WaypointCodec.WIRE_VERSION);
         WaypointCodec.writeVarint(output, label.length);
         output.write(label);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 0); // group count
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
         output.flush();
         String encoded = encodeBody(raw.toByteArray());
 

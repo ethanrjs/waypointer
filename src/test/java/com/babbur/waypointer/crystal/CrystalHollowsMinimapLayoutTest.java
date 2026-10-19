@@ -1,5 +1,7 @@
 package com.babbur.waypointer.crystal;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -10,15 +12,15 @@ class CrystalHollowsMinimapLayoutTest {
         int x = map.mapX() + map.marker(823), y = map.mapY() + map.marker(500);
         assertEquals(138, map.marker(823));
         assertEquals(5, map.marker(201));
-        var label = map.label(x, y, 12, java.util.List.of());
+        var label = map.label(x, y, 12, List.of());
         assertNotNull(label);
         assertTrue(label.x() + label.width() < x);
         var fullMap = new CrystalHollowsMinimapLayout.Rect(map.mapX(), map.mapY(), map.size(), map.size());
-        assertNull(map.label(x, y, 12, java.util.List.of(fullMap)));
-        assertNull(map.label(x, y, 500, java.util.List.of()));
+        assertNull(map.label(x, y, 12, List.of(fullMap)));
+        assertNull(map.label(x, y, 500, List.of()));
         int centerX = map.mapX() + 70, centerY = map.mapY() + 70;
         var marker = new CrystalHollowsMinimapLayout.Rect(centerX - 5, centerY - 5, 11, 11);
-        assertEquals(centerX + 8, map.label(centerX, centerY, 12, java.util.List.of(marker)).x());
+        assertEquals(centerX + 8, map.label(centerX, centerY, 12, List.of(marker)).x());
     }
 
     @Test
@@ -26,7 +28,7 @@ class CrystalHollowsMinimapLayoutTest {
         var map = new CrystalHollowsMinimapLayout(8, 8, 96);
         int x = map.mapX() + 48, y = map.mapY() + 48;
         var target = new CrystalHollowsMinimapLayout.Rect(x - 8, y - 8, 17, 17);
-        var occupied = new java.util.ArrayList<CrystalHollowsMinimapLayout.Rect>();
+        var occupied = new ArrayList<CrystalHollowsMinimapLayout.Rect>();
         occupied.add(target);
         for (int side = 0; side < 4; side++) {
             var label = map.label(x, y, 12, occupied, 11);

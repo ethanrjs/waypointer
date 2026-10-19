@@ -113,8 +113,8 @@ class MeshBuilderTest {
         };
         int[] order = {0, 1, 2, 3};
 
-        QuadSorter.sortBackToFront(centers, order, new double[order.length],
-                new int[order.length], order.length, false, 0.0, 0.0, 0.0);
+        QuadSorter.sortBackToFront(centers, order, new float[order.length],
+                new long[order.length], order.length, false, 0.0, 0.0, 0.0);
 
         assertArrayEquals(new int[]{1, 2, 3, 0}, order);
     }
@@ -126,7 +126,7 @@ class MeshBuilderTest {
         int[] order = new int[count];
         for (int i = 0; i < count; i++) centers[i * 3] = i;
 
-        QuadSorter.sortBackToFront(centers, order, new double[count], new int[count],
+        QuadSorter.sortBackToFront(centers, order, new float[count], new long[count],
                 count, false, -1.0, 0.0, 0.0);
 
         assertEquals(count - 1, order[0]);
@@ -137,8 +137,8 @@ class MeshBuilderTest {
     void cameraMovementReusesOnlyTheExactBackToFrontOrder() {
         float[] centers = {1, 0, 0, 4, 0, 0, -4, 0, 0, 2, 0, 0};
         int[] order = new int[4];
-        double[] distances = new double[4];
-        int[] scratch = new int[4];
+        float[] distances = new float[4];
+        long[] scratch = new long[4];
         assertTrue(QuadSorter.sortBackToFront(centers, order, distances, scratch,
                 4, false, 0, 0, 0));
         assertFalse(QuadSorter.sortBackToFront(centers, order, distances, scratch,
@@ -160,8 +160,8 @@ class MeshBuilderTest {
         for (int i = 0; i < centers.length; i++) centers[i] = random.nextInt(8);
         int[] order = new int[count];
         int[] expected = new int[count];
-        double[] distances = new double[count];
-        int[] scratch = new int[count];
+        float[] distances = new float[count];
+        long[] scratch = new long[count];
         for (int frame = 0; frame < 100; frame++) {
             double cameraX = Math.sin(frame * 0.1) * 12;
             boolean geometryChanged = frame == 0 || frame == 50;

@@ -148,8 +148,73 @@ public final class WaypointStyles {
         merged.putAll(exact.values());
         return new WaypointStyle(merged);
     }
+
     public static WaypointerConfig resolve(WaypointerConfig base, WaypointGroup group, Waypoint waypoint) {
         if (base.resolvedStyleSnapshot) return base;
+        if (group == null) return resolveLayers(base, null, waypoint);
+        GroupStyles styles = groupStyles(base, group);
+        WaypointStyle point = waypoint == null ? WaypointStyle.EMPTY : waypoint.styleOverride();
+        if (point.isEmpty()) return styles.resolved;
+        WaypointerConfig cached = styles.points.get(point);
+        if (cached != null) return cached;
+        WaypointerConfig resolved = resolveLayers(base, group, waypoint);
+        if (styles.points.size() < MAX_CACHED_POINT_STYLES) styles.points.put(point, resolved);
+        return resolved;
+    }
+
+    private static final int MAX_CACHED_GROUPS = 4096;
+    private static final int MAX_CACHED_POINT_STYLES = 256;
+    private static final int NO_COLOR = -1;
+
+    static final class GroupStyles {
+        private final WaypointerConfig base;
+        private final int generation;
+        private final WaypointStyle route;
+        private final String presetId;
+        private final String zoneId;
+        private final WaypointerConfig resolved;
+        private final int color;
+        private final Map<WaypointStyle, WaypointerConfig> points = new ConcurrentHashMap<>();
+
+        private GroupStyles(WaypointerConfig base, WaypointGroup group) {
+            this.base = base;
+            generation = base.styleGeneration;
+            route = group.styleOverride();
+            presetId = group.stylePresetId();
+            zoneId = group.zoneId();
+            resolved = resolveLayers(base, group, null);
+            int layered = styleColor(base.namedStyle(base.preferredStyleId()), NO_COLOR);
+            layered = styleColor(zoneStyle(base, zoneId), layered);
+            layered = styleColor(base.namedStyle(presetId), layered);
+            color = styleColor(route, layered);
+        }
+
+        private boolean matches(WaypointerConfig base, WaypointGroup group) {
+            return this.base == base && generation == base.styleGeneration
+                    && route == group.styleOverride() && presetId.equals(group.stylePresetId())
+                    && zoneId.equals(group.zoneId());
+        }
+    }
+
+    private static GroupStyles groupStyles(WaypointerConfig base, WaypointGroup group) {
+        if (group.resolvedStyleCache() instanceof GroupStyles attached && attached.matches(base, group)) {
+            return attached;
+        }
+        GroupStyles styles = base.groupStyles.get(group);
+        if (styles == null || !styles.matches(base, group)) {
+            styles = new GroupStyles(base, group);
+            if (base.groupStyles.size() >= MAX_CACHED_GROUPS) base.groupStyles.clear();
+            base.groupStyles.put(group, styles);
+        }
+        group.setResolvedStyleCache(styles);
+        return styles;
+    }
+
+    public static int routeColorOverride(WaypointerConfig base, WaypointGroup group) {
+        return groupStyles(base, group).color;
+    }
+
+    private static WaypointerConfig resolveLayers(WaypointerConfig base, WaypointGroup group, Waypoint waypoint) {
         WaypointStyle preferred = base.namedStyle(base.preferredStyleId());
         WaypointStyle zone = group == null ? WaypointStyle.EMPTY : zoneStyle(base, group.zoneId());
         WaypointStyle routePreset = group == null ? WaypointStyle.EMPTY : base.namedStyle(group.stylePresetId());
@@ -174,11 +239,11 @@ public final class WaypointStyles {
     public static int waypointColor(WaypointerConfig base, WaypointGroup group, Waypoint waypoint) {
         if (waypoint == null) return base.defaultWaypointColor();
         int color = waypoint.color();
-        color = styleColor(base.namedStyle(base.preferredStyleId()), color);
-        if (group != null) {
-            color = styleColor(zoneStyle(base, group.zoneId()), color);
-            color = styleColor(base.namedStyle(group.stylePresetId()), color);
-            color = styleColor(group.styleOverride(), color);
+        if (group == null) {
+            color = styleColor(base.namedStyle(base.preferredStyleId()), color);
+        } else {
+            int layered = groupStyles(base, group).color;
+            if (layered != NO_COLOR) color = layered;
         }
         return styleColor(waypoint.styleOverride(), color);
     }

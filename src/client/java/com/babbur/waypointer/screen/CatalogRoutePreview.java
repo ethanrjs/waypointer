@@ -1,8 +1,10 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.catalog.CatalogRoutePreviewData;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.render.RenderHelpers;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -72,7 +74,7 @@ final class CatalogRoutePreview {
         return new CatalogRoutePreview(List.copyOf(paths), roomPack && groups.size() > 1, groups.size());
     }
 
-    static CatalogRoutePreview of(com.babbur.waypointer.catalog.CatalogRoutePreviewData data) {
+    static CatalogRoutePreview of(CatalogRoutePreviewData data) {
         List<List<Point>> paths = new ArrayList<>();
         boolean roomPack = false;
         for (var group : data.groups()) {
@@ -167,7 +169,7 @@ final class CatalogRoutePreview {
                     hoveredX = sx;
                     hoveredY = sy;
                 }
-                long pixel = ((long) Math.round(sx * guiScale) << 32) ^ (Math.round(sy * guiScale) & 0xFFFFFFFFL);
+                long pixel = (Math.round(sx * guiScale) << 32) ^ (Math.round(sy * guiScale) & 0xFFFFFFFFL);
                 if (seen.add(pixel)) shown.add(i);
             }
             for (int k = shown.size() - 1; k >= 0; k--) {
@@ -241,7 +243,7 @@ final class CatalogRoutePreview {
         String heading = (point.label() + "  " + (point.name() == null ? "" : point.name())).trim();
         if (!heading.isEmpty()) lines.add(Component.literal(heading));
         lines.add(Component.literal(point.x() + ", " + point.y() + ", " + point.z()).withStyle(
-                heading.isEmpty() ? net.minecraft.ChatFormatting.WHITE : net.minecraft.ChatFormatting.GRAY));
+                heading.isEmpty() ? ChatFormatting.WHITE : ChatFormatting.GRAY));
         return lines;
     }
 }

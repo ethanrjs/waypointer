@@ -3,17 +3,20 @@ package com.babbur.waypointer.crystal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 public final class StructureRelayConnection {
     private static final int MAX_MESSAGE = 16 * 1024;
     private static final int MAX_QUEUED_MESSAGES = 32;
+    private static final long CLOSE_GRACE_SECONDS = 5;
     private final ArrayBlockingQueue<String> messages = new ArrayBlockingQueue<>(MAX_QUEUED_MESSAGES);
     private final BiFunction<URI, WebSocket.Listener, CompletableFuture<WebSocket>> connector;
     private CompletableFuture<WebSocket> pending;
@@ -61,7 +64,19 @@ public final class StructureRelayConnection {
         pending = null;
         messages.clear();
         if (previousPending != null) previousPending.cancel(true);
-        if (previous != null) previous.abort();
+        if (previous != null) closeGracefully(previous);
+    }
+
+    private static void closeGracefully(WebSocket socket) {
+        CompletableFuture.delayedExecutor(CLOSE_GRACE_SECONDS, TimeUnit.SECONDS).execute(socket::abort);
+        try {
+            socket.request(Long.MAX_VALUE);
+            socket.sendClose(WebSocket.NORMAL_CLOSURE, "").whenComplete((closed, error) -> {
+                if (error != null) socket.abort();
+            });
+        } catch (RuntimeException unavailable) {
+            socket.abort();
+        }
     }
 
     public synchronized boolean isOpen() {
@@ -149,7 +164,7 @@ public final class StructureRelayConnection {
         }
 
         @Override
-        public CompletionStage<?> onBinary(WebSocket source, java.nio.ByteBuffer data, boolean last) {
+        public CompletionStage<?> onBinary(WebSocket source, ByteBuffer data, boolean last) {
             synchronized (StructureRelayConnection.this) {
                 if (attempt == generation) close();
             }

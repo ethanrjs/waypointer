@@ -1,5 +1,6 @@
 package com.babbur.waypointer.dungeon.data;
 
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonRoomShape;
@@ -145,6 +146,28 @@ class DungeonRouteImporterTest {
         assertEquals("dungeon_f7", DungeonRouteImporter.secretRoutesBossFloor("m7boss"));
         assertNull(DungeonRouteImporter.secretRoutesBossFloor("f8boss"));
         assertNull(DungeonRouteImporter.secretRoutesBossFloor("Arrow-Trap-1"));
+    }
+
+    @Test
+    void secretRoutesFilesTooLargeToMatchActionsCheaplyAreRejected() {
+        String crowdedStep = "{\"Arrow-Trap-1\": [{\"locations\": " + positions(1025)
+                + ", \"secret\": {\"type\": \"interact\", \"location\": [2, 69, 2]}}]}";
+        assertThrows(IllegalArgumentException.class, () -> DungeonRouteImporter.parse(crowdedStep));
+
+        StringBuilder manySteps = new StringBuilder("{\"Arrow-Trap-1\": [");
+        for (int step = 0; step < 100; step++) {
+            if (step > 0) manySteps.append(',');
+            manySteps.append("{\"locations\": ").append(positions(1000))
+                    .append(", \"etherwarps\": ").append(positions(1000)).append('}');
+        }
+        manySteps.append("]}");
+        assertThrows(IllegalArgumentException.class, () -> DungeonRouteImporter.parse(manySteps.toString()));
+    }
+
+    private static String positions(int count) {
+        StringBuilder out = new StringBuilder("[");
+        for (int i = 0; i < count; i++) out.append(i == 0 ? "" : ",").append("[1, 69, ").append(i % 30).append(']');
+        return out.append(']').toString();
     }
 
     @Test
@@ -483,7 +506,7 @@ class DungeonRouteImporterTest {
         assertEquals(71, marker.y());
         assertEquals(3, marker.z());
         assertEquals(0x12AB34, marker.color());
-        assertEquals(com.babbur.waypointer.codec.WaypointCodec.Options.sanitizeLabel(
+        assertEquals(WaypointCodec.Options.sanitizeLabel(
                 "\u00A7aUseful\nmarker"), marker.name());
         assertEquals("", route.get(2).name());
 

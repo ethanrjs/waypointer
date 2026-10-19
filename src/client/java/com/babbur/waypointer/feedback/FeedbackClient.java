@@ -9,47 +9,23 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import com.google.gson.JsonParser;
 
 public final class FeedbackClient {
     public static final URI ENDPOINT = URI.create("https://waypointermod.com/api/feedback");
+
+    private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.NEVER).build();
 
     @FunctionalInterface
     interface Transport { CompletableFuture<Integer> send(HttpRequest request); }
     private final Transport transport;
 
     public FeedbackClient() {
-        this(request -> HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15))
-                .followRedirects(HttpClient.Redirect.NEVER).build()
-                .sendAsync(request, HttpResponse.BodyHandlers.discarding())
+        this(request -> HTTP.sendAsync(request, HttpResponse.BodyHandlers.discarding())
                 .thenApply(HttpResponse::statusCode));
     }
 
     FeedbackClient(Transport transport) { this.transport = transport; }
-
-    public record Capabilities(boolean available, boolean emailNotifications) {}
-
-    public CompletableFuture<Capabilities> capabilities() {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(ENDPOINT + "/capabilities"))
-                .timeout(Duration.ofSeconds(15)).GET().build();
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-                var response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                try (var body = response.body()) {
-                    byte[] bytes = body.readNBytes(8193);
-                    if (response.statusCode() != 200 || bytes.length > 8192)
-                        return new Capabilities(false, false);
-                    var json = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).getAsJsonObject();
-                    return new Capabilities(json.get("available").getAsBoolean(),
-                            json.get("emailNotifications").getAsBoolean());
-                }
-            } catch (Exception e) {
-                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-                return new Capabilities(false, false);
-            }
-        });
-    }
 
     public CompletableFuture<Void> send(FeedbackSubmission submission) {
         return CompletableFuture.supplyAsync(() -> request(submission))

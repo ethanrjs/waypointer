@@ -3,12 +3,6 @@ package com.babbur.waypointer.codec;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
-/**
- * Trailer-free basE91-style encoding for chat payloads. Its one-byte ASCII
- * alphabet excludes characters that split in chat, resemble URLs, or interfere
- * with surrounding prose and Markdown. It writes 13 or 14 bits per pair and
- * round-trips byte arrays of any length.
- */
 public final class AsciiStreamCodec {
 
     private static final Alphabet CURRENT = new Alphabet(

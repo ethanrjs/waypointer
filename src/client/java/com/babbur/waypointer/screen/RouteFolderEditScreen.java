@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.Locale;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
@@ -243,7 +244,7 @@ final class RouteFolderEditScreen extends Screen {
     }
 
     static String formatColor(int color) {
-        return String.format(java.util.Locale.ROOT, "#%06X", color & 0xFFFFFF);
+        return String.format(Locale.ROOT, "#%06X", color & 0xFFFFFF);
     }
 
     private int displayColor() {

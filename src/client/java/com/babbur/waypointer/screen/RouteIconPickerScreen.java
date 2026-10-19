@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.RouteIcon;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
@@ -249,7 +250,7 @@ public final class RouteIconPickerScreen extends Screen {
         if (hovered != null) {
             g.setTooltipForNextFrame(font, List.of(
                     new ItemStack(hovered.item()).getHoverName().getVisualOrderText(),
-                    Component.literal(hovered.id()).withStyle(net.minecraft.ChatFormatting.DARK_GRAY)
+                    Component.literal(hovered.id()).withStyle(ChatFormatting.DARK_GRAY)
                             .getVisualOrderText()), mouseX, mouseY);
         }
     }

@@ -1,7 +1,9 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.debug.DebugSignals;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 public final class CatalogPublicationManager {
     private CatalogPublicationManager() {
@@ -59,7 +61,7 @@ public final class CatalogPublicationManager {
                                 publication.routeId(), identity.publisherId(), route, payloadSha256);
                         return updated == null ? publication : updated;
                     } catch (RuntimeException failure) {
-                        com.babbur.waypointer.debug.DebugSignals.recordCatalogFailure("PATCH", 200, "local_record_error");
+                        DebugSignals.recordCatalogFailure("PATCH", 200, "local_record_error");
                         throw failure;
                     }
                 });
@@ -75,7 +77,7 @@ public final class CatalogPublicationManager {
     private static Throwable unwrap(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
+                || cause instanceof ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }

@@ -6,10 +6,15 @@ import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.util.MathUtil;
 
+import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 final class CatalogBrowserModel {
 
@@ -23,7 +28,7 @@ final class CatalogBrowserModel {
 
         Comparator<CatalogRouteSummary> comparator() {
             Comparator<CatalogRouteSummary> byTitle = Comparator.comparing(
-                    route -> route.title().toLowerCase(java.util.Locale.ROOT));
+                    route -> route.title().toLowerCase(Locale.ROOT));
             return switch (this) {
                 case RECOMMENDED -> (a, b) -> 0;
                 case POPULAR -> Comparator.comparingLong(CatalogRouteSummary::downloads).reversed()
@@ -171,8 +176,8 @@ final class CatalogBrowserModel {
     void filterInstalled(String apiRoot, ActiveGroupManager manager, boolean onlyNotInstalled) {
         if (filteringInstalled != onlyNotInstalled) scrollOffset = 0;
         filteringInstalled = onlyNotInstalled;
-        java.util.Map<String, CatalogInstallState.Action> actions = new java.util.HashMap<>();
-        java.util.function.Function<CatalogRouteSummary, CatalogInstallState.Action> action =
+        Map<String, CatalogInstallState.Action> actions = new HashMap<>();
+        Function<CatalogRouteSummary, CatalogInstallState.Action> action =
                 route -> actions.computeIfAbsent(route.id(),
                         id -> manager == null ? null : installState(apiRoot, manager, route).action());
         List<CatalogRouteSummary> filtered = loadedRoutes.stream()
@@ -185,7 +190,7 @@ final class CatalogBrowserModel {
                 })
                 .toList();
         List<CatalogRouteSummary> visible = sort == Sort.RECOMMENDED
-                ? CatalogRecommendation.recommended(filtered, action, here, !query.isBlank(), java.time.Instant.now())
+                ? CatalogRecommendation.recommended(filtered, action, here, !query.isBlank(), Instant.now())
                 : CatalogRecommendation.installedLast(filtered.stream().sorted(sort.comparator()).toList(), action);
         if (routes.equals(visible)) return;
         routes = visible;

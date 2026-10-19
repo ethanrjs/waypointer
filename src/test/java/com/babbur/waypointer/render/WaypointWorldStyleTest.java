@@ -6,6 +6,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointStyle;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.world.phys.Vec3;
@@ -49,6 +50,22 @@ class WaypointWorldStyleTest {
                 new Vec3(1_000_000, 0, 0), config);
         assertTrue(vertices.x.isEmpty());
     }
+    @Test
+    void dashedConnectorsShareOneBudgetPerPassAndFallBackToSolidLines() {
+        var config = new WaypointerConfig(); config.setRouteLineDashed(true);
+        var vertices = new Recording();
+        var dashes = new WaypointWorldRenderer.DashBudget(3000);
+        Vec3 far = new Vec3(1_000_000, 0, 0);
+        WaypointWorldRenderer.emitStyledConnector(vertices, new PoseStack(), Vec3.ZERO, far, config, dashes);
+        assertEquals(2 * WaypointWorldRenderer.MAX_DASHES_PER_CONNECTOR, vertices.x.size());
+        vertices.x.clear();
+        WaypointWorldRenderer.emitStyledConnector(vertices, new PoseStack(), Vec3.ZERO, far, config, dashes);
+        assertEquals(2 * (3000 - WaypointWorldRenderer.MAX_DASHES_PER_CONNECTOR), vertices.x.size());
+        vertices.x.clear();
+        WaypointWorldRenderer.emitStyledConnector(vertices, new PoseStack(), Vec3.ZERO, far, config, dashes);
+        assertEquals(List.of(0f, 1_000_000f), vertices.x, "a spent budget draws a solid line");
+    }
+
     @Test
     void pointOverrideCanEnableGeometryAndDistanceCrossingsInvalidateRetainedVisibility() {
         WaypointerConfig config = new WaypointerConfig();
@@ -120,7 +137,7 @@ class WaypointWorldStyleTest {
     @Test
     void explicitDungeonRouteStyleOverridesTheInheritedDungeonLineToggle() {
         WaypointerConfig config = new WaypointerConfig();
-        com.babbur.waypointer.dungeon.config.DungeonConfig dungeon = new com.babbur.waypointer.dungeon.config.DungeonConfig();
+        DungeonConfig dungeon = new DungeonConfig();
         dungeon.setShowDungeonRouteLines(false);
         WaypointGroup group = WaypointGroup.create("Dungeon", "dungeon");
         group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);

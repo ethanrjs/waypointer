@@ -2,8 +2,14 @@ package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.ArgumentBuilder;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.tree.CommandNode;
 import com.babbur.waypointer.Waypointer;
+import com.mojang.brigadier.tree.LiteralCommandNode;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
@@ -83,7 +89,7 @@ public final class WaypointerCommandSuggestionOverride {
                 CommandNode<ClientSuggestionProvider> aliasNode = targetRoot.getChild(alias);
                 if (aliasNode != null && aliasNode.getRedirect() == root && aliasNode.getChildren().isEmpty()) continue;
                 removeChild(targetRoot, alias);
-                targetRoot.addChild(com.mojang.brigadier.builder.LiteralArgumentBuilder
+                targetRoot.addChild(LiteralArgumentBuilder
                         .<ClientSuggestionProvider>literal(alias)
                         .executes(ctx -> 0)
                         .redirect(root)
@@ -96,16 +102,16 @@ public final class WaypointerCommandSuggestionOverride {
         }
     }
 
-    private static final java.util.List<String> ALIASES = java.util.List.of("waypointer", "wptr");
+    private static final List<String> ALIASES = List.of("waypointer", "wptr");
 
     private static CommandNode<ClientSuggestionProvider> installRoot(
             CommandNode<ClientSuggestionProvider> targetRoot, String name,
             CommandNode<ClientSuggestionProvider> ours) throws ReflectiveOperationException {
         CommandNode<ClientSuggestionProvider> existing = targetRoot.getChild(name);
-        java.util.List<CommandNode<ClientSuggestionProvider>> serverWords = new java.util.ArrayList<>();
+        List<CommandNode<ClientSuggestionProvider>> serverWords = new ArrayList<>();
         if (existing != null) {
             for (CommandNode<ClientSuggestionProvider> child : existing.getChildren()) {
-                if (child instanceof com.mojang.brigadier.tree.LiteralCommandNode<ClientSuggestionProvider>
+                if (child instanceof LiteralCommandNode<ClientSuggestionProvider>
                         && ours.getChild(child.getName()) == null) {
                     serverWords.add(child);
                 }
@@ -120,9 +126,9 @@ public final class WaypointerCommandSuggestionOverride {
 
     private static void removeChild(CommandNode<?> parent, String name) throws ReflectiveOperationException {
         for (String field : new String[]{"children", "literals", "arguments"}) {
-            java.lang.reflect.Field map = CommandNode.class.getDeclaredField(field);
+            Field map = CommandNode.class.getDeclaredField(field);
             map.setAccessible(true);
-            ((java.util.Map<?, ?>) map.get(parent)).remove(name);
+            ((Map<?, ?>) map.get(parent)).remove(name);
         }
     }
 

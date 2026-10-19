@@ -13,6 +13,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import java.util.function.Predicate;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -131,7 +132,7 @@ public final class TracerRenderer implements HudElement {
                                               double playerX, double playerY, double playerZ,
                                               double nearHideDistanceSq, boolean hideReached,
                                               double maxDistanceSq,
-                                              java.util.function.Predicate<Waypoint> eligible) {
+                                              Predicate<Waypoint> eligible) {
         if (group == null || group.loadMode() != WaypointGroup.LoadMode.STATIC) return null;
 
         Waypoint nearest = null;
@@ -157,6 +158,15 @@ public final class TracerRenderer implements HudElement {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
+        long started = RenderCost.start();
+        try {
+            extractTracers(g);
+        } finally {
+            RenderCost.stop(started);
+        }
+    }
+
+    private void extractTracers(GuiGraphicsExtractor g) {
         var groups = manager.activeGroups();
         for (WaypointGroup group : groups) WaypointSkipFade.observe(group, config);
         if (groups.isEmpty()) return;

@@ -10,7 +10,9 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.contents.PlainTextContents;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,7 +21,11 @@ public final class WaypointerContributorBadge {
             new Contributor("Babbur", UUID.fromString("d0d70e3d-2475-4001-b27e-16b5118e5534"),
                     0xAA0000),
             new Contributor("acidangels", UUID.fromString("83ccd327-6c5c-49df-a826-a59b4b2e384b"),
-                    0x850C5A));
+                    0x850C5A),
+            new Contributor("aquakura", UUID.fromString("c886048f-a6a9-4b6d-a600-d5841a97d9c4"),
+                    0xFF9EFC),
+            new Contributor("rainebowbit", UUID.fromString("8e7ffc41-9479-4dc0-b4b2-d79ef7397b72"),
+                    0xAA0000));
     private static final String HOVER_TEXT = "This user is a contributor of Waypointer";
 
     private WaypointerContributorBadge() {
@@ -52,7 +58,7 @@ public final class WaypointerContributorBadge {
                 ? replace(component, contributor.color())
                 : prependBadge(component, contributor.color());
     }
-    private static final java.util.Map<Component, Component> TAB_NAMES = new java.util.IdentityHashMap<>();
+    private static final Map<Component, Component> TAB_NAMES = new IdentityHashMap<>();
 
     public static Component applyTabName(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;

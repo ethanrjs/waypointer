@@ -20,12 +20,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * Exports native and third-party shares; compatibility JSON stays outside {@link WaypointCodec}.
- */
 public final class WaypointExportCodec {
 
-    /** Capability flags show which settings survive export to each format. */
     public enum Target {
         WAYPOINTER("Waypointer", true, true, true, true, true, true, true),
         SKYBLOCKER("Skyblocker", true, true, false, false, false, false, false),
@@ -70,7 +66,6 @@ public final class WaypointExportCodec {
 
         public boolean supportsLabel()       { return supportsLabel; }
 
-        /** Whether the sender may remove the route's island. */
         public boolean supportsIslandChoice() { return supportsIslandChoice; }
 
         public Target next() {
@@ -85,7 +80,7 @@ public final class WaypointExportCodec {
                     .includeRadii(supportsRadii && opts.includeRadii)
                     .includeWaypointFlags(supportsWaypointFlags && opts.includeWaypointFlags)
                     .includeGroupMeta(supportsGroupMeta && opts.includeGroupMeta)
-                    // Formats that cannot drop an island must always keep it.
+
                     .includeZone(!supportsIslandChoice || opts.includeZone)
                     .label(supportsLabel ? opts.label : "")
                     .build();
@@ -128,7 +123,6 @@ public final class WaypointExportCodec {
             "dark_auction", "crystal_hollows", "dungeon", "kuudra", "mineshaft",
             "lotus_atoll", "safari", "unknown");
 
-    /** Skytils 1.x {@code SkyblockIsland.mode} values at the supported upstream revision. */
     private static final Set<String> SKYTILS_RECIPIENT_ISLAND_IDS = Set.of(
             "dynamic", "garden", "combat_1", "crimson_isle", "combat_3", "fishing_1",
             "mining_1", "mining_2", "mining_3", "crystal_hollows", "farming_1",
@@ -157,7 +151,7 @@ public final class WaypointExportCodec {
                 throw new IllegalArgumentException("Structure-relative routes require Waypointer export; "
                         + target.displayName() + " cannot calibrate their coordinates");
             }
-            // The structure zone identifies the coordinate frame and must travel with its offsets.
+
             safeOpts = safeOpts.toBuilder().includeZone(true).build();
         }
         return switch (target) {

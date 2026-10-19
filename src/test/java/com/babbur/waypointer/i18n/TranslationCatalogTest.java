@@ -16,11 +16,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -104,7 +106,7 @@ class TranslationCatalogTest {
         expected.add("en_us");
         Set<String> actual = localeFiles().stream()
                 .map(TranslationCatalogTest::localeName)
-                .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+                .collect(Collectors.toCollection(TreeSet::new));
         assertEquals(expected, actual,
                 "language directory must contain the 142 Mojang asset locales plus en_us");
     }
@@ -123,7 +125,7 @@ class TranslationCatalogTest {
         assertEquals("Too long for chat", englishValue);
         for (Path localeFile : localeFiles()) {
             String value = readCatalog(localeFile).getOrDefault(key, englishValue);
-            assertFalse(value.toLowerCase(java.util.Locale.ROOT).contains("discord"),
+            assertFalse(value.toLowerCase(Locale.ROOT).contains("discord"),
                     localeName(localeFile) + " still suggests Discord for " + key);
         }
     }

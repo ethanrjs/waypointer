@@ -10,6 +10,8 @@ import com.google.gson.annotations.SerializedName;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointStyle;
+import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -26,6 +28,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import static com.babbur.waypointer.util.MathUtil.clamp;
 
@@ -58,7 +63,9 @@ public final class WaypointerConfig {
     private String preferredStyleId = "";
     private Map<String, WaypointStyle> crystalHollowsStyles = new LinkedHashMap<>();
     transient boolean resolvedStyleSnapshot;
-    final transient Map<java.util.List<WaypointStyle>, WaypointerConfig> resolvedStyles = new LinkedHashMap<>();
+    final transient Map<List<WaypointStyle>, WaypointerConfig> resolvedStyles = new LinkedHashMap<>();
+    final transient Map<WaypointGroup, WaypointStyles.GroupStyles> groupStyles = new ConcurrentHashMap<>();
+    transient volatile int styleGeneration;
     private double routeMinRenderDistance = 0.0;
     private double routeMaxRenderDistance = 0.0;
     private double routeLineWidth = 0.0;
@@ -425,8 +432,14 @@ public final class WaypointerConfig {
         }
     }
 
-    public void save() {
+    void invalidateResolvedStyles() {
         resolvedStyles.clear();
+        groupStyles.clear();
+        styleGeneration++;
+    }
+
+    public void save() {
+        invalidateResolvedStyles();
         if (saver == null || writesBlockedForFutureSchema) return;
         pendingSnapshotJson = GSON.toJson(this);
         saver.markDirty();
@@ -475,24 +488,18 @@ public final class WaypointerConfig {
         waypointIcon = waypointIcon();
     }
     public WaypointStyle namedStyle(String id) { return namedStyles.getOrDefault(id, WaypointStyle.EMPTY); }
-    public Map<String, WaypointStyle> namedStyles() { return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(namedStyles)); }
+    public Map<String, WaypointStyle> namedStyles() { return Collections.unmodifiableMap(new LinkedHashMap<>(namedStyles)); }
     public String preferredStyleId() { return preferredStyleId; }
     public void setPreferredStyleId(String id) { preferredStyleId = id == null ? "" : id.strip(); save(); }
     public void putNamedStyle(String id, WaypointStyle style) {
         if (id == null || id.isBlank() || id.length() > 80 || style == null) return;
         namedStyles.put(id.strip(), style); save();
     }
-    public void removeNamedStyle(String id) {
-        namedStyles.remove(id);
-        if (preferredStyleId.equals(id)) preferredStyleId = "";
-        save();
-    }
-
     public WaypointStyle zoneStyle(String zoneKey) {
         return zoneKey == null ? WaypointStyle.EMPTY : zoneStyles.getOrDefault(zoneKey, WaypointStyle.EMPTY);
     }
     public Map<String, WaypointStyle> zoneStyles() {
-        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(zoneStyles));
+        return Collections.unmodifiableMap(new LinkedHashMap<>(zoneStyles));
     }
     public void setZoneStyle(String zoneKey, WaypointStyle style) {
         if (zoneKey == null || zoneKey.isBlank() || zoneKey.length() > 80) return;
@@ -569,17 +576,17 @@ public final class WaypointerConfig {
 
     public static final String CUSTOM_ICON_PREFIX = "CUSTOM:";
     public static final int CUSTOM_ICON_SIZE = 9;
-    private static final java.util.regex.Pattern CUSTOM_ICON = java.util.regex.Pattern.compile(
+    private static final Pattern CUSTOM_ICON = Pattern.compile(
             "CUSTOM:[01]{" + (CUSTOM_ICON_SIZE * CUSTOM_ICON_SIZE) + "}");
     public static boolean isValidWaypointIcon(String icon) {
-        return icon != null && (java.util.Set.of("NONE", "DIAMOND", "CIRCLE", "SQUARE", "STAR").contains(icon)
+        return icon != null && (Set.of("NONE", "DIAMOND", "CIRCLE", "SQUARE", "STAR").contains(icon)
                 || CUSTOM_ICON.matcher(icon).matches());
     }
     public String waypointIcon() {
         return isValidWaypointIcon(waypointIcon) ? waypointIcon : "NONE";
     }
     public void setWaypointIcon(String value) {
-        waypointIcon = value == null ? "NONE" : value.toUpperCase(java.util.Locale.ROOT);
+        waypointIcon = value == null ? "NONE" : value.toUpperCase(Locale.ROOT);
         waypointIcon = waypointIcon();
         save();
     }

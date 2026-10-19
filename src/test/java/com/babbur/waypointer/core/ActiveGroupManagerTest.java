@@ -42,6 +42,27 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void hidingWaypointsEmptiesTheActiveRoutesWithoutChangingThemOrSaving() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = new WaypointGroup("route", "Route", "hub");
+        manager.add(route);
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        manager.setWaypointsHidden(true);
+        assertTrue(manager.activeGroups().isEmpty());
+        assertTrue(route.enabled());
+        manager.isolateRouteForEditing(route);
+        assertEquals(List.of(route), manager.activeGroups(), "the route being edited still shows");
+        manager.isolateRouteForEditing(null);
+
+        manager.setWaypointsHidden(false);
+        assertEquals(List.of(route), manager.activeGroups());
+        assertEquals(0, persistentChanges.get());
+    }
+
+    @Test
     void persistentListenersIgnoreTransientChangesWhileDataListenersSeeAllChanges() {
         ActiveGroupManager manager = new ActiveGroupManager();
         AtomicInteger allChanges = new AtomicInteger();

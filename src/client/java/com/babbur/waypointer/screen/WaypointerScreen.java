@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.babbur.waypointer.i18n.Counts;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
@@ -23,6 +24,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -753,7 +755,7 @@ public final class WaypointerScreen extends Screen {
         return layout();
     }
 
-    net.minecraft.client.gui.Font routeListFont() {
+    Font routeListFont() {
         return font;
     }
 
@@ -1049,7 +1051,7 @@ public final class WaypointerScreen extends Screen {
         boolean fits = restoreStructuresBtn == null || restoreStructuresBtn.getX() > width / 2 + 60;
         return fits && config.crystalHollowsHideStructuresFolder() && selectedZoneId != null
                 && ("crystal_hollows".equals(selectedZoneId)
-                    || com.babbur.waypointer.crystal.CrystalHollowsStructureZones.isStructureZone(selectedZoneId));
+                    || CrystalHollowsStructureZones.isStructureZone(selectedZoneId));
     }
 
     private void restoreStructuresFolder() {

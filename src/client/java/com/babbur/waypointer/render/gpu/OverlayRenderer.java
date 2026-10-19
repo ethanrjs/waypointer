@@ -6,6 +6,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.render.HappySnowmanSession;
+import com.babbur.waypointer.render.RenderCost;
 import com.babbur.waypointer.render.WaypointPaintTextureCache;
 import com.babbur.waypointer.render.WaypointRenderer;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -44,6 +45,7 @@ public final class OverlayRenderer implements AutoCloseable {
     private boolean pendingPostDraw;
     private boolean postHookObserved;
     private int postHookMissedFrames;
+    private long fullRebuilds;
 
     private OverlayRenderer(WaypointRenderer worldRenderer, ActiveGroupManager manager,
                             WaypointerConfig config,
@@ -77,6 +79,14 @@ public final class OverlayRenderer implements AutoCloseable {
 
     public static OverlayRenderer activeOrNull() {
         return active;
+    }
+
+    public int lastDrawCalls() {
+        return pass.lastDrawCalls();
+    }
+
+    public long fullRebuilds() {
+        return fullRebuilds;
     }
 
     public OverlayRendererOptions options() {
@@ -114,10 +124,13 @@ public final class OverlayRenderer implements AutoCloseable {
 
     public void onEndMain(LevelRenderContext ctx) {
         if (!effectiveCompositing.usesGpuRenderer()) return;
+        long started = RenderCost.start();
         try {
             renderFrame(ctx);
         } catch (RuntimeException | LinkageError failure) {
             tripCircuitBreaker("in-world pass", failure);
+        } finally {
+            RenderCost.stop(started);
         }
     }
 
@@ -186,6 +199,7 @@ public final class OverlayRenderer implements AutoCloseable {
                 worldVisibilityFingerprint, blockShapeFingerprint,
                 HappySnowmanSession.facePaint());
         boolean fullRebuild = !key.equals(lastKey);
+        if (fullRebuild) fullRebuilds++;
         if (fullRebuild && options.debugLogging()) {
             Waypointer.LOGGER.info("[overlay] rebuild: {}", lastKey == SceneKey.NONE ? "first frame"
                     : key.hash() != lastKey.hash() ? "scene or visibility changed" : "mesh origin changed");
@@ -214,11 +228,14 @@ public final class OverlayRenderer implements AutoCloseable {
         postHookObserved = true;
         if (!pendingPostDraw || pendingView == null || pendingKey == null) return;
         pendingPostDraw = false;
+        long started = RenderCost.start();
         try {
             pass.draw(OverlayCompositing.POST_WORLD, pendingView, pendingKey, meshes, pipelines,
                     depthSnapshot.isValid() ? depthSnapshot.view() : null);
         } catch (RuntimeException | LinkageError failure) {
             tripCircuitBreaker("post-world pass", failure);
+        } finally {
+            RenderCost.stop(started);
         }
     }
 

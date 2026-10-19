@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen.preview;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -91,8 +92,8 @@ class RoutePreviewSceneTest {
         group.add(Waypoint.at(0, 0, 0));
         WaypointerConfig config = new WaypointerConfig();
         config.setEnableFeatureBloat(true);
-        var routePaint = com.babbur.waypointer.core.WaypointPaint.solid(0x123456);
-        var defaultPaint = com.babbur.waypointer.core.WaypointPaint.solid(0x654321);
+        var routePaint = WaypointPaint.solid(0x123456);
+        var defaultPaint = WaypointPaint.solid(0x654321);
         group.setPaint(routePaint);
         config.setWaypointPainterDefaultPaint(defaultPaint);
 
@@ -120,7 +121,7 @@ class RoutePreviewSceneTest {
         assertEquals(defaultPaint, RoutePreviewScene.effectivePaint(group, config),
                 "the painted style borrows the default paint even when the route opts out");
         config.setWaypointPainterDefaultPaint(null);
-        assertEquals(com.babbur.waypointer.core.WaypointPaint.missing(),
+        assertEquals(WaypointPaint.missing(),
                 RoutePreviewScene.effectivePaint(group, config),
                 "a painted style without any paint shows the missing texture");
     }

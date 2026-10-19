@@ -47,7 +47,7 @@ class CatalogJsonTest {
 
     @Test
     void previewRejectsMalformedPoints() {
-        for (String bad : java.util.List.of(
+        for (String bad : List.of(
                 "{\"groups\":[{\"points\":[[1,2,3,4]]}]}",
                 "{\"groups\":[{\"points\":[[1,2,3,4,\"x\"]]}]}",
                 "{\"groups\":[{\"points\":[[1.5,2,3,4,0]]}]}",
@@ -59,6 +59,23 @@ class CatalogJsonTest {
                 "{\"truncated\":true,\"groups\":[{\"kind\":\"dungeon\",\"points\":[[0,-60,0,0,0]]}]}");
         assertTrue(dungeon.truncated());
         assertTrue(dungeon.groups().getFirst().dungeon());
+    }
+
+    @Test
+    void crystalHollowsStructureRoutesShowJustTheStructureName() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv",
+                  "title":"City loot",
+                  "zoneId":"crystal_hollows_structure_lost_precursor_city",
+                  "zoneLabel":"Crystal Hollows Structure Lost Precursor City",
+                  "waypointCount":4,
+                  "groupCount":1,
+                  "codecVersion":9
+                }],"hasMore":false}
+                """);
+
+        assertEquals("Lost Precursor City", page.routes().getFirst().zoneLabel());
     }
 
     @Test
@@ -85,7 +102,7 @@ class CatalogJsonTest {
                 """.replace("\"x\".repeat(40)", "\"" + "x".repeat(40) + "\""));
 
         CatalogRouteSummary tagged = page.routes().getFirst();
-        assertEquals(java.util.List.of("mining-cult", "featured"), tagged.tags());
+        assertEquals(List.of("mining-cult", "featured"), tagged.tags());
         assertTrue(tagged.hasTag(CatalogRouteSummary.TAG_MINING_CULT));
         assertTrue(page.routes().get(1).tags().isEmpty(), "older servers send no tags");
     }

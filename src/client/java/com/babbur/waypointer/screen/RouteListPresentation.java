@@ -4,6 +4,7 @@ import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.i18n.Counts;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -27,7 +28,7 @@ public final class RouteListPresentation {
     }
 
     static Component waypointCount(int count) {
-        return com.babbur.waypointer.i18n.Counts.of("waypoint", count);
+        return Counts.of("waypoint", count);
     }
 
     static String joinParts(List<String> parts) {

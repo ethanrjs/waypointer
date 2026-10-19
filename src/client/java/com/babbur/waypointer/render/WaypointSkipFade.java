@@ -9,11 +9,9 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.function.IntFunction;
 
 public final class WaypointSkipFade {
-    private static final WeakHashMap<WaypointGroup, WaypointSkipFade> STATES = new WeakHashMap<>();
     private int current;
     private int currentParent;
     private int outgoing = -1;
@@ -57,15 +55,15 @@ public final class WaypointSkipFade {
         int durationMs = currentStyle.waypointSkipFadeMs();
         if (durationMs <= 0 || group.loadMode() != WaypointGroup.LoadMode.SEQUENCE
                 || group.focusedVisibleIndex() >= 0) {
-            STATES.remove(group);
+            group.setFadeState(null);
             return null;
         }
-        WaypointSkipFade fade = STATES.get(group);
+        WaypointSkipFade fade = get(group);
         int next = group.currentIndex();
         Waypoint waypoint = group.current();
         if (fade == null) {
             fade = new WaypointSkipFade();
-            STATES.put(group, fade);
+            group.setFadeState(fade);
             fade.current = next;
         } else {
             fade.advance(now);
@@ -190,7 +188,9 @@ public final class WaypointSkipFade {
         return beamAlpha(index, normal, visible);
     }
 
-    public static WaypointSkipFade get(WaypointGroup group) { return STATES.get(group); }
+    public static WaypointSkipFade get(WaypointGroup group) {
+        return group.fadeState() instanceof WaypointSkipFade fade ? fade : null;
+    }
 
     public boolean active() { return outgoing >= 0 && outgoing < size && progress < 1; }
     public int outgoing() { return active() ? outgoing : -1; }

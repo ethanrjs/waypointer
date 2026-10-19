@@ -1,5 +1,6 @@
 package com.babbur.waypointer.codec;
 
+import com.babbur.waypointer.config.V10ConfigBodyCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -10,6 +11,7 @@ import com.babbur.waypointer.dungeon.data.V10DungeonBodyCodec;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public final class UniversalShareCodec {
 
@@ -19,7 +21,6 @@ public final class UniversalShareCodec {
         Type type();
     }
 
-    /** Catalog route reference from a {@code WP:} code or link. Decoding returns the id; fetching requires network access. */
     public record CatalogReference(String routeId) implements Decoded {
         public CatalogReference {
             if (!V10CatalogReferenceCodec.isValidRouteId(routeId)) {
@@ -60,13 +61,13 @@ public final class UniversalShareCodec {
 
     private UniversalShareCodec() {}
 
-    public static String encodeWaypoints(List<com.babbur.waypointer.core.WaypointGroup> groups,
+    public static String encodeWaypoints(List<WaypointGroup> groups,
                                          WaypointCodec.Options options) {
         return WaypointCodec.encode(groups, options);
     }
 
     public static String encodeWaypoints(
-            List<com.babbur.waypointer.core.WaypointGroup> groups,
+            List<WaypointGroup> groups,
             WaypointCodec.Options options,
             RouteLibraryMetadata metadata) {
         return RouteLibraryCodec.encode(groups, options, metadata);
@@ -88,7 +89,6 @@ public final class UniversalShareCodec {
         }
     }
 
-    /** Encodes a catalog route id as a {@code WP:} reference code. */
     public static String encodeCatalogReference(String routeId) {
         try {
             return WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId);
@@ -101,7 +101,7 @@ public final class UniversalShareCodec {
         if (payload == null) throw new IllegalArgumentException("null payload");
         WaypointImporter.enforceTextPayloadLimit(payload);
         String normalized = WaypointImporter.stripMarkdownCodeFence(payload);
-        java.util.Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(normalized);
+        Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(normalized);
         if (linkedRoute.isPresent()) {
             return new CatalogReference(linkedRoute.get());
         }
@@ -135,8 +135,7 @@ public final class UniversalShareCodec {
         try {
             return V10Transport.probe(transport);
         } catch (IOException | IllegalArgumentException uncommitted) {
-            // The nibble is only a cheap filter; canonical text and the checksum
-            // commit the dispatch.
+
             return null;
         }
     }
@@ -149,7 +148,7 @@ public final class UniversalShareCodec {
                 return new CatalogReference(V10CatalogReferenceCodec.decode(frame));
             }
             return switch (frame.contentKind()) {
-                case com.babbur.waypointer.config.V10ConfigBodyCodec.CONTENT_KIND ->
+                case V10ConfigBodyCodec.CONTENT_KIND ->
                         new Configuration(V10ConfigCodec.decode(frame));
                 case V10DungeonBodyCodec.CONTENT_KIND -> {
                     V10DungeonBodyCodec.Decoded decoded = V10DungeonCodec.decode(frame);

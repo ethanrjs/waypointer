@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.zip.Deflater;
 
-/** Wire-v10 kind 2: one ordered list of integer block coordinates and nothing else. */
 final class V10BareRouteCodec {
 
     static final int SEMANTIC_HEADER = 0x2A;
@@ -33,8 +32,7 @@ final class V10BareRouteCodec {
         if (group == null || options == null) return false;
         if (!options.isBareCoordinateProjection()) return false;
         if (group.routeKind() != WaypointGroup.RouteKind.REGULAR) return false;
-        // This preset explicitly projects every non-coordinate field away,
-        // including structural flags and precision.
+
         return group.size() <= MAX_WAYPOINTS;
     }
 
@@ -53,8 +51,6 @@ final class V10BareRouteCodec {
                     V10BareEntropyCodec.encodeQuotient(coordinates));
             if (quotient.compareTo(best) < 0) best = quotient;
         }
-
-        // Descriptor 0 remains reserved.
 
         byte[] deltaSemantic = encodeDeltaSemantic(coordinates);
         V10Transport.Outbound defaultDeflate = V10Transport.deflated(

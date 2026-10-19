@@ -2,6 +2,7 @@ package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
+import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.LiteralCommandNode;
@@ -31,8 +32,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -40,8 +39,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
-
 class WaypointerCommandTreeTest {
 
     @Test
@@ -367,7 +364,7 @@ class WaypointerCommandTreeTest {
 
         assertEquals(3, WaypointerCommandSuggestions.suggestWaypointLabels(route, builder));
         assertEquals(List.of("1", "1.1", "2"), builder.build().getList().stream()
-                .map(com.mojang.brigadier.suggestion.Suggestion::getText).toList());
+                .map(Suggestion::getText).toList());
     }
 
     @Test

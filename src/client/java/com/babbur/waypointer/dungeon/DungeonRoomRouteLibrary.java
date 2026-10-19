@@ -2,6 +2,9 @@ package com.babbur.waypointer.dungeon;
 
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 
@@ -9,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public final class DungeonRoomRouteLibrary {
 
@@ -39,7 +43,7 @@ public final class DungeonRoomRouteLibrary {
 
     static boolean isProjectedMirror(WaypointGroup group) {
         return DungeonRoomRouteProjection.isGeneratedGroup(group)
-                || com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync.isGeneratedGroup(group);
+                || CrystalHollowsStructureRouteSync.isGeneratedGroup(group);
     }
 
     public static WaypointGroup storedSourceForMirror(ActiveGroupManager manager,
@@ -55,8 +59,8 @@ public final class DungeonRoomRouteLibrary {
 
     private static WaypointGroup mirrorOf(ActiveGroupManager manager, WaypointGroup source) {
         if (manager == null || source == null) return null;
-        if (com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes.isStructureRoute(source)) {
-            return manager.get(com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync
+        if (CrystalHollowsStructureRoutes.isStructureRoute(source)) {
+            return manager.get(CrystalHollowsStructureRouteSync
                     .generatedId(source.id()));
         }
         return manager.get(DungeonRoomRouteProjection.generatedGroupId(source.zoneId()));
@@ -124,14 +128,14 @@ public final class DungeonRoomRouteLibrary {
         List<WaypointGroup> imported = new ArrayList<>();
         for (WaypointGroup route : routes) {
             if (route == null || route.isEmpty()) continue;
-            if (!com.babbur.waypointer.core.Zone.isCatacombsFloor(route.zoneId())) {
+            if (!Zone.isCatacombsFloor(route.zoneId())) {
                 route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             }
             imported.add(route);
         }
         if (imported.isEmpty()) return List.of();
         var importedRooms = imported.stream().map(WaypointGroup::zoneId)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
         DungeonRoomRouteSync.batched(() -> {
             for (WaypointGroup existing : manager.allGroups()) {
                 if (!existing.temp() && !existing.runtimeOnly()

@@ -18,6 +18,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.util.FormattedCharSequence;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
@@ -340,12 +341,12 @@ public final class FeedbackScreen extends Screen {
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
-        if (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
+        if (event.key() == GLFW.GLFW_KEY_TAB) {
             List<AbstractWidget> controls = children().stream()
                     .filter(child -> child instanceof AbstractWidget)
                     .map(child -> (AbstractWidget) child).filter(widget -> widget.active).toList();
             if (!controls.isEmpty()) {
-                int direction = (event.modifiers() & org.lwjgl.glfw.GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
+                int direction = (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
                 int index = controls.indexOf(getFocused());
                 AbstractWidget next = controls.get(Math.floorMod(index + direction, controls.size()));
                 for (BodyWidget row : bodyWidgets) {
@@ -360,9 +361,9 @@ public final class FeedbackScreen extends Screen {
                 return true;
             }
         }
-        if (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN
-                || event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP) {
-            scroll += event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN ? bottom - TOP : TOP - bottom;
+        if (event.key() == GLFW.GLFW_KEY_PAGE_DOWN
+                || event.key() == GLFW.GLFW_KEY_PAGE_UP) {
+            scroll += event.key() == GLFW.GLFW_KEY_PAGE_DOWN ? bottom - TOP : TOP - bottom;
             positionBody();
             return true;
         }

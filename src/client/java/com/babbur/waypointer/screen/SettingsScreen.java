@@ -1,7 +1,9 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
@@ -41,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -165,7 +168,7 @@ public final class SettingsScreen extends Screen {
         return new SettingsScreen(parent, config, dungeonConfig, Objects.requireNonNull(target));
     }
 
-    public static boolean openRouteAppearance(com.babbur.waypointer.core.ActiveGroupManager manager,
+    public static boolean openRouteAppearance(ActiveGroupManager manager,
                                               WaypointerConfig config, WaypointGroup route) {
         AppearanceTarget target = AppearanceTarget.route(manager, config, route, manager::fireDataChanged);
         if (target == null) return false;
@@ -175,7 +178,7 @@ public final class SettingsScreen extends Screen {
         return true;
     }
 
-    public static boolean openWaypointAppearance(com.babbur.waypointer.core.ActiveGroupManager manager,
+    public static boolean openWaypointAppearance(ActiveGroupManager manager,
                                                  WaypointerConfig config, WaypointGroup route, int index) {
         AppearanceTarget target = AppearanceTarget.waypoint(manager, config, route, index, manager::fireDataChanged);
         if (target == null) return false;
@@ -203,7 +206,7 @@ public final class SettingsScreen extends Screen {
         });
     }
 
-    public static List<String> appearanceZoneKeys(com.babbur.waypointer.core.ActiveGroupManager manager,
+    public static List<String> appearanceZoneKeys(ActiveGroupManager manager,
                                                   WaypointerConfig config) {
         List<String> routeZones = manager.allGroups().stream()
                 .filter(group -> !group.temp() && !group.runtimeOnly())
@@ -1286,7 +1289,8 @@ public final class SettingsScreen extends Screen {
             minecraft.keyboardHandler.setClipboard(code);
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.copied"), GuiTokens.SUCCESS));
-        } catch (Throwable t) {
+        } catch (RuntimeException t) {
+            Waypointer.LOGGER.warn("Could not copy the settings code", t);
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.copy_failed"), GuiTokens.DANGER));
         }
@@ -1296,7 +1300,7 @@ public final class SettingsScreen extends Screen {
         String text;
         try {
             text = minecraft.keyboardHandler.getClipboard();
-        } catch (Throwable t) {
+        } catch (RuntimeException t) {
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.clipboard_failed"), GuiTokens.DANGER));
             return;
@@ -1410,7 +1414,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private void confirmPreset(String nameKey, int changed,
-                               java.util.function.Consumer<Boolean> onResult) {
+                               Consumer<Boolean> onResult) {
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     onResult.accept(confirmed);
@@ -1495,7 +1499,7 @@ public final class SettingsScreen extends Screen {
         Component room = target.roomName();
         String label = room == null ? target.name().getString()
                 : room.getString() + " \u00b7 " + target.name().getString();
-        String plain = net.minecraft.ChatFormatting.stripFormatting(label);
+        String plain = ChatFormatting.stripFormatting(label);
         String name = font.plainSubstrByWidth(plain == null ? "" : plain,
                 Math.max(20, PAD_OUTER + maxWidth - textX - 6));
         int right = textX + font.width(name) + 5;

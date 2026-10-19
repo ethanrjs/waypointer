@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
@@ -16,10 +17,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
-/** Canonical wire-v10 kind-4 body for flattened WPD schema-2 dungeon collections. */
 public final class V10DungeonBodyCodec {
 
-    /** Bounded collection-level coordinate portfolios used by final-wire scoring. */
     enum CoordinatePolicy {
         LOCAL_RAW,
         FORCE_DELTA,
@@ -36,7 +35,7 @@ public final class V10DungeonBodyCodec {
     public static final int MAX_STRING_BYTES = 256;
     public static final int MAX_TOTAL_STRING_BYTES = 1024 * 1024;
     public static final int MAX_ROUTE_BODY_BYTES = 1024 * 1024;
-    /** Frame limit minus the two-byte V10 checksum. */
+
     public static final int MAX_SEMANTIC_BYTES = 2 * 1024 * 1024 - 2;
 
     private static final long MAX_WORK_UNITS = (long) MAX_SEMANTIC_BYTES
@@ -56,7 +55,7 @@ public final class V10DungeonBodyCodec {
     private static final int WAYPOINT_FLAG_USER_FLAGS = 1 << 2;
     private static final int WAYPOINT_FLAG_RADIUS = 1 << 3;
     private static final int WAYPOINT_FLAG_PRECISE = 1 << 4;
-    /** Preserves unusual legacy WPD integer colors outside the ordinary RGB range. */
+
     private static final int WAYPOINT_FLAG_EXTENDED_COLOR = 1 << 5;
     private static final int WAYPOINT_FLAGS_MASK = 0b11_1111;
 
@@ -553,7 +552,7 @@ public final class V10DungeonBodyCodec {
         ByteBuffer encoded = StandardCharsets.UTF_8.newEncoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .encode(java.nio.CharBuffer.wrap(value));
+                .encode(CharBuffer.wrap(value));
         byte[] bytes = new byte[encoded.remaining()];
         encoded.get(bytes);
         return bytes;

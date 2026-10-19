@@ -7,7 +7,6 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -25,7 +24,7 @@ import java.util.regex.Pattern;
 
 public final class ChatCoordDetector {
 
-    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]"); 
+    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
     private static final char FORMAT_PREFIX = '\u00A7';
     private static final long AUTO_ADD_DEDUPE_MS = 15_000L;
@@ -243,7 +242,7 @@ public final class ChatCoordDetector {
     static String senderNameForChatTemp(String flatText, int coordStart) {
         if (flatText == null || flatText.isBlank()) return "";
         int end = Math.max(0, Math.min(coordStart, flatText.length()));
-        int colon = indexOfLastSenderColon(flatText, end);
+        int colon = indexOfSenderColon(flatText, end);
         if (colon < 0) return "";
 
         String prefix = BRACKETED_PREFIX.matcher(flatText.substring(0, colon)).replaceAll(" ");
@@ -256,7 +255,7 @@ public final class ChatCoordDetector {
     private static SenderSpan senderSpanForChatTemp(String flatText, int coordStart) {
         if (flatText == null || flatText.isBlank()) return null;
         int endLimit = Math.max(0, Math.min(coordStart, flatText.length()));
-        int colon = indexOfLastSenderColon(flatText, endLimit);
+        int colon = indexOfSenderColon(flatText, endLimit);
         if (colon < 0) return null;
 
         int end = trimWhitespaceBackward(flatText, colon);
@@ -394,11 +393,13 @@ public final class ChatCoordDetector {
 
     private record SenderSpan(int start, int end) {}
 
-    private static int indexOfLastSenderColon(String flatText, int beforeIndex) {
-        for (int i = beforeIndex - 1; i >= 0; i--) {
-            if (flatText.charAt(i) != ':') continue;
-            if (isLabeledAxisColon(flatText, i)) continue;
-            return i;
+    private static int indexOfSenderColon(String flatText, int beforeIndex) {
+        int bracketDepth = 0;
+        for (int i = 0; i < beforeIndex; i++) {
+            char c = flatText.charAt(i);
+            if (c == '[') bracketDepth++;
+            else if (c == ']') bracketDepth = Math.max(0, bracketDepth - 1);
+            else if (c == ':' && bracketDepth == 0 && !isLabeledAxisColon(flatText, i)) return i;
         }
         return -1;
     }

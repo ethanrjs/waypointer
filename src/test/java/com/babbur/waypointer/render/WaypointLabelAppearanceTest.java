@@ -1,52 +1,58 @@
 package com.babbur.waypointer.render;
 
+import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.crystal.CompassMarkerState;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WaypointLabelAppearanceTest {
     @Test void nearestLabelPaintsLastWithoutChangingBudgetOrOverlapSelection() {
-        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        var config = new WaypointerConfig();
         config.setPreventLabelOverlap(true);
         var near = candidate(config, 0, 10);
         near.distanceSquared = 159.31 * 159.31;
         var far = candidate(config, 0, 10);
         far.distanceSquared = 262.17 * 262.17;
-        var candidates = java.util.List.of(near, far);
-        var selected = new java.util.ArrayList<WaypointRenderer.LabelCandidate>();
+        var candidates = List.of(near, far);
+        var selected = new ArrayList<WaypointRenderer.LabelCandidate>();
         WaypointRenderer.selectLabelsForDrawing(candidates, 2, 2, false, selected);
-        assertEquals(java.util.List.of(far, near), selected);
+        assertEquals(List.of(far, near), selected);
         WaypointRenderer.selectLabelsForDrawing(candidates, 2, 1, false, selected);
-        assertEquals(java.util.List.of(near), selected);
+        assertEquals(List.of(near), selected);
         WaypointRenderer.selectLabelsForDrawing(candidates, 2, 2, true, selected);
-        assertEquals(java.util.List.of(near), selected);
-        WaypointRenderer.selectLabelsForDrawing(java.util.List.of(far, near), 2, 2, true, selected);
-        assertEquals(java.util.List.of(far), selected);
+        assertEquals(List.of(near), selected);
+        WaypointRenderer.selectLabelsForDrawing(List.of(far, near), 2, 2, true, selected);
+        assertEquals(List.of(far), selected);
         far.left = 11;
         far.right = 21;
         WaypointRenderer.selectLabelsForDrawing(candidates, 2, 2, true, selected);
-        assertEquals(java.util.List.of(far, near), selected);
+        assertEquals(List.of(far, near), selected);
     }
 
     @Test void compassTargetKeepsOneDescriptiveLabelWithoutHidingUnrelatedWaypoints() throws Exception {
-        var point = com.babbur.waypointer.core.Waypoint.at(541, 122, 699);
-        var markTarget = com.babbur.waypointer.crystal.CompassMarkerState.class
-                .getDeclaredMethod("markTarget", com.babbur.waypointer.core.Waypoint.class);
+        var point = Waypoint.at(541, 122, 699);
+        var markTarget = CompassMarkerState.class
+                .getDeclaredMethod("markTarget", Waypoint.class);
         markTarget.setAccessible(true);
         markTarget.invoke(null, point);
         var target = new WaypointRenderer.LabelCandidate();
-        target.group = com.babbur.waypointer.core.WaypointGroup.create("Temporary", "crystal_hollows");
+        target.group = WaypointGroup.create("Temporary", "crystal_hollows");
         target.waypoint = point;
         target.focused = true;
         var generated = new WaypointRenderer.LabelCandidate();
-        generated.group = new com.babbur.waypointer.core.WaypointGroup(
+        generated.group = new WaypointGroup(
                 "crystal_hollows:structure:wishing_target", "Compass target", "crystal_hollows");
         generated.group.setRuntimeOnly(true);
         generated.waypoint = point.withName("Compass target: King Yolkar / Lost Precursor City");
         generated.rows.add(generated.waypoint.name());
         var unrelated = new WaypointRenderer.LabelCandidate();
-        unrelated.group = com.babbur.waypointer.core.WaypointGroup.create("User route", "crystal_hollows");
+        unrelated.group = WaypointGroup.create("User route", "crystal_hollows");
         unrelated.waypoint = generated.waypoint;
-        var labels = new java.util.ArrayList<>(java.util.List.of(target, unrelated));
+        var labels = new ArrayList<>(List.of(target, unrelated));
         assertEquals(2, WaypointRenderer.retainDistinctCompassLabels(labels, 2));
         labels.add(generated);
         generated.waypoint = generated.waypoint.withPos(542, 122, 699);
@@ -56,21 +62,21 @@ class WaypointLabelAppearanceTest {
         assertTrue(labels.subList(0, 2).contains(generated));
         assertTrue(labels.subList(0, 2).contains(unrelated));
         assertTrue(generated.focused);
-        assertEquals(java.util.List.of("Compass target: King Yolkar / Lost Precursor City"), generated.rows);
+        assertEquals(List.of("Compass target: King Yolkar / Lost Precursor City"), generated.rows);
     }
 
     @Test void sequencePositionIndexIsReusableAndPreservesEarlierRoutes() {
         var positions = WaypointRenderer.newLabelPositionIndex();
-        var group = com.babbur.waypointer.core.WaypointGroup.create("Route", "hub");
+        var group = WaypointGroup.create("Route", "hub");
         group.setCurrentIndex(0);
-        var labels = new java.util.ArrayList<WaypointRenderer.LabelCandidate>();
+        var labels = new ArrayList<WaypointRenderer.LabelCandidate>();
         var prefix = new WaypointRenderer.LabelCandidate();
         labels.add(prefix);
         for (int i = 0; i < 2048; i++) {
             var label = new WaypointRenderer.LabelCandidate();
             label.group = group;
             label.index = i;
-            label.waypoint = com.babbur.waypointer.core.Waypoint.at(i % 1024, 64, 0);
+            label.waypoint = Waypoint.at(i % 1024, 64, 0);
             labels.add(label);
         }
         int count = WaypointRenderer.retainDistinctSequenceLabels(labels, 1, labels.size(), positions);
@@ -82,11 +88,11 @@ class WaypointLabelAppearanceTest {
     }
 
     @Test void coincidentSequenceContextKeepsCurrentCustomLabelAndItsDetailRows() {
-        var group = com.babbur.waypointer.core.WaypointGroup.create("MEOW", "dwarven_mines");
-        var point = com.babbur.waypointer.core.Waypoint.at(-36, 199, -123);
+        var group = WaypointGroup.create("MEOW", "dwarven_mines");
+        var point = Waypoint.at(-36, 199, -123);
         group.add(point); group.add(point.withName("{distance} {index} {total} {route}")); group.add(point);
         group.setCurrentIndex(1);
-        var labels = new java.util.ArrayList<WaypointRenderer.LabelCandidate>();
+        var labels = new ArrayList<WaypointRenderer.LabelCandidate>();
         var positions = WaypointRenderer.newLabelPositionIndex();
         for (int index : new int[]{0, 2, 1}) {
             var label = new WaypointRenderer.LabelCandidate();
@@ -99,10 +105,10 @@ class WaypointLabelAppearanceTest {
         current.rows.add("10m");
         assertEquals(1, WaypointRenderer.retainDistinctSequenceLabels(labels, 0, 3, positions));
         assertSame(current, labels.getFirst());
-        assertEquals(java.util.List.of("10m 2 3 MEOW", "0.0%", "10m"), current.rows);
+        assertEquals(List.of("10m 2 3 MEOW", "0.0%", "10m"), current.rows);
 
         var distinct = new WaypointRenderer.LabelCandidate();
-        distinct.group = group; distinct.waypoint = com.babbur.waypointer.core.Waypoint.at(-35, 199, -123);
+        distinct.group = group; distinct.waypoint = Waypoint.at(-35, 199, -123);
         distinct.index = 2;
         labels.set(1, distinct);
         assertEquals(2, WaypointRenderer.retainDistinctSequenceLabels(labels, 0, 2, positions));
@@ -110,7 +116,7 @@ class WaypointLabelAppearanceTest {
         assertEquals(2, WaypointRenderer.retainDistinctSequenceLabels(labels, 0, 2, positions));
 
         var otherRoute = new WaypointRenderer.LabelCandidate();
-        otherRoute.group = com.babbur.waypointer.core.WaypointGroup.create("Other", "dwarven_mines");
+        otherRoute.group = WaypointGroup.create("Other", "dwarven_mines");
         otherRoute.waypoint = point;
         labels.set(2, otherRoute);
         assertEquals(3, WaypointRenderer.retainDistinctSequenceLabels(labels, 0, 3, positions));
@@ -125,14 +131,14 @@ class WaypointLabelAppearanceTest {
     }
 
     @Test void unnamedDungeonDetailsAreNotTreatedAsTheNameRow() {
-        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        var config = new WaypointerConfig();
         config.setShowWaypointNames(true);
-        var group = com.babbur.waypointer.core.WaypointGroup.create("Room", "dungeon");
-        group.setRouteKind(com.babbur.waypointer.core.WaypointGroup.RouteKind.DUNGEON);
-        var point = com.babbur.waypointer.core.Waypoint.at(1, 64, 3);
+        var group = WaypointGroup.create("Room", "dungeon");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        var point = Waypoint.at(1, 64, 3);
         assertFalse(WaypointRenderer.hasNameRow(config, group, point));
         assertTrue(WaypointRenderer.hasNameRow(config, group, point.withName("Secret")));
-        group.setRouteKind(com.babbur.waypointer.core.WaypointGroup.RouteKind.REGULAR);
+        group.setRouteKind(WaypointGroup.RouteKind.REGULAR);
         assertTrue(WaypointRenderer.hasNameRow(config, group, point));
         config.setShowWaypointNames(false);
         assertFalse(WaypointRenderer.hasNameRow(config, group, point));
@@ -145,17 +151,17 @@ class WaypointLabelAppearanceTest {
     }
 
     @Test void optionalLabelDetailsDisappearTogetherWithoutHidingTheName() {
-        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        var config = new WaypointerConfig();
         config.setShowWaypointNames(true);
         config.setShowWaypointDistances(true);
         config.setShowRouteProgress(true);
         config.setLabelShowRouteName(true);
         config.setLabelShowCoordinates(true);
-        var group = com.babbur.waypointer.core.WaypointGroup.create("Route", "hub");
-        var waypoint = new com.babbur.waypointer.core.Waypoint(1, 64, 3, "Home", 0xFFFFFF, 0, 0);
+        var group = WaypointGroup.create("Route", "hub");
+        var waypoint = new Waypoint(1, 64, 3, "Home", 0xFFFFFF, 0, 0);
         group.add(waypoint);
-        assertEquals(java.util.List.of("Home"), WaypointRenderer.labelRows(config, group, 0, waypoint, false, "current", 20, "50.0%"));
-        assertEquals(java.util.List.of("Home", "Route", "50.0%", "20m", "1, 64, 3"),
+        assertEquals(List.of("Home"), WaypointRenderer.labelRows(config, group, 0, waypoint, false, "current", 20, "50.0%"));
+        assertEquals(List.of("Home", "Route", "50.0%", "20m", "1, 64, 3"),
                 WaypointRenderer.labelRows(config, group, 0, waypoint, true, "current", 20, "50.0%"));
         config.setShowWaypointNames(false);
         assertTrue(WaypointRenderer.labelRows(config, group, 0, waypoint, false, "current", 20, "50.0%").isEmpty());
@@ -163,7 +169,7 @@ class WaypointLabelAppearanceTest {
     }
 
     @Test void previewAndHudShareFocusDetailCullingAndPriorityBoundaries() {
-        var cfg = new com.babbur.waypointer.config.WaypointerConfig();
+        var cfg = new WaypointerConfig();
         cfg.setLabelDetailOnDemand(true);
         cfg.setLabelDetailDistance(16);
         assertTrue(WaypointLabelAppearance.focused(116, 84, 100, 100));
@@ -181,10 +187,10 @@ class WaypointLabelAppearanceTest {
     }
 
     @Test void nextRoleSkipsSubwaypointsButSubwaypointsKeepTheirBadge() {
-        var group = com.babbur.waypointer.core.WaypointGroup.create("Route", "hub");
-        var main = new com.babbur.waypointer.core.Waypoint(1, 64, 3, "", 0xFFFFFF, 0, 0);
-        var child = new com.babbur.waypointer.core.Waypoint(2, 64, 3, "", 0xFFFFFF,
-                com.babbur.waypointer.core.Waypoint.FLAG_SUBWAYPOINT, 0);
+        var group = WaypointGroup.create("Route", "hub");
+        var main = new Waypoint(1, 64, 3, "", 0xFFFFFF, 0, 0);
+        var child = new Waypoint(2, 64, 3, "", 0xFFFFFF,
+                Waypoint.FLAG_SUBWAYPOINT, 0);
         group.add(main); group.add(child); group.add(main); group.add(main);
         group.setCurrentIndex(0);
         assertEquals("sub", WaypointRenderer.labelRole(group, 1, child, WaypointRenderer.State.UPCOMING));
@@ -194,21 +200,21 @@ class WaypointLabelAppearanceTest {
     }
 
     @Test void rejectedLabelsDoNotBlockLaterLabelsAndAcceptedOrderStaysStable() {
-        var cfg = new com.babbur.waypointer.config.WaypointerConfig();
+        var cfg = new WaypointerConfig();
         cfg.setPreventLabelOverlap(true);
         var first = candidate(cfg, 0, 10);
         var rejected = candidate(cfg, 5, 15);
         var touchesFirstButOverlapsRejected = candidate(cfg, 10, 20);
         var last = candidate(cfg, 30, 40);
-        var drawn = new java.util.ArrayList<WaypointRenderer.LabelCandidate>();
+        var drawn = new ArrayList<WaypointRenderer.LabelCandidate>();
         assertTrue(WaypointRenderer.acceptLabel(first, drawn));
         assertFalse(WaypointRenderer.acceptLabel(rejected, drawn));
         assertTrue(WaypointRenderer.acceptLabel(touchesFirstButOverlapsRejected, drawn));
         assertTrue(WaypointRenderer.acceptLabel(last, drawn));
-        assertEquals(java.util.List.of(first, touchesFirstButOverlapsRejected, last), drawn);
+        assertEquals(List.of(first, touchesFirstButOverlapsRejected, last), drawn);
     }
 
-    private static WaypointRenderer.LabelCandidate candidate(com.babbur.waypointer.config.WaypointerConfig config,
+    private static WaypointRenderer.LabelCandidate candidate(WaypointerConfig config,
                                                                double left, double right) {
         var label = new WaypointRenderer.LabelCandidate();
         label.appearance = config;
@@ -221,8 +227,8 @@ class WaypointLabelAppearanceTest {
         assertSame(WaypointRenderer.distanceLabel(24), WaypointRenderer.distanceLabel(24));
         assertEquals("4096m", WaypointRenderer.distanceLabel(4096));
         assertEquals("-1m", WaypointRenderer.distanceLabel(-1));
-        var group = com.babbur.waypointer.core.WaypointGroup.create("Route", "hub");
-        var point = new com.babbur.waypointer.core.Waypoint(0, 64, 0, "", 0xFFFFFF, 0, 0);
+        var group = WaypointGroup.create("Route", "hub");
+        var point = new Waypoint(0, 64, 0, "", 0xFFFFFF, 0, 0);
         group.add(point);
         assertSame(WaypointRenderer.labelFor(group, 0, point, false), WaypointRenderer.labelFor(group, 0, point, false));
     }

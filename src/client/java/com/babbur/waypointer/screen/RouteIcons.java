@@ -1,16 +1,21 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.RouteIcon;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -43,17 +48,17 @@ final class RouteIcons {
     }
 
     static List<Item> allItems() {
-        java.util.LinkedHashSet<Item> items = new java.util.LinkedHashSet<>();
-        var level = net.minecraft.client.Minecraft.getInstance().level;
+        LinkedHashSet<Item> items = new LinkedHashSet<>();
+        var level = Minecraft.getInstance().level;
         if (level != null) {
             try {
-                net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(
+                CreativeModeTabs.tryRebuildTabContents(
                         level.enabledFeatures(), false, level.registryAccess());
-                List<net.minecraft.world.item.CreativeModeTab> tabs = new ArrayList<>();
-                for (var tab : net.minecraft.world.item.CreativeModeTabs.tabs()) {
-                    if (tab.getType() == net.minecraft.world.item.CreativeModeTab.Type.CATEGORY) tabs.add(tab);
+                List<CreativeModeTab> tabs = new ArrayList<>();
+                for (var tab : CreativeModeTabs.tabs()) {
+                    if (tab.getType() == CreativeModeTab.Type.CATEGORY) tabs.add(tab);
                 }
-                tabs.sort(java.util.Comparator.comparingInt(RouteIcons::tabRank));
+                tabs.sort(Comparator.comparingInt(RouteIcons::tabRank));
                 for (var tab : tabs) {
                     for (ItemStack stack : tab.getDisplayItems()) items.add(stack.getItem());
                 }
@@ -69,7 +74,7 @@ final class RouteIcons {
             "natural_blocks", "combat", "food_and_drinks", "functional_blocks", "redstone_blocks",
             "colored_blocks", "building_blocks", "spawn_eggs");
 
-    private static int tabRank(net.minecraft.world.item.CreativeModeTab tab) {
+    private static int tabRank(CreativeModeTab tab) {
         Identifier key = BuiltInRegistries.CREATIVE_MODE_TAB.getKey(tab);
         int rank = key == null ? -1 : TAB_ORDER.indexOf(key.getPath());
         return rank < 0 ? TAB_ORDER.size() : rank;

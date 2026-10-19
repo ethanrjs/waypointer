@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class SkyblockerStructureProtocol {
     public static final String SOURCE = "skyblocker";
@@ -43,7 +44,7 @@ public final class SkyblockerStructureProtocol {
     }
 
     private static JsonObject envelope(String type, String server) {
-        if (server == null || !StructureRelayProtocol.validServer(server.toLowerCase(java.util.Locale.ROOT))) {
+        if (server == null || !StructureRelayProtocol.validServer(server.toLowerCase(Locale.ROOT))) {
             throw new IllegalArgumentException("Invalid lobby id");
         }
         JsonObject payload = new JsonObject();

@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen.preview;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,7 +44,7 @@ class RoutePreviewWidgetTest {
     }
 
     private static List<Integer> asList(int[] values) {
-        return java.util.Arrays.stream(values).boxed().toList();
+        return Arrays.stream(values).boxed().toList();
     }
 
     @Test

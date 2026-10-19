@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
@@ -244,7 +245,7 @@ final class WaypointerCommandHelp {
         feedback(source, Component.translatable(section.titleKey()).withStyle(ChatFormatting.YELLOW));
         for (HelpRow row : section.rows()) {
             MutableComponent line = highlightedCommand(prefix, row.usage());
-            line.withStyle(line.getStyle().withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+            line.withStyle(line.getStyle().withHoverEvent(new HoverEvent.ShowText(
                     hover(prefix, row))));
             feedback(source, line);
         }
@@ -262,7 +263,7 @@ final class WaypointerCommandHelp {
                     ? Style.EMPTY.withColor(ChatFormatting.GRAY)
                     : Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
                             .withClickEvent(new ClickEvent.RunCommand("/" + root + " help " + section.id()))
-                            .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                            .withHoverEvent(new HoverEvent.ShowText(
                                     Component.translatable(section.titleKey()))));
             footer.append(jump);
             footer.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
@@ -273,7 +274,7 @@ final class WaypointerCommandHelp {
                 ? Style.EMPTY.withColor(ChatFormatting.GRAY)
                 : Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
                         .withClickEvent(new ClickEvent.RunCommand("/" + root + " help all"))
-                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                        .withHoverEvent(new HoverEvent.ShowText(
                                 Component.translatable("waypointer.command.help.show_all"))));
         footer.append(all);
         feedback(source, footer);

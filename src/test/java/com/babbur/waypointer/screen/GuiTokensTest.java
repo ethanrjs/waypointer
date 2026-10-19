@@ -1,9 +1,8 @@
 package com.babbur.waypointer.screen;
 
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
-import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
 
@@ -27,7 +26,7 @@ class GuiTokensTest {
     @Test
     void coloredMessagesCarryTheTokenAsATextColor() {
         var colored = GuiTokens.colored(
-                net.minecraft.network.chat.Component.literal("Copied"), GuiTokens.SUCCESS);
+                Component.literal("Copied"), GuiTokens.SUCCESS);
         assertEquals("Copied", colored.getString());
         assertNotNull(colored.getStyle().getColor());
         assertEquals(GuiTokens.SUCCESS & 0xFFFFFF, colored.getStyle().getColor().getValue());

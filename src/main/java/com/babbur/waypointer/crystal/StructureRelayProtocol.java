@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class StructureRelayProtocol {
+    public static final String SOURCE = "relay";
     public static final int MAX_MESSAGE = 16_384;
     public static final long MAX_AGE = 1_000_000_000_000L;
 
@@ -130,7 +131,7 @@ public final class StructureRelayProtocol {
                 default -> throw new IllegalArgumentException();
             };
         }
-        String source = "relay";
+        String source = SOURCE;
         if (json.has("reporter")) {
             var reporter = json.getAsJsonPrimitive("reporter");
             if (!reporter.isString() || !reporter.getAsString().matches(

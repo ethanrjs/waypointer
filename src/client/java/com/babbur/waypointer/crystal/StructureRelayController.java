@@ -15,6 +15,7 @@ public final class StructureRelayController {
     private static volatile StructureRelayController installed;
     private static final String ENDPOINT = "wss://waypointer-structures.ethanmrettinger.workers.dev/v1/structures";
     private static final long SYNC_INTERVAL_MILLIS = 5 * 60_000L;
+    private static final long STABLE_SESSION_MILLIS = 15_000;
     private final CrystalHollowsTracker tracker;
     private final WaypointerConfig config;
     private final StructureRelayConnection connection = new StructureRelayConnection();
@@ -28,6 +29,7 @@ public final class StructureRelayController {
     private long lastSyncAt;
     private long lastSyncAge;
     private long sessionStarted;
+    private long openedAt;
     private int failures;
     private boolean wasOpen;
     private boolean reportedClosing;
@@ -172,9 +174,6 @@ public final class StructureRelayController {
                 || Math.abs(age - lastSyncAge - (now - lastSyncAt) / 50) >= 900);
     }
 
-    private static final long STABLE_SESSION_MILLIS = 15_000;
-    private long openedAt;
-
     private void scheduleRetry(long now) {
         long delay = Math.min(60_000, 1_000L << Math.min(failures++, 6));
         nextConnect = now + ThreadLocalRandom.current().nextLong(delay / 2, delay + 1);
@@ -183,7 +182,7 @@ public final class StructureRelayController {
     private void close() {
         diagnosticGeneration++;
         connection.close();
-        if (lobby != null && lobby.clearRemoteSightings("relay") && lobby == tracker.lobby()) {
+        if (lobby != null && lobby.clearRemoteSightings(StructureRelayProtocol.SOURCE) && lobby == tracker.lobby()) {
             tracker.rebuildProjection();
         }
         lobby = null;

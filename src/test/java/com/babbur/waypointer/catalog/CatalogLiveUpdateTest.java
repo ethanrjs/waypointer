@@ -3,16 +3,18 @@ package com.babbur.waypointer.catalog;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named = "WAYPOINTER_CATALOG_WRITE_LIVE", matches = "true")
 class CatalogLiveUpdateTest {
-    @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
+    @org.junit.jupiter.api.io.TempDir Path directory;
 
     @Test void signedPublishEditReplaceAndFetchUseTheSameRoute() {
         var client = new RouteCatalogClient("1.11.0");
@@ -60,7 +62,7 @@ class CatalogLiveUpdateTest {
         } finally {
             client.deleteRoute(published.id(), identity).join();
         }
-        var missing = assertThrows(java.util.concurrent.CompletionException.class,
+        var missing = assertThrows(CompletionException.class,
                 () -> client.getRoute(published.id()).join());
         assertEquals(404, assertInstanceOf(CatalogApiException.class, missing.getCause()).status());
     }

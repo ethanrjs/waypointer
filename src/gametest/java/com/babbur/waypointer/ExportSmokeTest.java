@@ -6,6 +6,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.screen.ExportScreen;
+import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -34,7 +35,7 @@ final class ExportSmokeTest {
             context.waitFor(client -> !Boolean.TRUE.equals(field(MinecraftCompat.screen(client), "encodePending")), 200);
             context.runOnClient(client -> {
                 Screen screen = MinecraftCompat.screen(client);
-                long supportedToggles = ((java.util.List<?>) field(screen, "toggleButtons")).stream()
+                long supportedToggles = ((List<?>) field(screen, "toggleButtons")).stream()
                         .filter(toggle -> ((Button) toggle).active).count();
                 if (supportedToggles != 4) throw new AssertionError("SkySoft inclusion toggles missing");
                 if (((EditBox) field(screen, "labelInput")).active)

@@ -6,10 +6,8 @@ import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -116,36 +114,6 @@ public final class DungeonMapMath {
                 dx * SEGMENT_BLOCKS + physEntranceX,
                 dz * SEGMENT_BLOCKS + physEntranceZ
         };
-    }
-
-    public static List<int[]> floodSegments(MapItemSavedData map, int mapX, int mapZ,
-                                            int mapRoomSize, byte color) {
-        List<int[]> out = new ArrayList<>();
-        Set<Long> seen = new HashSet<>();
-        Deque<int[]> queue = new ArrayDeque<>();
-        if (seen.add(packPx(mapX, mapZ))) {
-            out.add(new int[] { mapX, mapZ });
-            queue.add(new int[] { mapX, mapZ });
-        }
-        int backStep = mapRoomSize + 3;
-        int[] cur;
-        while ((cur = queue.poll()) != null) {
-            tryHop(map, queue, seen, out, cur[0] - 1,             cur[1],                 -backStep,            0,                color);
-            tryHop(map, queue, seen, out, cur[0],                 cur[1] - 1,             0,                    -backStep,        color);
-            tryHop(map, queue, seen, out, cur[0] + mapRoomSize,   cur[1],                 +MAP_ROOM_GAP_PX,     0,                color);
-            tryHop(map, queue, seen, out, cur[0],                 cur[1] + mapRoomSize,   0,                    +MAP_ROOM_GAP_PX, color);
-        }
-        return out;
-    }
-
-    private static void tryHop(MapItemSavedData map, Deque<int[]> queue, Set<Long> seen, List<int[]> out,
-                               int probeX, int probeZ, int dx, int dz, byte color) {
-        if (getColor(map, probeX, probeZ) != color) return;
-        int nx = probeX + dx, nz = probeZ + dz;
-        if (seen.add(packPx(nx, nz))) {
-            out.add(new int[] { nx, nz });
-            queue.add(new int[] { nx, nz });
-        }
     }
 
     public static int[] physicalCorner(Direction dir,

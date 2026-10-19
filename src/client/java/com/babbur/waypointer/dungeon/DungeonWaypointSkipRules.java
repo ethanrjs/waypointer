@@ -16,15 +16,6 @@ public final class DungeonWaypointSkipRules {
         return flagsForBlock(blockStateAt(x, y, z));
     }
 
-    public static int flagsForTriggerAt(DungeonWaypointTrigger trigger, int x, int y, int z) {
-        BlockState state = blockStateAt(x, y, z);
-        if (state != null) {
-            int semantic = flagsForTrigger(trigger);
-            return flagsForBlock(state) | (semantic & Waypoint.DUNGEON_METADATA_FLAGS);
-        }
-        return flagsForTrigger(trigger);
-    }
-
     public static int flagsForTrigger(DungeonWaypointTrigger trigger) {
         if (trigger == null) return Waypoint.FLAG_SKIP_ON_STAND;
         return switch (trigger) {

@@ -2,9 +2,14 @@ package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.tree.CommandNode;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 import org.junit.jupiter.api.Test;
@@ -54,12 +59,12 @@ class WaypointerCommandSuggestionOverrideTest {
     @Test
     void serverArgumentsThatAskTheServerCannotStallWaypointerSuggestions() throws Exception {
         CommandDispatcher<ClientSuggestionProvider> serverSuggestions = new CommandDispatcher<>();
-        for (String name : java.util.List.of("wp", "waypointer", "wptr")) {
+        for (String name : List.of("wp", "waypointer", "wptr")) {
             serverSuggestions.register(LiteralArgumentBuilder.<ClientSuggestionProvider>literal(name)
-                    .then(com.mojang.brigadier.builder.RequiredArgumentBuilder
+                    .then(RequiredArgumentBuilder
                             .<ClientSuggestionProvider, String>argument("args",
-                                    com.mojang.brigadier.arguments.StringArgumentType.greedyString())
-                            .suggests((ctx, builder) -> new java.util.concurrent.CompletableFuture<>())));
+                                    StringArgumentType.greedyString())
+                            .suggests((ctx, builder) -> new CompletableFuture<>())));
         }
         serverSuggestions.getRoot().getChild("wp").addChild(
                 LiteralArgumentBuilder.<ClientSuggestionProvider>literal("debug").build());
@@ -71,9 +76,9 @@ class WaypointerCommandSuggestionOverrideTest {
         assertTrue(new WaypointerCommandSuggestionOverride()
                 .installWpSuggestionRoot(serverSuggestions.getRoot(), clientRoot));
 
-        for (String typed : java.util.List.of("wp ", "waypointer ", "wptr ")) {
+        for (String typed : List.of("wp ", "waypointer ", "wptr ")) {
             Suggestions suggestions = serverSuggestions.getCompletionSuggestions(
-                    serverSuggestions.parse(typed, null)).get(1, java.util.concurrent.TimeUnit.SECONDS);
+                    serverSuggestions.parse(typed, null)).get(1, TimeUnit.SECONDS);
             assertTrue(suggestions.getList().stream().anyMatch(s -> "importchat".equals(s.getText())),
                     typed + " should suggest Waypointer's commands: " + suggestions.getList());
         }

@@ -18,6 +18,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class UniversalShareCodecTest {
 
     @Test
+    void jsonOverTheImportBudgetIsNotRetriedByTheDungeonParser() {
+        String bomb = "{\"Arrow-Trap-1\":[{\"locations\":[],\"padding\":["
+                + "0,".repeat(BoundedJson.MAX_SCALAR_VALUES) + "0]}]}";
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> UniversalShareCodec.decode(bomb));
+        assertTrue(failure.getMessage().contains("too many values"));
+        for (Throwable suppressed : failure.getSuppressed()) {
+            assertTrue(suppressed.getMessage().contains("too many values"), suppressed.getMessage());
+        }
+    }
+
+    @Test
     void dispatchesNormalWaypointRoutes() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(Waypoint.at(12, 64, -8));

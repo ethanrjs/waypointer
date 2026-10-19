@@ -13,12 +13,17 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.crystal.CrystalHollowsProjection;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,8 +40,8 @@ class WaypointerScreenTest {
     void occupiedStructureIsPinnedBelowCrystalHollowsEvenWithoutSavedRoutes() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("crystal_hollows"));
-        String structureZone = com.babbur.waypointer.crystal.CrystalHollowsStructureZones.zoneId(
-                com.babbur.waypointer.crystal.CrystalHollowsStructure.LOST_PRECURSOR_CITY);
+        String structureZone = CrystalHollowsStructureZones.zoneId(
+                CrystalHollowsStructure.LOST_PRECURSOR_CITY);
         List<String> ids = WaypointerZoneCatalog.islandDropdownIdsForManager(manager, false, structureZone);
         assertEquals("crystal_hollows", ids.get(0));
         assertEquals(structureZone, ids.get(1));
@@ -84,7 +89,7 @@ class WaypointerScreenTest {
 
     @Test
     void actualSkysoftShareActivatesOnlyOnPrivateIsland() throws IOException {
-        String share = java.nio.file.Files.readString(java.nio.file.Path.of(
+        String share = Files.readString(Path.of(
                 "src/test/resources/fixtures/skysoft-private-island-share.txt"));
         var outcome = WaypointerScreen.decodeClipboardImport(share, "Imported Route");
         assertNull(outcome.error());
@@ -152,13 +157,13 @@ class WaypointerScreenTest {
 
     @Test
     void generatedStructuresFolderHasADistinctTintWithoutChangingSavedFolders() {
-        String id = com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.FOLDER_ID;
-        int color = com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.FOLDER_COLOR;
-        var generated = new com.babbur.waypointer.core.RouteFolder(
+        String id = CrystalHollowsStructureFolder.FOLDER_ID;
+        int color = CrystalHollowsStructureFolder.FOLDER_COLOR;
+        var generated = new RouteFolder(
                 id, "Structures", "crystal_hollows", false, color, true);
-        var saved = new com.babbur.waypointer.core.RouteFolder(
+        var saved = new RouteFolder(
                 id, "Structures", "crystal_hollows", false, color, false);
-        var otherRuntime = new com.babbur.waypointer.core.RouteFolder(
+        var otherRuntime = new RouteFolder(
                 "other", "Structures", "crystal_hollows", false, color, true);
         assertEquals(0x5055FFFF, RouteListPresentation.folderBackgroundTint(generated));
         assertEquals(0x2455FFFF, RouteListPresentation.folderBackgroundTint(saved));
@@ -1036,7 +1041,7 @@ class WaypointerScreenTest {
 
     @Test
     void importFailuresKeepTheCodecReasonAndOnlyGenericOnesFallBack() {
-        String unrecognized = net.minecraft.network.chat.Component.translatable(
+        String unrecognized = Component.translatable(
                 "waypointer.import.error.unrecognized").getString();
         assertEquals(unrecognized, WaypointerScreen.importFailureText(null));
         assertEquals(unrecognized, WaypointerScreen.importFailureText(

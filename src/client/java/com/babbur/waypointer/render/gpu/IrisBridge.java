@@ -70,10 +70,6 @@ public final class IrisBridge {
         return resolve() && invokeBoolean(isRenderingShadowPass);
     }
 
-    public int minorApiRevision() {
-        return resolve() ? minorRevision : -1;
-    }
-
     public boolean assign(RenderPipeline pipeline, Program program) {
         if (pipeline == null || program == null || !resolve() || assignPipeline == null) return false;
         synchronized (assigned) {

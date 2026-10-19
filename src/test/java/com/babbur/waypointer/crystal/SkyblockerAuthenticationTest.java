@@ -1,15 +1,22 @@
 package com.babbur.waypointer.crystal;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.babbur.waypointer.util.BoundedBody;
 import com.google.gson.JsonParser;
+import java.net.ConnectException;
+import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Flow;
+import javax.net.ssl.SSLHandshakeException;
 import org.junit.jupiter.api.Test;
 
 class SkyblockerAuthenticationTest {
@@ -26,7 +33,7 @@ class SkyblockerAuthenticationTest {
         assertEquals("1.10.0", json.get("modVersion").getAsString());
         assertEquals(uuid.toString(), json.getAsJsonObject("keyPair").get("uuid").getAsString());
         assertFalse(proof.contains(Base64.getEncoder().encodeToString(keys.getPrivate().getEncoded())));
-        assertEquals(java.util.Set.of("keyPair", "signedData", "mod", "minecraftVersion", "modVersion"), json.keySet());
+        assertEquals(Set.of("keyPair", "signedData", "mod", "minecraftVersion", "modVersion"), json.keySet());
         var signed = json.getAsJsonObject("signedData");
         var verifier = Signature.getInstance("SHA256withRSA");
         verifier.initVerify(keys.getPublic());
@@ -49,8 +56,9 @@ class SkyblockerAuthenticationTest {
                 "{\"token\":\"expired\",\"expiresAt\":1}".getBytes(StandardCharsets.UTF_8), 1));
     }
 
-    @Test void responseSubscriberCancelsAtByteLimit() {
-        var subscriber = new SkyblockerAuthentication.LimitedBody();
+    @Test void oversizedResponsesFailAsInvalidResponses() {
+        var subscriber = new BoundedBody(16384, () -> new SkyblockerAuthentication.SafeFailure(
+                SkyblockerAuthentication.FailureCause.INVALID_RESPONSE));
         boolean[] cancelled = {false};
         subscriber.onSubscribe(new Flow.Subscription() {
             public void request(long n) {}
@@ -59,7 +67,10 @@ class SkyblockerAuthenticationTest {
         subscriber.onNext(List.of(ByteBuffer.allocate(16384)));
         subscriber.onNext(List.of(ByteBuffer.allocate(1)));
         assertTrue(cancelled[0]);
-        assertTrue(subscriber.getBody().toCompletableFuture().isCompletedExceptionally());
+        var failure = assertThrows(CompletionException.class,
+                () -> subscriber.getBody().toCompletableFuture().join());
+        assertEquals(SkyblockerAuthentication.FailureCause.INVALID_RESPONSE,
+                SkyblockerAuthentication.failureCause(failure));
     }
 
     @Test void requestUsesCanonicalEndpointWithoutSendingDuringConstruction() {
@@ -71,13 +82,13 @@ class SkyblockerAuthenticationTest {
     }
 
     @Test void failureClassificationAndMalformedResponsesNeverExposeExternalText() {
-        var timeout = new java.util.concurrent.CompletionException(new java.net.http.HttpTimeoutException("private body"));
+        var timeout = new CompletionException(new HttpTimeoutException("private body"));
         assertEquals(SkyblockerAuthentication.FailureCause.TIMEOUT, SkyblockerAuthentication.failureCause(timeout));
-        var connect = new java.net.ConnectException("private address");
-        connect.initCause(new java.nio.channels.UnresolvedAddressException());
+        var connect = new ConnectException("private address");
+        connect.initCause(new UnresolvedAddressException());
         assertEquals(SkyblockerAuthentication.FailureCause.DNS, SkyblockerAuthentication.failureCause(connect));
         assertEquals(SkyblockerAuthentication.FailureCause.TLS,
-                SkyblockerAuthentication.failureCause(new javax.net.ssl.SSLHandshakeException("private key")));
+                SkyblockerAuthentication.failureCause(new SSLHandshakeException("private key")));
         assertEquals(SkyblockerAuthentication.FailureCause.HTTP_REJECTED,
                 SkyblockerAuthentication.failureCause(new SkyblockerAuthentication.Rejected(403)));
         for (String body : List.of("private response body", "{\"token\":\"private-token\",\"expiresAt\":\"private-expiry\"}")) {

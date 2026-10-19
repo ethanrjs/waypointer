@@ -1,5 +1,6 @@
 package com.babbur.waypointer.dungeon.data;
 
+import com.babbur.waypointer.codec.BoundedJson;
 import com.babbur.waypointer.codec.AsciiStreamCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -22,9 +23,11 @@ import com.google.gson.stream.JsonToken;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
@@ -36,13 +39,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 
-/** Native share format for persisted room-local dungeon routes. */
 public final class DungeonRoomShareCodec {
     public static final String MAGIC = "WPD:";
     public static final int CATALOG_CODEC_VERSION = 2;
@@ -72,7 +75,6 @@ public final class DungeonRoomShareCodec {
         return MAGIC + COMPACT_BODY_PREFIX + AsciiStreamCodec.encode(deflate(toJson(safe)));
     }
 
-    /** Strict catalog profile; clipboard imports retain their legacy tolerance. */
     public static String encodeCatalog(Collection<WaypointGroup> routes) {
         List<WaypointGroup> safe = routes == null ? List.of() : new ArrayList<>(routes);
         validateRoutes(safe);
@@ -84,7 +86,7 @@ public final class DungeonRoomShareCodec {
                     .encode(CharBuffer.wrap(json)).remaining() > MAX_DECODED_JSON_CHARS) {
                 throw new IllegalArgumentException("catalog dungeon JSON is too large");
             }
-        } catch (java.nio.charset.CharacterCodingException invalid) {
+        } catch (CharacterCodingException invalid) {
             throw new IllegalArgumentException("catalog dungeon JSON is not valid Unicode", invalid);
         }
         String payload = MAGIC + COMPACT_BODY_PREFIX + AsciiStreamCodec.encode(deflate(json));
@@ -138,7 +140,10 @@ public final class DungeonRoomShareCodec {
     }
 
     static List<WaypointGroup> decodeLegacyJson(String json) {
-        JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+        return decodeLegacyJson(BoundedJson.parse(json).getAsJsonObject());
+    }
+
+    static List<WaypointGroup> decodeLegacyJson(JsonObject root) {
         if (!root.has("rooms") || !root.get("rooms").isJsonArray()) {
             throw new IllegalArgumentException("legacy dungeon route JSON contained no rooms");
         }
@@ -153,7 +158,7 @@ public final class DungeonRoomShareCodec {
     }
 
     private static List<WaypointGroup> decodeJson(String json) {
-        JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+        JsonObject root = BoundedJson.parse(json).getAsJsonObject();
         if (root.has("routes") && root.get("routes").isJsonArray()) {
             List<WaypointGroup> routes = new ArrayList<>();
             for (JsonElement element : root.getAsJsonArray("routes")) {
@@ -161,7 +166,7 @@ public final class DungeonRoomShareCodec {
             }
             return routes;
         }
-        return decodeLegacyJson(json);
+        return decodeLegacyJson(root);
     }
 
     private static String toJson(Collection<WaypointGroup> routes) {
@@ -419,7 +424,7 @@ public final class DungeonRoomShareCodec {
     }
 
     private static JsonObject parseCatalogDocument(String json) {
-        // Bound the tree parse and reject duplicate fields before Gson can overwrite them.
+
         int tokens = 0;
         int depth = 0;
         Deque<Set<String>> names = new ArrayDeque<>();
@@ -483,7 +488,7 @@ public final class DungeonRoomShareCodec {
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(out.toByteArray())).toString();
-        } catch (java.util.zip.DataFormatException | java.nio.charset.CharacterCodingException invalid) {
+        } catch (DataFormatException | CharacterCodingException invalid) {
             throw new IllegalArgumentException("invalid catalog dungeon compression or UTF-8", invalid);
         } finally {
             inflater.end();
@@ -526,7 +531,7 @@ public final class DungeonRoomShareCodec {
         }
     }
 
-    private static String readLimited(java.io.InputStream in) throws IOException {
+    private static String readLimited(InputStream in) throws IOException {
         byte[] buffer = new byte[8192];
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         int total = 0;

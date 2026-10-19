@@ -103,28 +103,4 @@ public final class GradientColorizer {
                 | MathUtil.clampByte(bi);
     }
 
-    public static float[] rgbToHsl(int rgb) {
-        float r = ((rgb >> 16) & 0xFF) / 255f;
-        float g = ((rgb >>  8) & 0xFF) / 255f;
-        float b = ( rgb        & 0xFF) / 255f;
-
-        float max = Math.max(r, Math.max(g, b));
-        float min = Math.min(r, Math.min(g, b));
-        float l = (max + min) * 0.5f;
-        float delta = max - min;
-
-        float h, s;
-        if (delta < 1e-6f) {
-            h = 0f;
-            s = 0f;
-        } else {
-            s = l > 0.5f ? delta / (2f - max - min) : delta / (max + min);
-            if (max == r)      h = ((g - b) / delta) + (g < b ? 6f : 0f);
-            else if (max == g) h = ((b - r) / delta) + 2f;
-            else               h = ((r - g) / delta) + 4f;
-            h *= 60f;
-        }
-        return new float[] { h, s, l };
-    }
-
 }

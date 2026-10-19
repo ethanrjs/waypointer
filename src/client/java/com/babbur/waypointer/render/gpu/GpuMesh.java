@@ -10,6 +10,8 @@ import java.util.Objects;
 
 public final class GpuMesh implements AutoCloseable {
 
+    private static final double RESORT_DISTANCE_SQUARED = 0.25 * 0.25;
+
     private final String label;
     private final MeshTopology topology;
     private final boolean sorted;
@@ -20,10 +22,12 @@ public final class GpuMesh implements AutoCloseable {
     private int storedVertices;
     private float[] quadCenters = new float[0];
     private int[] quadOrder = new int[0];
-    private int[] sortScratch = new int[0];
-    private double[] quadDistances = new double[0];
+    private long[] sortKeys = new long[0];
+    private float[] quadDistances = new float[0];
     private ByteBuffer indexBytes = allocate(24);
     private boolean sortDirty;
+
+    private int sortedQuads = -1;
     private double sortedCameraX = Double.NaN;
     private double sortedCameraY = Double.NaN;
     private double sortedCameraZ = Double.NaN;
@@ -64,18 +68,21 @@ public final class GpuMesh implements AutoCloseable {
                               double cameraX, double cameraY, double cameraZ) {
         Objects.requireNonNull(encoder, "encoder");
         if (!sorted || isEmpty()) return 0;
-        if (!sortDirty && cameraX == sortedCameraX && cameraY == sortedCameraY
-                && cameraZ == sortedCameraZ) return 0;
+        if (!sortDirty && cameraWithinResortDistance(cameraX, cameraY, cameraZ)) return 0;
 
         int quads = storedVertices / 4;
         if (quads == 0) return 0;
         ensureSortCapacity(quads);
-        boolean changed = QuadSorter.sortBackToFront(quadCenters, quadOrder, quadDistances, sortScratch,
-                quads, !sortDirty, cameraX, cameraY, cameraZ);
+        boolean changed = QuadSorter.sortBackToFront(quadCenters, quadOrder, quadDistances, sortKeys,
+                quads, sortedQuads == quads, cameraX, cameraY, cameraZ);
         sortedCameraX = cameraX;
         sortedCameraY = cameraY;
         sortedCameraZ = cameraZ;
-        if (!changed) return 0;
+        sortedQuads = quads;
+        if (!changed) {
+            sortDirty = false;
+            return 0;
+        }
 
         int bytes = quads * 6 * Integer.BYTES;
         ensureIndexCapacity(bytes);
@@ -88,6 +95,13 @@ public final class GpuMesh implements AutoCloseable {
         GpuMeshCompat.upload(encoder, indexBuffer, indexBytes);
         sortDirty = false;
         return bytes;
+    }
+
+    private boolean cameraWithinResortDistance(double cameraX, double cameraY, double cameraZ) {
+        double dx = cameraX - sortedCameraX;
+        double dy = cameraY - sortedCameraY;
+        double dz = cameraZ - sortedCameraZ;
+        return dx * dx + dy * dy + dz * dz < RESORT_DISTANCE_SQUARED;
     }
 
     public void draw(RenderPass pass) {
@@ -112,10 +126,6 @@ public final class GpuMesh implements AutoCloseable {
 
     int primitiveCount() {
         return storedVertices / topology.storedVerticesPerPrimitive();
-    }
-
-    int batchEnd(int start, double nextDistance) {
-        return QuadSorter.batchEnd(quadDistances, quadOrder, start, primitiveCount(), nextDistance);
     }
 
     static void writePrimitiveIndices(ByteBuffer target, MeshTopology topology, int base) {
@@ -154,8 +164,8 @@ public final class GpuMesh implements AutoCloseable {
         if (quadOrder.length >= quads) return;
         int capacity = Math.max(quads, Math.max(16, quadOrder.length * 2));
         quadOrder = new int[capacity];
-        sortScratch = new int[capacity];
-        quadDistances = new double[capacity];
+        sortKeys = new long[capacity];
+        quadDistances = new float[capacity];
         quadCenters = new float[capacity * 3];
     }
 
@@ -200,10 +210,11 @@ public final class GpuMesh implements AutoCloseable {
         storedVertices = 0;
         quadCenters = new float[0];
         quadOrder = new int[0];
-        sortScratch = new int[0];
-        quadDistances = new double[0];
+        sortKeys = new long[0];
+        quadDistances = new float[0];
         indexBytes = allocate(24);
         sortDirty = false;
+        sortedQuads = -1;
     }
 
     private static ByteBuffer allocate(int bytes) {

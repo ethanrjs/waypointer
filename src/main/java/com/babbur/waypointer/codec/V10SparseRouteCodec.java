@@ -11,12 +11,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.zip.Deflater;
 
-/**
- * Wire-v10 kind 5: the kind-2 coordinate primitive plus sparse waypoint flags
- * and sixteenth-block precision. Eligible body variants compete on final text.
- */
 final class V10SparseRouteCodec {
 
     static final int CONTENT_KIND = 5;
@@ -46,8 +43,7 @@ final class V10SparseRouteCodec {
                 || group.size() > MAX_WAYPOINTS) {
             return false;
         }
-        // Kind 5 has no group-name field, so the source must already be
-        // anonymous. BARE_COORDINATES is handled separately by kind 2.
+
         if (!group.name().isEmpty()) return false;
         if (!group.isEmpty()
                 && (projectedFlags(group.get(0), options) & Waypoint.FLAG_SUBWAYPOINT) != 0) {
@@ -90,8 +86,7 @@ final class V10SparseRouteCodec {
                     best = considerCoordinateBody(best, route,
                             Arrays.copyOfRange(quotient, 1, quotient.length), coordinateMode);
                 } catch (IOException ignored) {
-                    // Rice and DEFLATE remain valid fallbacks when quotient's
-                    // bounded search cannot produce a candidate.
+
                 }
             }
         }
@@ -610,7 +605,7 @@ final class V10SparseRouteCodec {
     }
 
     private static List<Integer> matchingIndices(
-            ProjectedRoute route, java.util.function.Predicate<ProjectedPoint> predicate) {
+            ProjectedRoute route, Predicate<ProjectedPoint> predicate) {
         List<Integer> indices = new ArrayList<>();
         for (int index = 0; index < route.points.size(); index++) {
             if (predicate.test(route.points.get(index))) indices.add(index);

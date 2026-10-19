@@ -6,8 +6,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.zip.Deflater;
 
-/** V10 kinds 0 and 7: lossless routes. Kind 7 adds a sender label after the header,
- * leaving header bit 7 for transport mode. */
 final class V10GeneralRouteCodec {
 
     static final int CONTENT_KIND = 0;

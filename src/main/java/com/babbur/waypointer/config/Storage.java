@@ -18,10 +18,14 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -29,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public final class Storage {
 
@@ -180,10 +185,10 @@ public final class Storage {
     }
 
     static void writeDurably(Path target, String json) throws IOException {
-        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(target,
-                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
-                java.nio.file.StandardOpenOption.WRITE)) {
-            java.nio.ByteBuffer bytes = java.nio.charset.StandardCharsets.UTF_8.encode(json);
+        try (FileChannel channel = FileChannel.open(target,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE)) {
+            ByteBuffer bytes = StandardCharsets.UTF_8.encode(json);
             while (bytes.hasRemaining()) channel.write(bytes);
             channel.force(true);
         }
@@ -230,7 +235,7 @@ public final class Storage {
             encoded.addProperty("color", folder.color());
             JsonArray groupIds = new JsonArray();
             for (String groupId : manager.groupIdsInFolder(folder.id())) {
-                groupIds.add(groupId);
+                if (persistableFolderMember(manager.get(groupId), folder)) groupIds.add(groupId);
             }
             encoded.add("groupIds", groupIds);
             folders.add(encoded);
@@ -350,9 +355,7 @@ public final class Storage {
                 if (group == null) {
                     throw new IllegalArgumentException("route folder references missing group " + groupId);
                 }
-                if (group.temp() || group.runtimeOnly()
-                        || group.routeKind() != WaypointGroup.RouteKind.REGULAR
-                        || !folder.zoneId().equals(group.zoneId())) {
+                if (!persistableFolderMember(group, folder)) {
                     throw new IllegalArgumentException("invalid route folder member " + groupId);
                 }
                 if (memberships.putIfAbsent(groupId, folder.id()) != null) {
@@ -363,6 +366,12 @@ public final class Storage {
         }
         return new ParsedGroups(List.copyOf(groups), List.copyOf(folders),
                 Map.copyOf(memberships), canonicalizedZoneCount, canonicalizedZoneCount > 0);
+    }
+
+    private static boolean persistableFolderMember(WaypointGroup group, RouteFolder folder) {
+        return group != null && !group.temp() && !group.runtimeOnly()
+                && group.routeKind() == WaypointGroup.RouteKind.REGULAR
+                && folder.zoneId().equals(group.zoneId());
     }
 
     private static int folderColorFromJson(JsonObject encoded) {
@@ -419,7 +428,7 @@ public final class Storage {
     }
 
         static WaypointGroup groupFromJson(JsonObject o) {
-        String id = o.has("id") ? o.get("id").getAsString() : java.util.UUID.randomUUID().toString();
+        String id = o.has("id") ? o.get("id").getAsString() : UUID.randomUUID().toString();
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
@@ -554,7 +563,7 @@ public final class Storage {
 
     private static WaypointStyle styleFromJson(JsonElement value) {
         if (value == null || !value.isJsonObject()) return WaypointStyle.EMPTY;
-        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        Map<String, String> values = new LinkedHashMap<>();
         value.getAsJsonObject().entrySet().forEach(entry -> {
             if (entry.getValue().isJsonPrimitive())
                 values.put(entry.getKey(), entry.getValue().getAsString());

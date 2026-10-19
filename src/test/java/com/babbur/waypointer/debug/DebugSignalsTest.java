@@ -2,6 +2,8 @@ package com.babbur.waypointer.debug;
 
 import com.babbur.waypointer.crystal.CrystalHollowsPosition;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.SightingConfidence;
+import com.babbur.waypointer.crystal.StructureSighting;
 import com.babbur.waypointer.dungeon.Direction;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomShape;
@@ -15,11 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DebugSignalsTest {
     @Test
     void structureEvidenceKeepsGeometryAndProvenanceWithoutRawSourceOrNotes() {
-        var sighting = new com.babbur.waypointer.crystal.StructureSighting(
+        var sighting = new StructureSighting(
                 CrystalHollowsStructure.MINES_OF_DIVAN, 606, 88, 265,
-                com.babbur.waypointer.crystal.SightingConfidence.SHARED_REMOTE,
+                SightingConfidence.SHARED_REMOTE,
                 "PrivatePlayer token=private-token", 1L, List.of(CrystalHollowsStructure.MINES_OF_DIVAN),
-                "private note", com.babbur.waypointer.crystal.SightingConfidence.COMPASS);
+                "private note", SightingConfidence.COMPASS);
         String line = DebugSignals.structureEvidenceLine(sighting);
         assertTrue(line.contains("x=606, y=88, z=265"));
         assertTrue(line.contains("remoteEvidence=COMPASS"));

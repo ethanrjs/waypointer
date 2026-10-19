@@ -8,12 +8,14 @@ import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -21,6 +23,37 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointRendererTest {
+
+    @Test
+    void labelRowCheckAgreesWithTheRowsItSkipsBuilding() {
+        WaypointGroup route = new WaypointGroup("route", "Route", "hub");
+        route.add(new Waypoint(0, 64, 0, "Named", 0xFFFFFF, 0, 0));
+        route.add(Waypoint.at(4, 64, 0));
+        WaypointGroup temp = new WaypointGroup("temp", "Temp", "hub");
+        temp.setTemp(true);
+        temp.add(Waypoint.at(8, 64, 0));
+        for (int mask = 0; mask < 64; mask++) {
+            WaypointerConfig appearance = new WaypointerConfig();
+            appearance.setShowWaypointNames((mask & 1) != 0);
+            appearance.setShowWaypointRoleBadge((mask & 2) != 0);
+            appearance.setLabelShowRouteName((mask & 4) != 0);
+            appearance.setShowRouteProgress((mask & 8) != 0);
+            appearance.setShowWaypointDistances((mask & 16) != 0);
+            appearance.setLabelShowCoordinates((mask & 32) != 0);
+            for (WaypointGroup group : List.of(route, temp)) {
+                for (int index = 0; index < group.size(); index++) {
+                    for (boolean detail : new boolean[]{false, true}) {
+                        Waypoint waypoint = group.get(index);
+                        String progress = appearance.showRouteProgress() && !group.temp() ? "50%" : null;
+                        boolean built = !WaypointRenderer.labelRows(appearance, group, index, waypoint, detail,
+                                "current", 12, progress).isEmpty();
+                        assertEquals(built, WaypointRenderer.hasLabelRows(appearance, group, waypoint, detail),
+                                "mask " + mask + " " + group.id() + " #" + index + " detail " + detail);
+                    }
+                }
+            }
+        }
+    }
 
     @Test
     void nearlyTransparentFadeLabelsAreNotSubmittedToTheFontRenderer() {
@@ -38,7 +71,7 @@ class WaypointRendererTest {
         config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.OFF);
         WaypointRenderer renderer = new WaypointRenderer(manager, config);
         WaypointGroup group = manager.addTempWaypoint(695, 87, 421, "Mines of Divan");
-        var position = net.minecraft.world.phys.Vec3.ZERO;
+        var position = Vec3.ZERO;
         long unfocused = renderer.worldVisibilityFingerprint(List.of(group), position, position);
         assertEquals(WaypointerConfig.BeaconBeamMode.OFF, renderer.effectiveBeaconBeamMode());
 
@@ -257,9 +290,9 @@ class WaypointRendererTest {
     void anyEtherwarpRouteLineStartsAtCrouchingEyeHeightAboveWaypointBlock() {
         Waypoint waypoint = waypointAt(10, 64, -5, 0);
 
-        assertEquals(new net.minecraft.world.phys.Vec3(10.5, 64.5, -4.5),
+        assertEquals(new Vec3(10.5, 64.5, -4.5),
                 WaypointRenderer.routeLineStart(waypoint, false, 1.27f));
-        net.minecraft.world.phys.Vec3 etherwarpStart =
+        Vec3 etherwarpStart =
                 WaypointRenderer.routeLineStart(waypoint, true, 1.27f);
         assertEquals(10.5, etherwarpStart.x);
         assertEquals(66.27, etherwarpStart.y, 0.00001);
@@ -268,9 +301,9 @@ class WaypointRendererTest {
 
     @Test
     void routeLineStartAtCameraClipsForwardAndOffsetsScreenDown() {
-        var camera = new net.minecraft.world.phys.Vec3(10.5, 66.27, -4.5);
-        var target = new net.minecraft.world.phys.Vec3(14.5, 66.27, -4.5);
-        var screenDown = new net.minecraft.world.phys.Vec3(0.0, -1.0, 0.0);
+        var camera = new Vec3(10.5, 66.27, -4.5);
+        var target = new Vec3(14.5, 66.27, -4.5);
+        var screenDown = new Vec3(0.0, -1.0, 0.0);
 
         var clipped = WaypointRenderer.clipLineStartOutsideCamera(
                 camera, target, camera, screenDown, 0.25, 0.12);
@@ -286,21 +319,21 @@ class WaypointRendererTest {
 
     @Test
     void routeLineStartOutsideCameraClearanceRemainsUnchanged() {
-        var camera = new net.minecraft.world.phys.Vec3(0.0, 64.0, 0.0);
-        var start = new net.minecraft.world.phys.Vec3(0.0, 64.26, 0.0);
+        var camera = new Vec3(0.0, 64.0, 0.0);
+        var start = new Vec3(0.0, 64.26, 0.0);
 
         assertEquals(start, WaypointRenderer.clipLineStartOutsideCamera(
-                start, new net.minecraft.world.phys.Vec3(5.0, 64.0, 0.0), camera,
-                new net.minecraft.world.phys.Vec3(0.0, -1.0, 0.0), 0.25, 0.12));
+                start, new Vec3(5.0, 64.0, 0.0), camera,
+                new Vec3(0.0, -1.0, 0.0), 0.25, 0.12));
     }
 
     @Test
     void routeLineFullyInsideCameraClearanceCollapsesAtItsTarget() {
-        var camera = new net.minecraft.world.phys.Vec3(0.0, 64.0, 0.0);
-        var target = new net.minecraft.world.phys.Vec3(0.1, 64.0, 0.0);
+        var camera = new Vec3(0.0, 64.0, 0.0);
+        var target = new Vec3(0.1, 64.0, 0.0);
 
         assertEquals(target, WaypointRenderer.clipLineStartOutsideCamera(
-                camera, target, camera, new net.minecraft.world.phys.Vec3(0.0, -1.0, 0.0),
+                camera, target, camera, new Vec3(0.0, -1.0, 0.0),
                 0.25, 0.12));
     }
 
@@ -502,7 +535,7 @@ class WaypointRendererTest {
 
         assertEquals("3.0,5.0,8.0", vecKey(WaypointRenderer.lineOfSightSamplePoint(bounds, 0)));
 
-        java.util.Set<String> corners = new java.util.HashSet<>();
+        Set<String> corners = new HashSet<>();
         for (int i = 1; i <= 8; i++) {
             corners.add(vecKey(WaypointRenderer.lineOfSightSamplePoint(bounds, i)));
         }
@@ -520,12 +553,12 @@ class WaypointRendererTest {
 
     @Test
     void lineOfSightAcceptsAHitAtTheSampleIndependentOfCameraDistance() {
-        var sample = new net.minecraft.world.phys.Vec3(10.5, 64.0, -4.5);
+        var sample = new Vec3(10.5, 64.0, -4.5);
 
         assertTrue(WaypointRenderer.lineOfSightHitReachesSample(
-                new net.minecraft.world.phys.Vec3(10.5, 63.995, -4.5), sample));
+                new Vec3(10.5, 63.995, -4.5), sample));
         assertFalse(WaypointRenderer.lineOfSightHitReachesSample(
-                new net.minecraft.world.phys.Vec3(10.5, 63.98, -4.5), sample));
+                new Vec3(10.5, 63.98, -4.5), sample));
     }
 
     @Test
@@ -766,8 +799,8 @@ class WaypointRendererTest {
     @Test
     void beaconRadiusMatchesVanillaDistanceAndSpyglassRules() {
         Waypoint waypoint = waypointAt(0, 64, 0, 0);
-        var near = new net.minecraft.world.phys.Vec3(1.5, 64, 1.5);
-        var far = new net.minecraft.world.phys.Vec3(192.5, 64, 0.5);
+        var near = new Vec3(1.5, 64, 1.5);
+        var far = new Vec3(192.5, 64, 0.5);
 
         assertFloatEquals(1.0f,
                 WaypointRenderer.beaconTextureRadiusScale(waypoint, near, false));
@@ -835,7 +868,7 @@ class WaypointRendererTest {
                 "expected " + expected + " but was " + actual);
     }
 
-    private static String vecKey(net.minecraft.world.phys.Vec3 vec) {
+    private static String vecKey(Vec3 vec) {
         return vec.x + "," + vec.y + "," + vec.z;
     }
 }

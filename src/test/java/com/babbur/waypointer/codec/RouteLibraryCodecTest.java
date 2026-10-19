@@ -336,7 +336,7 @@ class RouteLibraryCodecTest {
             assertEquals(fromLegacy.groups().get(i).waypoints(),
                     fromUniversal.groups().get(i).waypoints());
         }
-        // A plain route share is not a library, even though it uses WP:.
+
         assertThrows(IllegalArgumentException.class, () -> RouteLibraryCodec.decode(
                 WaypointCodec.encode(List.of(group("plain", "Plain", 2)))));
     }

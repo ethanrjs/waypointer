@@ -1,11 +1,20 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.api.ImportSource;
+import com.babbur.waypointer.api.ImportSummary;
 import com.babbur.waypointer.catalog.CatalogPage;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,24 +49,24 @@ class RouteCatalogScreenSearchTest {
     void initialZoneFilterAlwaysStartsOnAllZones() {
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("hub")));
+                        Zone.fromId("hub")));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(null));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.UNKNOWN));
+                        Zone.UNKNOWN));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.PRIVATE_WORLD));
+                        Zone.PRIVATE_WORLD));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("dungeon_f7")));
+                        Zone.fromId("dungeon_f7")));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("dungeon")));
+                        Zone.fromId("dungeon")));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("dungeon_hub")));
+                        Zone.fromId("dungeon_hub")));
     }
     @Test
     void editedSearchOnlySchedulesRebuildAfterTheEditBoxFinishesMutation() {
@@ -124,7 +133,7 @@ class RouteCatalogScreenSearchTest {
 
     @Test
     void searchCacheIsBoundedAndEvictsTheLeastRecentlyUsedQuery() {
-        java.util.LinkedHashMap<String, Integer> cache =
+        LinkedHashMap<String, Integer> cache =
                 RouteCatalogScreen.boundedPageCache(2);
         cache.put(RouteCatalogScreen.searchCacheKey(null, "a"), 1);
         cache.put(RouteCatalogScreen.searchCacheKey(null, "b"), 2);
@@ -148,7 +157,7 @@ class RouteCatalogScreenSearchTest {
         assertFalse(ids.contains("unknown"));
         assertFalse(ids.contains("private_world"));
         assertFalse(ids.contains("mineshaft"));
-        assertEquals(ids.size(), new java.util.HashSet<>(ids).size());
+        assertEquals(ids.size(), new HashSet<>(ids).size());
     }
 
     @Test
@@ -222,22 +231,22 @@ class RouteCatalogScreenSearchTest {
 
     @Test
     void installedFocusOpensTheFirstImportedGroupThatStillExists() {
-        com.babbur.waypointer.core.ActiveGroupManager manager =
-                new com.babbur.waypointer.core.ActiveGroupManager();
-        com.babbur.waypointer.core.WaypointGroup group =
-                com.babbur.waypointer.core.WaypointGroup.create("Installed", "hub");
+        ActiveGroupManager manager =
+                new ActiveGroupManager();
+        WaypointGroup group =
+                WaypointGroup.create("Installed", "hub");
         manager.addAll(List.of(group));
-        com.babbur.waypointer.api.ImportSummary summary =
-                new com.babbur.waypointer.api.ImportSummary(
-                        com.babbur.waypointer.api.ImportSource.WAYPOINTER, "Route",
+        ImportSummary summary =
+                new ImportSummary(
+                        ImportSource.WAYPOINTER, "Route",
                         1, 1, List.of("missing", group.id()));
 
         assertNull(RouteCatalogScreen.installedFocus(null, summary));
         assertNull(RouteCatalogScreen.installedFocus(manager, null));
         assertSame(group, RouteCatalogScreen.installedFocus(manager, summary));
         assertNull(RouteCatalogScreen.installedFocus(manager,
-                new com.babbur.waypointer.api.ImportSummary(
-                        com.babbur.waypointer.api.ImportSource.WAYPOINTER, "Route",
+                new ImportSummary(
+                        ImportSource.WAYPOINTER, "Route",
                         1, 1, List.of("missing"))));
     }
 
@@ -267,16 +276,16 @@ class RouteCatalogScreenSearchTest {
         assertTrue(!plain.equals(RouteCatalogScreen.searchCacheKey("hub", "gems", "mining-cult",
                 CatalogBrowserModel.Sort.RECOMMENDED)));
 
-        var tagged = new com.babbur.waypointer.catalog.CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Gems", "",
+        var tagged = new CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Gems", "",
                 "A", "", false, "public", "hub", "Hub", 3, 1, 9, 1, 0, "", "", "/r/a",
-                java.util.List.of("mining-cult"));
-        var untagged = new com.babbur.waypointer.catalog.CatalogRouteSummary("BBBBBBBBBBBBBBBBBBBBBB", "Gems too", "",
+                List.of("mining-cult"));
+        var untagged = new CatalogRouteSummary("BBBBBBBBBBBBBBBBBBBBBB", "Gems too", "",
                 "B", "", false, "public", "hub", "Hub", 3, 1, 9, 1, 0, "", "", "/r/b");
-        java.util.Map<String, com.babbur.waypointer.catalog.CatalogPage> cache = new java.util.HashMap<>();
+        Map<String, com.babbur.waypointer.catalog.CatalogPage> cache = new HashMap<>();
         cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
-                new com.babbur.waypointer.catalog.CatalogPage(java.util.List.of(tagged, untagged), false, null));
+                new com.babbur.waypointer.catalog.CatalogPage(List.of(tagged, untagged), false, null));
 
         var cut = RouteCatalogScreen.cachedSearchPage(cache, null, "", "mining-cult", CatalogBrowserModel.Sort.POPULAR);
-        assertEquals(java.util.List.of(tagged), cut.routes());
+        assertEquals(List.of(tagged), cut.routes());
     }
 }

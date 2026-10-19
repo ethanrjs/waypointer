@@ -1,6 +1,7 @@
 package com.babbur.waypointer.api;
 
 import java.util.List;
+import java.util.Objects;
 
 public record ImportSummary(
         ImportSource source,
@@ -10,7 +11,7 @@ public record ImportSummary(
         List<String> groupIds) {
 
     public ImportSummary {
-        source = java.util.Objects.requireNonNull(source, "source");
+        source = Objects.requireNonNull(source, "source");
         label = label == null ? "" : label;
         groupIds = List.copyOf(groupIds);
     }

@@ -1,7 +1,9 @@
 package com.babbur.waypointer.dungeon;
 
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -163,15 +165,15 @@ class DungeonStepProgressTest {
         group.setCurrentTargetIndex(group.size());
         assertEquals(List.of(0, 1, 2, 3, 4, 5, 6), visible(group));
 
-        com.babbur.waypointer.core.ActiveGroupManager manager =
-                new com.babbur.waypointer.core.ActiveGroupManager();
+        ActiveGroupManager manager =
+                new ActiveGroupManager();
         WaypointGroup mirror = new WaypointGroup("dungeon:auto:test-room", "Room", "test-room");
         mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         mirror.setRuntimeOnly(true);
         mirror.add(new Waypoint(0, 70, 0, "", Waypoint.DEFAULT_COLOR, CHEST, 0.0));
         mirror.setCurrentTargetIndex(1);
         manager.add(mirror);
-        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("test-room", "Room"));
+        manager.onZoneChanged(new Zone("test-room", "Room"));
         assertEquals(List.of(), manager.activeGroups(), "a finished room hides");
         mirror.setShowAllWaypoints(true);
         manager.fireTransientDataChanged();

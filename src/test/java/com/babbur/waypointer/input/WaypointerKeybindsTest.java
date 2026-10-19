@@ -27,7 +27,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerKeybindsTest {
@@ -57,9 +56,10 @@ class WaypointerKeybindsTest {
                 WaypointerKeybinds.ENTER_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.EXIT_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY),
+                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
+                WaypointerKeybinds.TOGGLE_WAYPOINTS_TRANSLATION_KEY),
                 WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS);
-        assertEquals(10, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
+        assertEquals(11, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
         for (String translationKey : WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS) {
             assertLanguageEntry(english, translationKey);
         }
@@ -77,7 +77,7 @@ class WaypointerKeybindsTest {
         assertEquals(InputConstants.UNKNOWN.getValue(), WaypointerKeybinds.UNBOUND_DEFAULT_KEY);
         assertEquals(GLFW.GLFW_KEY_U, WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.get(0));
 
-        for (int index = 1; index < 10; index++) {
+        for (int index = 1; index < WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size(); index++) {
             int keyIndex = index;
             String message = WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.get(keyIndex)
                     + " should be unbound by default";

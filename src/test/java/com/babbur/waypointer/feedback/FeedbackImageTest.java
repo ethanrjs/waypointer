@@ -6,8 +6,11 @@ import javax.imageio.ImageIO;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageTypeSpecifier;
 import javax.imageio.metadata.IIOMetadataNode;
+import java.awt.Color;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,7 +30,7 @@ class FeedbackImageTest {
             assertEquals(dimensions[2], image.thumbnailWidth());
             assertEquals(dimensions[3], image.thumbnailHeight());
             assertEquals(dimensions[2] * dimensions[3], image.thumbnailPixels().length);
-            BufferedImage upload = ImageIO.read(new java.io.ByteArrayInputStream(image.bytes()));
+            BufferedImage upload = ImageIO.read(new ByteArrayInputStream(image.bytes()));
             assertEquals(dimensions[0], upload.getWidth());
             assertEquals(dimensions[1], upload.getHeight());
         }
@@ -50,7 +53,7 @@ class FeedbackImageTest {
         BufferedImage source = new BufferedImage(320, 200, BufferedImage.TYPE_INT_RGB);
         var graphics = source.createGraphics();
         try {
-            graphics.setColor(java.awt.Color.RED);
+            graphics.setColor(Color.RED);
             graphics.fillRect(0, 0, source.getWidth(), source.getHeight());
         } finally { graphics.dispose(); }
         Path path = directory.resolve("red.jpg");
@@ -101,7 +104,7 @@ class FeedbackImageTest {
         Files.writeString(text, "not an image");
         assertThrows(IOException.class, () -> FeedbackImage.read(text));
         Path large = directory.resolve("large.png");
-        try (var out = new java.io.RandomAccessFile(large.toFile(), "rw")) {
+        try (var out = new RandomAccessFile(large.toFile(), "rw")) {
             out.setLength(FeedbackSubmission.MAX_IMAGE_BYTES + 1L);
         }
         assertThrows(IOException.class, () -> FeedbackImage.read(large));

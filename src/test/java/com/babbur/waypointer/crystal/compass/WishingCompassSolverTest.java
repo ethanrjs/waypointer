@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.babbur.waypointer.crystal.CrystalHollowsZone;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class WishingCompassSolverTest {
@@ -37,7 +38,7 @@ class WishingCompassSolverTest {
         assertEquals(1, solver.completedRays().size());
         capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
         var result = solver.lastResult().orElseThrow();
-        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
+        assertEquals(Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
         assertTrue(result.solution().distanceTo(target) < 2);
         assertEquals(CrystalHollowsZone.CRYSTAL_NUCLEUS, result.firstRay().zone());
     }
@@ -50,7 +51,7 @@ class WishingCompassSolverTest {
         assertEquals(WishingCompassSolver.State.NEED_SECOND_USE, solver.state());
         capture(solver, new Vec3d(600, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 2_000);
         var result = solver.lastResult().orElseThrow();
-        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
+        assertEquals(Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
         assertTrue(result.solution().distanceTo(target) < 2);
         assertEquals(CrystalHollowsZone.MITHRIL_DEPOSITS, result.searchZone());
     }
@@ -62,7 +63,7 @@ class WishingCompassSolverTest {
         capture(solver, new Vec3d(600, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 1_000);
         capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
         var result = solver.lastResult().orElseThrow();
-        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
+        assertEquals(Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
         assertEquals(CrystalHollowsZone.MITHRIL_DEPOSITS, result.searchZone());
     }
 
@@ -77,7 +78,7 @@ class WishingCompassSolverTest {
         assertEquals(1, solver.completedRays().size());
         assertTrue(solver.lastResult().isEmpty());
         capture(solver, new Vec3d(620, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 4_000);
-        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
+        assertEquals(Set.of(WishingCompassTarget.MINES_OF_DIVAN),
                 solver.lastResult().orElseThrow().targets());
     }
 
@@ -111,7 +112,7 @@ class WishingCompassSolverTest {
         assertEquals(1, solver.completedRays().size());
         assertTrue(solver.lastResult().isEmpty());
         capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 4_000);
-        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
+        assertEquals(Set.of(WishingCompassTarget.MINES_OF_DIVAN),
                 solver.lastResult().orElseThrow().targets());
     }
 
@@ -126,7 +127,7 @@ class WishingCompassSolverTest {
                 target.subtract(new Vec3d(500.3, 108.5, 500.2)).normalize(), 1_000);
         solver.setTargetContext(contextWithMissing(Crystal.JADE), false, false);
         capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
-        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
+        assertEquals(Set.of(WishingCompassTarget.MINES_OF_DIVAN),
                 solver.lastResult().orElseThrow().targets());
     }
 

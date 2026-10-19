@@ -1,5 +1,6 @@
 package com.babbur.waypointer.debug;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.Direction;
@@ -36,7 +37,7 @@ public final class DebugSignals {
         String safeMethod = List.of("GET", "POST", "PATCH", "DELETE").contains(method) ? method : "REQUEST";
         String safeCode = code != null && code.matches("[a-z_]{1,80}") ? code : "unknown";
         catalogFailure = safeMethod + " / HTTP " + status + " / " + safeCode;
-        com.babbur.waypointer.Waypointer.LOGGER.warn("Catalog request failed: {}", catalogFailure);
+        Waypointer.LOGGER.warn("Catalog request failed: {}", catalogFailure);
     }
 
     public static DungeonDebugSnapshot dungeonDebugSnapshot() {
@@ -104,10 +105,6 @@ public final class DebugSignals {
             case SKELETON_CONFIRMED -> "skeleton confirmed";
             case UNKNOWN -> "unknown";
         };
-    }
-
-    public static String dungeonBridgeLine() {
-        return DungeonRoomZoneBridge.debugSnapshot().line;
     }
 
     public static String dungeonConfigLine() {

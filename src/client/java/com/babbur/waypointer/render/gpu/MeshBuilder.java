@@ -165,10 +165,7 @@ public final class MeshBuilder implements VertexConsumer, AutoCloseable {
         int needed = (storedVertices + (topology.duplicatesVertices() ? 2 : 1)) * stride;
         ensureCapacity(needed);
         currentVertexStart = storedVertices * stride;
-        for (int i = 0; i < stride; i += 4) {
-            if (i + 4 <= stride) buffer.putInt(currentVertexStart + i, 0);
-            else for (int j = i; j < stride; j++) buffer.put(currentVertexStart + j, (byte) 0);
-        }
+        clearVertex(currentVertexStart, stride);
         if (colorOffset >= 0) buffer.putInt(currentVertexStart + colorOffset, OPAQUE_WHITE_ARGB);
     }
 
@@ -178,13 +175,22 @@ public final class MeshBuilder implements VertexConsumer, AutoCloseable {
         storedVertices++;
         logicalVertices++;
         if (topology.duplicatesVertices()) {
-            int copyStart = storedVertices * stride;
-            for (int i = 0; i < stride; i++) {
-                buffer.put(copyStart + i, buffer.get(currentVertexStart + i));
-            }
+            copyVertex(currentVertexStart, storedVertices * stride, stride);
             storedVertices++;
         }
         currentVertexStart = -1;
+    }
+
+    private void clearVertex(int start, int stride) {
+        int i = 0;
+        for (; i + Long.BYTES <= stride; i += Long.BYTES) buffer.putLong(start + i, 0L);
+        for (; i < stride; i++) buffer.put(start + i, (byte) 0);
+    }
+
+    private void copyVertex(int from, int to, int stride) {
+        int i = 0;
+        for (; i + Long.BYTES <= stride; i += Long.BYTES) buffer.putLong(to + i, buffer.getLong(from + i));
+        for (; i < stride; i++) buffer.put(to + i, buffer.get(from + i));
     }
 
     private void ensureCapacity(int bytes) {

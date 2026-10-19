@@ -8,6 +8,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -29,7 +30,7 @@ class WaypointCodecV10BareRouteTest {
 
     @Test
     void direct_mode_matches_locked_contextual91_goldens() {
-        // Header-mode envelope: no selector character, CRC-16 trailer.
+
         assertEquals(String.join("\n",
                         "WP:M!8D%",
                         "WP:<$!!#~%S#",
@@ -93,8 +94,6 @@ class WaypointCodecV10BareRouteTest {
             assertFalse(waypoint.hasCustomPrecisePosition());
         }
 
-        // The ordinary/default writer uses the lossless V10 general body, so
-        // explicit coordinate projection cannot weaken it.
         String rich = WaypointCodec.encode(List.of(source));
         assertEquals(V10GeneralRouteCodec.CONTENT_KIND,
                 assertDoesNotThrowProbe(rich).contentKind());
@@ -210,7 +209,7 @@ class WaypointCodecV10BareRouteTest {
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         assertEquals("V10_QUOTIENT", debug.groups().getFirst().coordMode());
         assertTrue(debug.textEncoding().contains("V10_QUOTIENT"));
-        // Locked final text length, payload length, and payload digest.
+
         assertEquals("348 chars, 281 payload bytes, sha256 e2d5f286d94cea1c185821bc608099db1e3cabed1992351edd37b7968154fa41",
                 encoded.length() + " chars, " + frame.payload().length + " payload bytes, sha256 "
                         + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -224,8 +223,6 @@ class WaypointCodecV10BareRouteTest {
         assertEquals("<~3<~~o~/o~~ordinary~digit", escaped);
         assertEquals(plain, V10Transport.unescapeContextual(escaped));
 
-        // '<3' consists of legal base-91 digits, but it is not the canonical
-        // chat spelling because the contextual marker is missing.
         IOException failure = assertThrows(IOException.class,
                 () -> V10Transport.decode("<3"));
         assertTrue(failure.getMessage().contains("non-canonical"));
@@ -251,14 +248,11 @@ class WaypointCodecV10BareRouteTest {
                 0x2A, (byte) 0x80, 0x00
         }, "non-canonical v10 uvarint");
 
-        // Canonical two-identical-point Rice body is
-        // 2a02000000ffffff03. One extra zero byte is redundant padding.
         assertTerminalCommittedV10Failure(new byte[] {
                 0x2A, 0x02, 0, 0, 0,
                 (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, 0x03, 0x00
         }, "redundant v10 Rice padding byte");
 
-        // Exceed 90*(count-1) unary zeros; the work budget must stop parsing.
         byte[] unaryAttack = new byte[5 + 13];
         unaryAttack[0] = 0x2A;
         unaryAttack[1] = 0x02;
@@ -279,7 +273,7 @@ class WaypointCodecV10BareRouteTest {
         try (var stream = WaypointCodecV10BareRouteTest.class.getResourceAsStream(
                 "/fixtures/v9-ab-prefix-fallback-codes.txt")) {
             if (stream == null) throw new AssertionError("missing V9 A/B fallback fixture");
-            codes = new java.io.BufferedReader(
+            codes = new BufferedReader(
                     new InputStreamReader(stream, StandardCharsets.UTF_8)).lines().toList();
         }
 

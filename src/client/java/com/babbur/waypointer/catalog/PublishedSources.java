@@ -16,9 +16,11 @@ import java.util.List;
 import java.util.Map;
 
 public final class PublishedSources {
-    private static final int SCHEMA = 1;
+    private static final int SCHEMA = 2;
+
+    private static final int SCHEMA_1_GROUP_CAP = 64;
     private static final int MAX_ROUTES = 500;
-    private static final int MAX_GROUPS = 64;
+    private static final int MAX_GROUPS = CatalogProtocol.MAX_DUNGEON_GROUPS;
 
     private static PublishedSources active;
 
@@ -45,7 +47,8 @@ public final class PublishedSources {
         if (routeId == null || groupIds == null || groupIds.isEmpty()) return;
         Map<String, List<String>> map = links();
         map.remove(routeId);
-        map.put(routeId, List.copyOf(groupIds.subList(0, Math.min(MAX_GROUPS, groupIds.size()))));
+
+        if (groupIds.size() <= MAX_GROUPS) map.put(routeId, List.copyOf(groupIds));
         while (map.size() > MAX_ROUTES) map.remove(map.keySet().iterator().next());
         save();
     }
@@ -60,10 +63,13 @@ public final class PublishedSources {
         if (!Files.isRegularFile(file)) return links;
         try {
             JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
-            if (root.get("schema").getAsInt() != SCHEMA) return links;
+            int schema = root.get("schema").getAsInt();
+            if (schema != 1 && schema != SCHEMA) return links;
             for (Map.Entry<String, JsonElement> entry : root.getAsJsonObject("routes").entrySet()) {
                 List<String> ids = new ArrayList<>();
                 for (JsonElement id : entry.getValue().getAsJsonArray()) ids.add(id.getAsString());
+                if (ids.isEmpty() || ids.size() > MAX_GROUPS
+                        || schema == 1 && ids.size() >= SCHEMA_1_GROUP_CAP) continue;
                 links.put(entry.getKey(), List.copyOf(ids));
             }
         } catch (IOException | RuntimeException failure) {

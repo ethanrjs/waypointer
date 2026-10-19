@@ -1,6 +1,8 @@
 package com.babbur.waypointer.crystal;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
@@ -22,11 +24,11 @@ public final class CrystalHollowsEntityScanner {
 
     private CrystalHollowsEntityScanner() {}
 
-    public static java.util.List<Detection> scan(
+    public static List<Detection> scan(
             Minecraft client, CrystalHollowsStructure sidebarStructure, Set<Integer> processedIds) {
-        if (client.level == null || client.player == null) return java.util.List.of();
+        if (client.level == null || client.player == null) return List.of();
         Set<String> playerNames = onlinePlayerNames(client.getConnection());
-        java.util.List<Detection> detections = new java.util.ArrayList<>();
+        List<Detection> detections = new ArrayList<>();
         Vec3 playerEye = client.player.getEyePosition();
         for (Entity entity : client.level.entitiesForRendering()) {
             if (processedIds.contains(entity.getId())) continue;
@@ -60,7 +62,7 @@ public final class CrystalHollowsEntityScanner {
             detections.add(detection(entity, match.structure(), match.offsetX(), match.offsetY(),
                     match.offsetZ(), match.divanKeeper(), anchor.orElseThrow().name()));
         }
-        return java.util.List.copyOf(detections);
+        return List.copyOf(detections);
     }
 
     public static Optional<CrystalHollowsPosition> nearestDialogueAnchor(

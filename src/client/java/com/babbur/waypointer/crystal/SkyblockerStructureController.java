@@ -11,6 +11,7 @@ import java.util.EnumSet;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -350,7 +351,7 @@ public final class SkyblockerStructureController {
                                 : new SafeFailure(FailureCause.PROOF_FAILED));
                     }
                 }
-            }).orTimeout(25, java.util.concurrent.TimeUnit.SECONDS);
+            }).orTimeout(25, TimeUnit.SECONDS);
             result.whenComplete((value, error) -> {
                 if (error != null) {
                     synchronized (this) {
