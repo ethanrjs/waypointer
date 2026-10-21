@@ -234,3 +234,34 @@ jobs:
           fi
 
           gh release create "${args[@]}" "${jars[@]}" release/SHA256SUMS.txt
+
+  modrinth:
+    if: github.event_name == 'push'
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Download release files
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: waypointer-release-${{ env.RELEASE_TAG }}
+          path: release
+
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Publish to Modrinth
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        shell: bash
+        run: python3 .github/scripts/publish_modrinth.py release "${RELEASE_TAG}"
