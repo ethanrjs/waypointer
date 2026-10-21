@@ -108,6 +108,47 @@ class CatalogJsonTest {
     }
 
     @Test
+    void readsTheReleaseARouteNeedsAndIgnoresMalformedVersions() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[
+                  {"id":"Abcdefghijklmnopqrstuv","title":"New","zoneId":"hub","zoneLabel":"Hub",
+                   "waypointCount":1,"groupCount":1,"codecVersion":12,"requiresVersion":"1.14.0"},
+                  {"id":"Bcdefghijklmnopqrstuvw","title":"Odd","zoneId":"hub","zoneLabel":"Hub",
+                   "waypointCount":1,"groupCount":1,"codecVersion":12,"requiresVersion":"soon<3"},
+                  {"id":"Cdefghijklmnopqrstuvwx","title":"Old","zoneId":"hub","zoneLabel":"Hub",
+                   "waypointCount":1,"groupCount":1,"codecVersion":9}
+                ],"hasMore":false}
+                """);
+        assertEquals(List.of("1.14.0", "", ""),
+                page.routes().stream().map(CatalogRouteSummary::requiredModVersion).toList());
+    }
+
+    @Test
+    void aRouteFromANewerCodecNamesTheReleaseThatReadsIt() {
+        JsonObject route = summaryObject(ID, "From the future", "Needs a newer Waypointer");
+        route.addProperty("codecVersion", 12);
+        route.addProperty("requiresVersion", "1.14.0");
+        route.addProperty("payload", "WP:a format this client has never seen");
+        JsonObject root = new JsonObject();
+        root.add("route", route);
+
+        CatalogRouteDetails details = CatalogJson.parseDetails(root.toString());
+        CatalogRouteTooNewException tooNew = assertThrows(CatalogRouteTooNewException.class,
+                () -> CatalogRouteInstaller.prepare(details));
+        assertEquals("1.14.0", tooNew.requiredModVersion());
+
+        route.addProperty("payload", "WP2:a new prefix too");
+        assertEquals("1.14.0", assertThrows(CatalogRouteTooNewException.class,
+                () -> CatalogJson.parseDetails(root.toString())).requiredModVersion());
+
+        route.addProperty("codecVersion", 9);
+        IllegalArgumentException unreadable = assertThrows(IllegalArgumentException.class,
+                () -> CatalogJson.parseDetails(root.toString()));
+        assertFalse(unreadable instanceof CatalogRouteTooNewException,
+                "a code this client should read is just broken");
+    }
+
+    @Test
     void sharedTextIsCleanedAndAnUnreadableTitleSkipsOnlyThatRoute() {
         CatalogPage page = CatalogJson.parsePage("""
                 {"routes":[{

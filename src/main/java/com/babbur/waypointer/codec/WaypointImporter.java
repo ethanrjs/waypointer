@@ -159,6 +159,15 @@ public final class WaypointImporter {
         if (trimmed.startsWith(SkysoftWaypointImporter.PREFIX)) {
             return checkedImport(SkysoftWaypointImporter.decodeShare(trimmed));
         }
+        if (V11Codec.isPayload(trimmed)) {
+            V11Codec.Decoded decoded = V11Codec.decode(trimmed);
+            List<WaypointGroup> groups = decoded.groups();
+            if (!decoded.label().isBlank() && groups.size() == 1) {
+                groups.getFirst().setName(decoded.label());
+            }
+            return checkedImport(new ImportResult(
+                    Source.WAYPOINTER, groups, decoded.label(), decoded.metadata()));
+        }
         if (RouteLibraryCodec.isPayload(trimmed)) {
             RouteLibraryCodec.Decoded decoded = RouteLibraryCodec.decode(trimmed);
             List<WaypointGroup> groups = decoded.groups();

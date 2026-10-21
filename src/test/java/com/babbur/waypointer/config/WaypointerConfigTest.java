@@ -132,30 +132,16 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void exportPreviewIsOptInButPainterIsAlwaysAvailable() throws IOException {
+    void painterIsAlwaysAvailable() throws IOException {
         WaypointerConfig config = new WaypointerConfig();
         WaypointPaint paint = WaypointPaint.solid(0x123456);
         config.setWaypointPainterDefaultPaint(paint);
         config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
-        config.setShowExportRoutePreview(true);
-        assertFalse(config.enableFeatureBloat());
-        assertFalse(WaypointerConfig.fromJson("{}").enableFeatureBloat());
-        assertFalse(config.exportRoutePreviewEnabled());
         assertEquals(WaypointerConfig.BoxStyle.PAINT, config.effectiveBoxStyle());
         assertEquals(WaypointerConfig.BoxStyle.PAINT, config.boxStyle());
         assertEquals(paint, config.waypointPainterDefaultPaint());
-        config.setEnableFeatureBloat(true);
-        assertTrue(config.exportRoutePreviewEnabled());
-        assertEquals(WaypointerConfig.BoxStyle.PAINT, config.effectiveBoxStyle());
-        assertTrue(WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)).enableFeatureBloat());
-        assertTrue(V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)).enableFeatureBloat());
-        WaypointerConfig replacement = new WaypointerConfig();
-        replacement.replaceShareableSettingsWith(config);
-        assertTrue(replacement.enableFeatureBloat());
-        replacement.resetToDefaults();
-        assertFalse(replacement.enableFeatureBloat());
-        config.disableAllSettings();
-        assertFalse(config.enableFeatureBloat());
+        assertEquals(WaypointerConfig.BoxStyle.PAINT,
+                WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)).boxStyle());
     }
 
     @Test
@@ -218,24 +204,24 @@ class WaypointerConfigTest {
     void futureSchemaIsRejectedBeforeDeserialization() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> WaypointerConfig.fromJson(
-                        "{\"configSchemaVersion\":9,\"unknownFutureSetting\":{}}"));
+                        "{\"configSchemaVersion\":10,\"unknownFutureSetting\":{}}"));
 
-        assertTrue(failure.getMessage().contains("schema version 9"));
-        assertTrue(failure.getMessage().contains("supported version 8"));
+        assertTrue(failure.getMessage().contains("schema version 10"));
+        assertTrue(failure.getMessage().contains("supported version 9"));
     }
 
     @Test
     void futureSchemaConfigIsPreservedAndAllWritesStayBlocked(@TempDir Path dir)
             throws IOException {
         Path file = dir.resolve("config.json");
-        String future = "{\n  \"configSchemaVersion\": 9,\n"
+        String future = "{\n  \"configSchemaVersion\": 10,\n"
                 + "  \"unknownFutureSetting\": {\"sentinel\": true}\n}\n";
         byte[] futureBytes = future.getBytes(StandardCharsets.UTF_8);
         Files.write(file, futureBytes);
 
         WaypointerConfig config = WaypointerConfig.load(file);
 
-        assertEquals(8, config.configSchemaVersion());
+        assertEquals(9, config.configSchemaVersion());
         assertTrue(config.showTracer());
         config.setShowTracer(false);
         config.save();
@@ -259,7 +245,7 @@ class WaypointerConfigTest {
         config.flush();
 
         String persisted = Files.readString(file);
-        assertTrue(persisted.contains("\"configSchemaVersion\": 8"));
+        assertTrue(persisted.contains("\"configSchemaVersion\": 9"));
         assertTrue(persisted.contains("\"irisShaderHudFallback\": true"));
     }
 
@@ -840,6 +826,22 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void untouchedExportOptionsFromBeforeV11NowExportEverything() {
+        String allOff = "{\"configSchemaVersion\":8,\"exportIncludeNames\":false,\"exportIncludeColors\":false,"
+                + "\"exportIncludeRadii\":false,\"exportIncludeWaypointFlags\":false,"
+                + "\"exportIncludeGroupMeta\":false,\"exportIncludeZone\":false}";
+        WaypointerConfig migrated = WaypointerConfig.fromJson(allOff);
+        assertTrue(migrated.exportIncludeNames() && migrated.exportIncludeColors()
+                && migrated.exportIncludeRadii() && migrated.exportIncludeWaypointFlags()
+                && migrated.exportIncludeGroupMeta() && migrated.exportIncludeZone());
+
+        WaypointerConfig chosen = WaypointerConfig.fromJson(allOff.replace(
+                "\"exportIncludeNames\":false", "\"exportIncludeNames\":true"));
+        assertTrue(chosen.exportIncludeNames());
+        assertFalse(chosen.exportIncludeColors(), "a mix the user picked is kept");
+    }
+
+    @Test
     void defaultExportAndDetectionTogglesStayUserFriendly() {
         WaypointerConfig config = new WaypointerConfig();
 
@@ -848,12 +850,12 @@ class WaypointerConfigTest {
         assertTrue(config.placeNewWaypointsBelowPlayer());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
-        assertFalse(config.exportIncludeNames());
-        assertFalse(config.exportIncludeColors());
-        assertFalse(config.exportIncludeRadii());
-        assertFalse(config.exportIncludeWaypointFlags());
-        assertFalse(config.exportIncludeGroupMeta());
-        assertFalse(config.exportIncludeZone());
+        assertTrue(config.exportIncludeNames());
+        assertTrue(config.exportIncludeColors());
+        assertTrue(config.exportIncludeRadii());
+        assertTrue(config.exportIncludeWaypointFlags());
+        assertTrue(config.exportIncludeGroupMeta());
+        assertTrue(config.exportIncludeZone());
     }
 
     @Test
@@ -967,6 +969,13 @@ class WaypointerConfigTest {
 
         config.setShowDungeonEntryPathToFollowingWaypoints(true);
         assertTrue(config.showDungeonEntryPathToFollowingWaypoints());
+
+        WaypointerConfig allOnly = WaypointerConfig.fromJson("""
+                {"showDungeonEntryPathToFirstWaypoint":false,"showDungeonEntryPathToFollowingWaypoints":true}
+                """);
+        assertTrue(allOnly.showDungeonEntryPathToFirstWaypoint(), "all waypoints includes the first");
+        allOnly.setShowDungeonEntryPathToFirstWaypoint(false);
+        assertFalse(allOnly.showDungeonEntryPathToFollowingWaypoints(), "turning pathfinding off turns it all off");
 
         config.setDungeonEntryPathColor(0xCC123456);
         assertEquals(0x123456, config.dungeonEntryPathColor());
@@ -1441,7 +1450,7 @@ class WaypointerConfigTest {
         config.setCrystalHollowsMinimapLabels(false);
         config.setCrystalHollowsMinimapSize(224);
         config.setCrystalHollowsMinimapCorner(3);
-        assertEquals(List.of(104, 105, 106, 107),
+        assertEquals(List.of(44, 45, 46, 47, 48, 69, 82, 104, 105, 106, 107),
                 WaypointerConfigCodec.encodeTaggedFields(config).stream()
                         .map(WaypointerConfigCodec.TaggedField::tag).toList());
         for (WaypointerConfig decoded : List.of(
@@ -1538,7 +1547,7 @@ class WaypointerConfigTest {
     void crystalHollowsDefaultsDisableResetAndRoundTrip() {
         WaypointerConfig config = new WaypointerConfig();
         assertTrue(config.crystalHollowsEnabled());
-        assertTrue(config.crystalHollowsStructureWaypoints());
+        assertFalse(config.crystalHollowsStructureWaypoints());
         assertFalse(config.crystalHollowsHideStructuresFolder());
         assertTrue(config.crystalHollowsShowRoughMarkers());
         assertTrue(config.crystalHollowsEntityDetection());
@@ -1560,6 +1569,9 @@ class WaypointerConfigTest {
         assertFalse(decoded.crystalHollowsMetalDetector());
         assertFalse(decoded.crystalHollowsRemoteSharing());
         assertTrue(decoded.crystalHollowsHideStructuresFolder());
+        assertFalse(decoded.crystalHollowsStructureWaypoints());
+        assertTrue(WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(WaypointerConfig.configCodeBaseline()))
+                .crystalHollowsStructureWaypoints(), "codes made before the default changed keep them on");
         WaypointerConfig copied = new WaypointerConfig();
         copied.replaceWith(decoded);
         assertFalse(copied.crystalHollowsMetalDetector());
@@ -1765,6 +1777,25 @@ class WaypointerConfigTest {
                 configCodeForRawPayload((byte) 6, (byte) 108)));
         assertThrows(IOException.class, () -> V10ConfigBodyCodec.decode(
                 new byte[]{0x3A, (byte) 0xB0, 0x03}));
+    }
+
+    @Test
+    void retiredRoutePreviewTagsStillImport() throws IOException {
+        assertFalse(WaypointerConfigCodec.isActiveFieldTag(71));
+        assertFalse(WaypointerConfigCodec.isActiveFieldTag(99));
+        WaypointerConfig legacy = WaypointerConfigCodec.decode(configCodeForRawPayload(
+                (byte) 6, (byte) 71, (byte) 1, (byte) 99, (byte) 1, (byte) 109, (byte) 0, (byte) 0));
+        WaypointerConfig current = V10ConfigBodyCodec.decode(new byte[]{
+                0x3A, (byte) 0x9C, 0x02, 1, 0x70, 1, (byte) 0x28, 0});
+        for (WaypointerConfig decoded : List.of(legacy, current)) {
+            assertFalse(decoded.crystalHollowsTracers());
+            assertEquals(List.of(109), WaypointerConfigCodec.encodeTaggedFields(decoded)
+                    .stream().map(WaypointerConfigCodec.TaggedField::tag).toList());
+        }
+        WaypointerConfig json = WaypointerConfig.fromJson(
+                "{\"enableFeatureBloat\":true,\"showExportRoutePreview\":true}");
+        String saved = new Gson().toJson(json);
+        assertFalse(saved.contains("enableFeatureBloat") || saved.contains("showExportRoutePreview"));
     }
 
     private static String configCodeForRawPayload(byte... raw) throws IOException {

@@ -1,4 +1,4 @@
-# Waypointer API 1.12.1
+# Waypointer API 1.13.0
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.12.1"
+    modImplementation "maven.modrinth:waypointer:1.13.0"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.12.1-mc26.2.jar")
+    modImplementation files("libs/waypointer-1.13.0-mc26.2.jar")
 }
 ```
 
@@ -183,8 +183,6 @@ WaypointerHandle burrow = waypointer.showTempWaypoint(
                 .name("Burrow")
                 .color(0xFFD166)
                 .build());
-
-// Safe to call more than once.
 burrow.close();
 ```
 
@@ -280,7 +278,6 @@ boolean updated = waypointer.updateWaypoint(
                 .name("Updated Titanium Stop"));
 
 if (!updated) {
-    // The route or waypoint changed. Re-read; do not retry blindly.
 }
 ```
 
@@ -375,16 +372,15 @@ String shareText = waypointer.exportRoutes(
 Exports are read-only. Ids are processed in supplied order; missing and `null`
 ids are skipped. `exportRoutes(ids)` uses full-fidelity Waypointer defaults.
 
-Supported targets are Waypointer, Skyblocker, Skytils, SkyHanni, and SkySoft.
+Supported targets are Waypointer, Skyblocker, Skytils, SkyHanni, SkySoft, and Odin.
 `SKYSOFT` creates native `SKYSOFT:` codes from existing route data and compatible
 appearance settings. Names, colors, radii, and route metadata can be omitted;
-SkySoft requires a supported island in every route.
+SkySoft requires a supported island in every route. `ODIN` exports island
+waypoints and dungeon room packs.
 Third-party formats cannot represent every Waypointer field, so use
-`WAYPOINTER` for lossless round trips. When selected routes have route-library
-metadata, the Waypointer target writes a V10 route-library `WP:` share
-(the legacy `WPL:` wrapper is only used when a library exceeds the V10 frame
-profile, and it still imports) to preserve folder
-membership, folder colors, and hidden manual colors.
+`WAYPOINTER` for lossless round trips. Full-fidelity exports use V11 `WP:`
+shares to preserve customization, folder membership, folder colors, and hidden
+manual colors. Coordinate-only exports may use V10's compact bare forms.
 
 ## Change Notifications
 

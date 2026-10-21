@@ -22,6 +22,7 @@ public final class WaypointerUpdateChecker {
                 .getModContainer(Waypointer.MOD_ID)
                 .map(container -> container.getMetadata().getVersion().getFriendlyString())
                 .orElse("");
+        WaypointerUpdates.install(currentVersion);
         GitHubReleaseClient releaseClient = new GitHubReleaseClient(currentVersion);
         UpdateNotificationController controller = new UpdateNotificationController(
                 () -> logLookupFailure(releaseClient.findUpdate(currentVersion)),
@@ -40,6 +41,7 @@ public final class WaypointerUpdateChecker {
     }
 
     private static void showMessage(AvailableUpdate update) {
+        WaypointerUpdates.offer(update);
         Minecraft client = Minecraft.getInstance();
         if (client == null) return;
         client.execute(() -> {

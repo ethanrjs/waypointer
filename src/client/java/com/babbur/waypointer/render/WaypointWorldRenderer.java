@@ -216,8 +216,8 @@ class WaypointWorldRenderer {
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
                 && !drawDungeonEntryPaths) return false;
         boolean hasDepthCheckedWaypoints = anyLineOfSight(groups);
-        boolean hasThroughWallWaypoints = anyThroughWall(groups) || drawDungeonEntryPaths;
-        if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return false;
+        boolean hasThroughWallWaypoints = anyThroughWall(groups);
+        if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints && !drawDungeonEntryPaths) return false;
 
         if (ps == null || sink == null || origin == null) return false;
         Minecraft mc = Minecraft.getInstance();
@@ -333,16 +333,9 @@ class WaypointWorldRenderer {
                 }
             });
         }
-        if (((emitStatic || emitFading) && drawLines || drawRouteLines || drawDungeonEntryPaths)
-                && hasThroughWallWaypoints) {
+        if (((emitStatic || emitFading) && drawLines || drawRouteLines) && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-            List<DungeonEntryPathController.Submission> dungeonEntryPaths = drawDungeonEntryPaths
-                    ? dungeonEntryPathsForEmission(ctx, groups, playerPos, level)
-                    : List.of();
-            boolean submitted = sink.submit(lineType, (lines, submittedPose) -> {
-                if (drawDungeonEntryPaths) {
-                    sink.dynamic(() -> emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths));
-                }
+            sink.submit(lineType, (lines, submittedPose) -> {
                 if (drawRouteLines) {
                     sink.dynamic(() -> {
                         DashBudget dashes = new DashBudget(MAX_DASHES_PER_PASS);
@@ -361,14 +354,19 @@ class WaypointWorldRenderer {
                     }
                 }
             });
-            for (DungeonEntryPathController.Submission path : dungeonEntryPaths) {
-                RenderDiagnostics.recordDungeonPathSubmission(
-                        path.group(), submitted && isDrawableDungeonEntryPath(path.points()));
-            }
         }
-        if (((emitStatic || emitFading) && drawLines || drawRouteLines) && hasDepthCheckedWaypoints) {
+        boolean depthTestedLines = ((emitStatic || emitFading) && drawLines || drawRouteLines)
+                && hasDepthCheckedWaypoints;
+        if (depthTestedLines || drawDungeonEntryPaths) {
             RenderType lineType = WaypointerRenderPipelines.linesDepthTested();
-            sink.submit(lineType, (lines, submittedPose) -> {
+            List<DungeonEntryPathController.Submission> dungeonEntryPaths = drawDungeonEntryPaths
+                    ? dungeonEntryPathsForEmission(ctx, groups, playerPos, level)
+                    : List.of();
+            boolean submitted = sink.submit(lineType, (lines, submittedPose) -> {
+                if (drawDungeonEntryPaths) {
+                    sink.dynamic(() -> emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths));
+                }
+                if (!depthTestedLines) return;
                 if (drawRouteLines) {
                     sink.dynamic(() -> {
                         DashBudget dashes = new DashBudget(MAX_DASHES_PER_PASS);
@@ -387,6 +385,10 @@ class WaypointWorldRenderer {
                     }
                 }
             });
+            for (DungeonEntryPathController.Submission path : dungeonEntryPaths) {
+                RenderDiagnostics.recordDungeonPathSubmission(
+                        path.group(), submitted && isDrawableDungeonEntryPath(path.points()));
+            }
         }
 
         } finally {
@@ -559,7 +561,9 @@ class WaypointWorldRenderer {
             start = clipLineStartOutsideCamera(
                     start, end, camPos, screenDown,
                     ROUTE_LINE_CAMERA_CLEARANCE, ROUTE_LINE_CAMERA_SCREEN_OFFSET);
-            emitStyledConnector(lines, ps, start, end, style, dashes);
+            boolean walkingPath = isStepPathPoint(g, fromIndex) && isStepPathPoint(g, toIndex);
+            emitStyledConnector(lines, ps, start, end, style, dashes,
+                    walkingPath ? b.color() & 0xFFFFFF : style.routeLineColor());
         };
         if (isDungeonRoomRoute(g)) {
             forEachFocusedDungeonRouteLineSegment(
@@ -777,7 +781,17 @@ class WaypointWorldRenderer {
     static boolean isFocusedDungeonRouteLabel(WaypointGroup group, int index) {
         return group != null
                 && (index == group.currentIndex()
-                || index == focusedDungeonRoutePreviousIndex(group));
+                || index == focusedDungeonRoutePreviousIndex(group)
+                || isNamedOpenStepMember(group, index));
+    }
+
+    static boolean isNamedOpenStepMember(WaypointGroup group, int index) {
+        int start = group.currentStepStart();
+        if (start < 0 || index < start || index >= group.childEndExclusive(start)) return false;
+        if (index < group.currentIndex() || group.isStepMemberDone(index)
+                || group.isWaypointDisabled(index)) return false;
+        Waypoint waypoint = group.get(index);
+        return waypoint.hasName() && !waypoint.hasFlag(Waypoint.FLAG_HIDE_NAME);
     }
 
     private boolean shouldRenderRouteLineEndpoint(WaypointGroup group, int index, int currentIdx,
@@ -1959,6 +1973,12 @@ class WaypointWorldRenderer {
 
     static void emitStyledConnector(VertexConsumer vertices, PoseStack pose,
                                     Vec3 start, Vec3 end, WaypointerConfig config, DashBudget dashes) {
+        emitStyledConnector(vertices, pose, start, end, config, dashes, config.routeLineColor());
+    }
+
+    static void emitStyledConnector(VertexConsumer vertices, PoseStack pose,
+                                    Vec3 start, Vec3 end, WaypointerConfig config, DashBudget dashes,
+                                    int color) {
         float width = (float) (config.routeLineWidth() > 0
                 ? config.routeLineWidth() : config.waypointOutlineThickness());
         float alpha = 0.85f * (float) config.routeLineOpacity();
@@ -1970,7 +1990,7 @@ class WaypointWorldRenderer {
             RenderHelpers.emitLine(vertices, pose,
                     (float) start.x, (float) start.y, (float) start.z,
                     (float) end.x, (float) end.y, (float) end.z,
-                    config.routeLineColor(), alpha, width);
+                    color, alpha, width);
             return;
         }
 
@@ -1983,7 +2003,7 @@ class WaypointWorldRenderer {
             RenderHelpers.emitLine(vertices, pose,
                     (float) a.x, (float) a.y, (float) a.z,
                     (float) b.x, (float) b.y, (float) b.z,
-                    config.routeLineColor(), alpha, width);
+                    color, alpha, width);
         }
     }
 

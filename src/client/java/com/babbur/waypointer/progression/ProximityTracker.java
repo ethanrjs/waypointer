@@ -428,6 +428,7 @@ public final class ProximityTracker {
         return DungeonStepProgress.findCandidate(group, false, i -> {
             if (i == cursor || group.isProximitySuppressed(i)) return false;
             Waypoint waypoint = group.get(i);
+            if (isDungeonPickupOrKillWaypoint(group, waypoint)) return false;
             return waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)
                     && isStandSkipReached(group, i, waypoint, px, py, pz, nowMillis, true);
         });
@@ -658,7 +659,8 @@ public final class ProximityTracker {
             if (i <= reachedIndex[0]) return true;
             Waypoint waypoint = group.get(i);
             boolean reached = i > from
-                    ? isWithinReach(group, waypoint, px, py, pz)
+                    ? !isDungeonPickupOrKillWaypoint(group, waypoint)
+                            && isWithinReach(group, waypoint, px, py, pz)
                     : isReachedByRadiusOrStand(group, i, waypoint, px, py, pz, nowMillis);
             if (reached) {
                 reachedIndex[0] = i;
@@ -694,6 +696,7 @@ public final class ProximityTracker {
     private static boolean isReachedByRadiusOrStand(WaypointGroup group, int index, Waypoint w,
                                                     double px, double py, double pz,
                                                     long nowMillis) {
+        if (isDungeonPickupOrKillWaypoint(group, w)) return false;
         if (isDungeonStandSkipWaypoint(group, w)) {
             return isStandSkipReached(group, index, w, px, py, pz, nowMillis);
         }
@@ -701,6 +704,12 @@ public final class ProximityTracker {
             return false;
         }
         return isWithinReach(group, w, px, py, pz);
+    }
+
+    static boolean isDungeonPickupOrKillWaypoint(WaypointGroup group, Waypoint w) {
+        return isEligibleDungeonTriggerGroup(group)
+                && w != null
+                && (w.hasFlag(Waypoint.FLAG_DUNGEON_ITEM) || w.hasFlag(Waypoint.FLAG_DUNGEON_BAT));
     }
 
     private static boolean isDungeonStandSkipWaypoint(WaypointGroup group, Waypoint w) {

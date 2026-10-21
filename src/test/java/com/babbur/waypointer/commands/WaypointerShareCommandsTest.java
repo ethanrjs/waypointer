@@ -96,6 +96,10 @@ class WaypointerShareCommandsTest {
                 "waypointer.dungeon.command.import.unmatched_rooms",
                 "waypointer.command.import.open_editor_hint"), messages.feedbackKeys());
         assertEquals(List.of(route), manager.allGroupsList());
+        ClickEvent.RunCommand open = assertInstanceOf(ClickEvent.RunCommand.class,
+                messages.feedback.getLast().getSiblings().getLast().getStyle().getClickEvent());
+        assertEquals("/waypointer gui " + route.id(), open.command(),
+                "Open goes to the imported room, not the room you are standing in");
     }
 
     @Test
@@ -212,14 +216,14 @@ class WaypointerShareCommandsTest {
     }
 
     @Test
-    void dungeonCommandEncoderUsesUniversalKind4Payload() {
+    void dungeonCommandEncoderUsesV11() {
         WaypointGroup route = WaypointGroup.create("Crypt", "crypt-a");
         route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         route.add(Waypoint.at(1, 70, 2));
 
         String payload = UniversalShareCodec.encodeDungeon(List.of(route));
 
-        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 10);
+        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 11);
         assertInstanceOf(UniversalShareCodec.DungeonRoutes.class,
                 UniversalShareCodec.decode(payload));
     }
@@ -269,7 +273,7 @@ class WaypointerShareCommandsTest {
     }
 
     @Test
-    void freshConfigDefaultExportUsesTheV10BareCoordinatePath() {
+    void freshConfigDefaultExportKeepsColoursNamesAndZone() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
         WaypointGroup active = WaypointGroup.create("Decorated route", "hub");
@@ -282,21 +286,20 @@ class WaypointerShareCommandsTest {
         WaypointCodec.Options defaults = commands.exportOptionsFromConfig();
         assertFalse(defaults.isBareCoordinateProjection());
         assertEquals(1, commands.runExport(new CommandMessages().source(), defaults));
-        assertTrue(scheduler.options.isBareCoordinateProjection());
+        assertFalse(scheduler.options.isBareCoordinateProjection());
 
         String payload = UniversalShareCodec.encodeWaypoints(
                 scheduler.groups, scheduler.options, scheduler.metadata);
-        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 10);
+        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 11);
         List<WaypointGroup> decoded = WaypointCodec.decode(payload);
         assertEquals(1, decoded.size());
-        assertEquals(List.of(
-                        Waypoint.at(1, 70, 2),
-                        Waypoint.at(9, 71, -4)),
-                decoded.getFirst().waypoints());
+        assertEquals("Decorated route", decoded.getFirst().name());
+        assertEquals("hub", decoded.getFirst().zoneId());
+        assertEquals(List.of(0x112233, 0xAABBCC), decoded.getFirst().manualColorSnapshot());
     }
 
     @Test
-    void freshConfigBulkCommandExportUsesKind6ThroughTheProductFacade() {
+    void freshConfigBulkCommandExportKeepsEveryRouteDetail() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
         WaypointGroup first = WaypointGroup.create("Discarded first", "hub");
@@ -311,16 +314,15 @@ class WaypointerShareCommandsTest {
 
         assertFalse(defaults.isBareCoordinateProjection());
         assertEquals(2, commands.runExportRoutes(new CommandMessages().source(), defaults));
-        assertTrue(scheduler.options.isBareCoordinateProjection());
         String payload = UniversalShareCodec.encodeWaypoints(
                 scheduler.groups, scheduler.options, scheduler.metadata);
         var debug = WaypointCodec.debugDecode(payload);
 
-        assertEquals(10, debug.version());
-        assertTrue(debug.groups().stream().allMatch(group ->
-                group.coordMode().startsWith("V10_BARE_PACK_")));
-        assertFalse(payload.startsWith(RouteLibraryCodec.MAGIC),
-                "all-off options must filter captured metadata before kind6 selection");
+        assertEquals(11, debug.version());
+        List<WaypointGroup> decoded = WaypointCodec.decode(payload);
+        assertEquals(List.of("Discarded first", "Discarded second"),
+                decoded.stream().map(WaypointGroup::name).toList());
+        assertEquals(0x112233, decoded.getFirst().get(0).color() & 0xFFFFFF);
     }
 
     @Test
@@ -347,10 +349,10 @@ class WaypointerShareCommandsTest {
 
         String payload = UniversalShareCodec.encodeWaypoints(
                 scheduler.groups, scheduler.options, scheduler.metadata);
-        assertTrue(WaypointCodec.debugDecode(payload).groups().stream().noneMatch(group ->
-                group.coordMode().startsWith("V10_BARE")));
-        assertInstanceOf(UniversalShareCodec.Waypoints.class,
+        assertEquals(11, WaypointCodec.debugDecode(payload).version());
+        UniversalShareCodec.DungeonRoutes rooms = assertInstanceOf(UniversalShareCodec.DungeonRoutes.class,
                 UniversalShareCodec.decode(payload));
+        assertEquals(List.of("Stored"), rooms.result().groups().stream().map(WaypointGroup::name).toList());
     }
 
     @Test
@@ -398,8 +400,8 @@ class WaypointerShareCommandsTest {
         assertEquals(UniversalShareCodec.Type.WAYPOINTS, decoded.type());
         assertEquals(0, ((UniversalShareCodec.Waypoints) decoded).result()
                 .libraryMetadata().folders().size());
-        assertEquals(1, ((UniversalShareCodec.Waypoints) decoded).result()
-                .libraryMetadata().manualColors().size());
+        assertEquals(List.of(0xAABBCC), ((UniversalShareCodec.Waypoints) decoded).result()
+                .groups().getFirst().manualColorSnapshot());
     }
 
     @Test

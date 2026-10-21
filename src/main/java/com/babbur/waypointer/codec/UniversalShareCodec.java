@@ -63,14 +63,14 @@ public final class UniversalShareCodec {
 
     public static String encodeWaypoints(List<WaypointGroup> groups,
                                          WaypointCodec.Options options) {
-        return WaypointCodec.encode(groups, options);
+        return V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty());
     }
 
     public static String encodeWaypoints(
             List<WaypointGroup> groups,
             WaypointCodec.Options options,
             RouteLibraryMetadata metadata) {
-        return RouteLibraryCodec.encode(groups, options, metadata);
+        return V11Codec.encodeBest(groups, options, metadata);
     }
 
     public static String encodeConfig(WaypointerConfig config) {
@@ -82,11 +82,7 @@ public final class UniversalShareCodec {
     }
 
     public static String encodeDungeon(Collection<WaypointGroup> routes) {
-        try {
-            return V10DungeonCodec.encode(routes);
-        } catch (IOException failure) {
-            throw new IllegalStateException("v10 dungeon encode failed", failure);
-        }
+        return V11Codec.encodeBestDungeon(routes);
     }
 
     public static String encodeCatalogReference(String routeId) {
@@ -108,11 +104,23 @@ public final class UniversalShareCodec {
         if (normalized.startsWith(WaypointerConfigCodec.MAGIC)) {
             return new Configuration(WaypointerConfigCodec.decode(normalized));
         }
+        if (V11Codec.isPayload(normalized)) {
+            V11Codec.Decoded decoded = V11Codec.decode(normalized);
+            boolean allRooms = decoded.groups().stream()
+                    .allMatch(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON);
+            if (allRooms) {
+                return new DungeonRoutes(new DungeonRouteImporter.Result(decoded.groups(),
+                        decoded.groups().stream().mapToInt(WaypointGroup::size).sum(), List.of(), 0,
+                        DungeonRouteImporter.Format.WAYPOINTER));
+            }
+            return new Waypoints(WaypointImporter.importAny(normalized));
+        }
         V10Transport.CheckedFrame committedV10 = probeV10(normalized);
         if (committedV10 != null) {
             return decodeCommittedV10(normalized, committedV10);
         }
-        if (DungeonRoomShareCodec.isPayload(normalized)) {
+        if (DungeonRoomShareCodec.isPayload(normalized)
+                || DungeonRouteImporter.isOdinRoomPack(normalized)) {
             return new DungeonRoutes(DungeonRouteImporter.parse(normalized));
         }
 

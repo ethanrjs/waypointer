@@ -91,10 +91,9 @@ class WaypointerContributorBadgeTest {
                 Component.literal("[338] acidangels"), "", ACIDANGELS_ID, config);
 
         assertEquals("[WP] acidangels: hi", chat.getString());
-        assertEquals("[WP] acidangels", tab.getString());
+        assertEquals("[WP] acidangels: $", tab.getString());
         assertEquals("[WP] acidangels", nametag.getString());
-        assertEquals(TextColor.fromRgb(0x850C5A),
-                tab.getSiblings().getFirst().getStyle().getColor());
+        assertEquals(TextColor.fromRgb(0x850C5A), badgeColor(tab));
     }
 
     @Test
@@ -249,21 +248,28 @@ class WaypointerContributorBadgeTest {
         assertEquals("[MVP+] Babbur", nonContributor.getString());
     }
     @Test
-    void tabNameUsesStrictContributorLevelLabel() {
+    void tabNameReplacesOnlyTheLevelAndKeepsEmblemRankColorsAndClass() {
         WaypointerConfig config = new WaypointerConfig();
+        Component entry = Component.literal("[339] ").withStyle(ChatFormatting.DARK_GRAY)
+                .append(Component.literal("Babbur").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" ᛝ").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" (Tank XXXIX)").withStyle(ChatFormatting.YELLOW));
 
-        Component result = WaypointerContributorBadge.applyTabName(
-                Component.literal("[338] Babbur: $"), config);
+        Component result = WaypointerContributorBadge.applyTabName(entry, config);
 
-        assertEquals("[WP] Babbur", result.getString());
-        assertEquals(Component.literal("[").withStyle(ChatFormatting.DARK_GRAY).getStyle().getColor(),
-                result.getStyle().getColor());
-        assertEquals(Component.literal("WP").withStyle(ChatFormatting.DARK_RED).getStyle().getColor(),
-                result.getSiblings().get(0).getStyle().getColor());
-        assertEquals(Component.literal("]").withStyle(ChatFormatting.DARK_GRAY).getStyle().getColor(),
-                result.getSiblings().get(1).getStyle().getColor());
-        assertEquals(Component.literal("Babbur").withStyle(ChatFormatting.AQUA).getStyle().getColor(),
-                result.getSiblings().get(3).getStyle().getColor());
+        assertEquals("[WP] Babbur ᛝ (Tank XXXIX)", result.getString());
+        assertEquals(TextColor.fromRgb(0xAA0000), badgeColor(result));
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.GOLD), colorOf(result, " ᛝ"));
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.AQUA), colorOf(result, "Babbur"));
+    }
+
+    private static TextColor colorOf(Component component, String text) {
+        TextColor[] found = new TextColor[1];
+        component.visit((style, part) -> {
+            if (part.equals(text)) found[0] = style.getColor();
+            return java.util.Optional.empty();
+        }, net.minecraft.network.chat.Style.EMPTY);
+        return found[0];
     }
 
     @Test
@@ -298,7 +304,7 @@ class WaypointerContributorBadgeTest {
 
         assertEquals("\u00a77[WP] \u00a7bBabbur\u00a7f: hi", chat.getString());
         assertEquals("&7[WP] &bBabbur&f: hi", ampersandChat.getString());
-        assertEquals("[WP] Babbur", tab.getString());
+        assertEquals("\u00a77[WP] \u00a7bBabbur", tab.getString());
     }
 
     @Test

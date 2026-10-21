@@ -9,6 +9,8 @@ import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
+import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.gui.Font;
@@ -132,7 +134,7 @@ final class WaypointerRouteList {
         List<Row> rows = rows();
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
-            if (row.roomHeader && roomZoneId.equals(row.roomZoneId)) {
+            if ((row.roomHeader || row.roomRoute) && roomZoneId.equals(row.roomZoneId)) {
                 scrollRowIndexIntoView(i);
                 return;
             }
@@ -260,6 +262,12 @@ final class WaypointerRouteList {
             boolean currentRoom = roomZoneId.equals(currentRoomZoneId);
             int secretCount = RouteListPresentation.displayedInstalledSecretCount(
                     installedSecretCountForRoom(roomZoneId), roomGroups);
+            if (roomGroups.size() == 1 && displayGroups.size() == 1) {
+                WaypointGroup only = displayGroups.getFirst();
+                rows.add(Row.roomRoute(roomZoneId, only,
+                        Math.max(secretCount, RouteListPresentation.secretWaypointCount(only)), currentRoom));
+                continue;
+            }
             rows.add(Row.room(roomZoneId, roomGroups.size(), secretCount,
                     true, currentRoom, searching));
             for (WaypointGroup group : displayGroups) {
@@ -303,7 +311,10 @@ final class WaypointerRouteList {
                         ACCENT, true);
                 continue;
             }
-            if (hovered) graphics.requestCursor(CursorTypes.POINTING_HAND);
+            if (hovered && RouteListPresentation.rowControlHit(row.group != null, row.folder != null,
+                    mouseX, rowRight - 2)) {
+                graphics.requestCursor(CursorTypes.POINTING_HAND);
+            }
             if (row.roomHeader) {
                 renderRoomHeader(graphics, row, x1 + 2, rowTop, rowRight - 2, hovered);
             } else if (row.folder != null) {
@@ -311,6 +322,9 @@ final class WaypointerRouteList {
                         mouseX, hovered);
             } else if (row.emptyFolder) {
                 renderEmptyFolderRow(graphics, x1 + 2, rowTop, rowRight - 2);
+            } else if (row.roomRoute) {
+                renderRoomRouteRow(graphics, row, x1 + 2, rowTop, rowRight - 2, hovered,
+                        screen.selectedGroupIds.contains(row.group.id()));
             } else if (row.group != null) {
                 boolean selected = screen.selectedGroupIds.contains(row.group.id());
                 int routeIndex = routeIndices.getOrDefault(row.group.id(), -1);
@@ -655,7 +669,7 @@ final class WaypointerRouteList {
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             if (row.group != null && row.group.id().equals(screen.selectedGroupId)) return i;
-            if (row.roomHeader && row.roomZoneId.equals(screen.selectedDungeonRoomZoneId)) {
+            if ((row.roomHeader || row.roomRoute) && row.roomZoneId.equals(screen.selectedDungeonRoomZoneId)) {
                 roomIndex = i;
             }
         }
@@ -666,8 +680,13 @@ final class WaypointerRouteList {
         List<Row> rows = rows();
         if (index < 0 || index >= rows.size()) return Component.empty();
         Row row = rows.get(index);
+        if (row.roomRoute) {
+            return Component.literal(roomLabel(row.roomZoneId) + ". "
+                    + RouteListPresentation.roomRouteSubtitle(row.group.name(), row.roomSecretCount,
+                    row.currentRoom));
+        }
         if (row.roomHeader) {
-            return Component.literal(displayZoneLabel(row.roomZoneId) + ". "
+            return Component.literal(roomLabel(row.roomZoneId) + ". "
                     + RouteListPresentation.roomHeaderSubtitle(
                     row.roomRouteCount, row.roomSecretCount,
                     row.currentRoom, row.searchReveal && !row.expanded));
@@ -937,10 +956,9 @@ final class WaypointerRouteList {
 
         int labelX = x1 + GAP + 2;
         boolean hasRoutes = row.roomRouteCount > 0 || row.roomSecretCount > 0;
-        int textColor = row.currentRoom
-                ? accent : hasRoutes ? WaypointerScreen.DUNGEON_ROOM_ACCENT : TEXT_DIM;
+        int textColor = row.currentRoom ? accent : hasRoutes ? TEXT : TEXT_DIM;
         int labelMaxWidth = Math.max(24, x2 - GAP - labelX);
-        String label = font().plainSubstrByWidth(displayZoneLabel(row.roomZoneId), labelMaxWidth);
+        String label = font().plainSubstrByWidth(roomLabel(row.roomZoneId), labelMaxWidth);
         graphics.text(font(), label, labelX, y1 + 4, textColor, false);
 
         String subtitle = RouteListPresentation.roomHeaderSubtitle(
@@ -948,6 +966,40 @@ final class WaypointerRouteList {
                 row.currentRoom, row.searchReveal && !row.expanded);
         graphics.text(font(), font().plainSubstrByWidth(subtitle, labelMaxWidth),
                 labelX, y1 + 14, TEXT_MUTED, false);
+    }
+
+    private void renderRoomRouteRow(GuiGraphicsExtractor graphics, Row row,
+                                    int x1, int y1, int x2, boolean hovered, boolean selected) {
+        WaypointGroup group = row.group;
+        int rowBottom = y1 + ROW_H + 2;
+        int accent = RouteListPresentation.roomHeaderAccent(row.currentRoom);
+        int background = selected ? SELECTED
+                : RouteListPresentation.roomHeaderBackground(false, hovered, row.currentRoom);
+        if (background != 0) graphics.fill(x1, y1, x2, rowBottom, background);
+        if (selected || row.currentRoom) graphics.fill(x1, y1, x1 + 2, rowBottom, accent);
+
+        int chipX = RouteListPresentation.routeToggleChipX(x2);
+        int textX = RouteListPresentation.routeRowTextX(x1, false, false);
+        RouteIcons.draw(graphics, RouteIcon.display(group.icon(), group.zoneId()), textX, y1 + 4, 16);
+        textX += 16 + GAP_TIGHT + 2;
+        int textMaxWidth = Math.max(12, chipX - GAP - textX);
+        int titleColor = !group.enabled() ? TEXT_MUTED : row.currentRoom ? accent : TEXT;
+        String title = roomLabel(row.roomZoneId);
+        if (screen.publishDraft != null && screen.publishDraft.contains(group)) {
+            title = "✓ " + title;
+            titleColor = ACCENT;
+        }
+        graphics.text(font(), font().plainSubstrByWidth(title, textMaxWidth), textX, y1 + 4, titleColor, false);
+        String subtitle = RouteListPresentation.roomRouteSubtitle(
+                group.name(), row.roomSecretCount, row.currentRoom);
+        graphics.text(font(), font().plainSubstrByWidth(subtitle, textMaxWidth),
+                textX, y1 + 14, TEXT_DIM, false);
+        renderRouteToggleChip(graphics, group.enabled(), x2, y1);
+    }
+
+    private static String roomLabel(String roomZoneId) {
+        DungeonRoomCatalogEntry room = DungeonRoomData.entry(roomZoneId);
+        return room != null ? room.displayName() : displayZoneLabel(roomZoneId);
     }
 
     private void renderGroupRow(GuiGraphicsExtractor graphics, WaypointGroup group, int index,
@@ -1038,7 +1090,11 @@ final class WaypointerRouteList {
             return Component.translatable("waypointer.screen.main.route.subtitle.empty").getString();
         }
         List<String> parts = new ArrayList<>();
-        parts.add(RouteListPresentation.waypointCount(group.size()).getString());
+        int secrets = group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                ? RouteListPresentation.secretWaypointCount(group) : 0;
+        parts.add(secrets > 0
+                ? RouteListPresentation.roomRouteSubtitle("", secrets, false)
+                : RouteListPresentation.waypointCount(group.size()).getString());
         if (group.temp()) {
             parts.add(displayZoneLabel(group.zoneId()));
             return RouteListPresentation.joinParts(parts);
@@ -1094,29 +1150,34 @@ final class WaypointerRouteList {
                        RouteFolder folder, int roomRouteCount, int roomSecretCount,
                        int folderRouteCount, boolean expanded, boolean currentRoom,
                        boolean searchReveal, boolean indented, boolean folderChild,
-                       boolean emptyFolder) {
+                       boolean emptyFolder, boolean roomRoute) {
         static Row group(
                 String roomZoneId, WaypointGroup group,
                 boolean indented, boolean folderChild) {
             return new Row(false, roomZoneId, group, null, 0, 0, 0,
-                    false, false, false, indented, folderChild, false);
+                    false, false, false, indented, folderChild, false, false);
         }
 
         static Row room(String roomZoneId, int routeCount, int secretCount,
                         boolean expanded, boolean currentRoom, boolean searchReveal) {
             return new Row(true, roomZoneId, null, null,
                     routeCount, secretCount, 0,
-                    expanded, currentRoom, searchReveal, false, false, false);
+                    expanded, currentRoom, searchReveal, false, false, false, false);
+        }
+
+        static Row roomRoute(String roomZoneId, WaypointGroup group, int secretCount, boolean currentRoom) {
+            return new Row(false, roomZoneId, group, null, 1, secretCount, 0,
+                    false, currentRoom, false, false, false, false, true);
         }
 
         static Row folder(RouteFolder folder, int routeCount, boolean searchReveal) {
             return new Row(false, null, null, folder, 0, 0, routeCount,
-                    !folder.collapsed(), false, searchReveal, false, false, false);
+                    !folder.collapsed(), false, searchReveal, false, false, false, false);
         }
 
         static Row emptyFolderRow() {
             return new Row(false, null, null, null, 0, 0, 0,
-                    false, false, false, true, true, true);
+                    false, false, false, true, true, true, false);
         }
     }
 }

@@ -25,7 +25,6 @@
   "waypointer.settings.setting.visibleSecretStages.label": "Marxaladaha qarsoon ee muuqda (1-5)",
   "waypointer.settings.setting.secretCompletionSound.label": "Codka dhammaystirka qarsoodiga ah",
   "waypointer.settings.setting.importedRouteColorMode.label": "Midabada wadada laga soo dhoofiyo",
-  "waypointer.settings.setting.showExportRoutePreview.label": "Muuqaalka hore ee 3D ee wadada",
   "waypointer.command.export.failed": "Dhoofinta ayaa guuldareysatay: %1$s",
   "waypointer.command.import.label": "Calaamadda: \"%1$s\"",
   "waypointer.command.route.deleted": "Waddada \"%1$s\" waa la tirtiray",
@@ -48,15 +47,11 @@
   "waypointer.screen.group_edit.row.current": "hadda",
   "waypointer.screen.export.routes.select_all": "Xulo dhammaan",
   "waypointer.screen.export.routes.show": "Muuji waddooyinka",
-  "waypointer.screen.export.target.title": "Dhoofinta loogu talagalay",
   "waypointer.screen.painter.colors": "Midabada",
   "waypointer.screen.painter.face_view.all": "Dhammaan",
   "waypointer.screen.painter.apply": "Codso",
   "waypointer.screen.painter.preview": "Muuqaal toos ah",
   "waypointer.screen.painter.file_dialog.filter": "Faylasha sawirada",
   "waypointer.screen.painter.status.imported_uv": "Waxaa loo soo dhoofiyay sida khariidadda UV 64x48.",
-  "waypointer.screen.debug.no_data": "(xog lama hayo)",
-  "waypointer.screen.export.preview.show": "Muuqaalka hore",
-  "waypointer.screen.export.preview.options": "Fursadaha",
-  "waypointer.screen.export.preview.unavailable": "Muuqaalka hore ee 3D lama heli karo"
+  "waypointer.screen.debug.no_data": "(xog lama hayo)"
 }

@@ -20,7 +20,7 @@ final class CatalogPublishFormModel {
     private String title;
     private String description = "";
     private CatalogPublishRequest.Visibility visibility =
-            CatalogPublishRequest.Visibility.UNLISTED;
+            CatalogPublishRequest.Visibility.PUBLIC;
 
     CatalogPublishFormModel(WaypointGroup group, Runnable edited) {
         groups.add(Objects.requireNonNull(group, "group"));

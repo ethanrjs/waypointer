@@ -60,34 +60,6 @@ final class ExportRouteSelection {
         return selected.length == 0 ? -1 : 0;
     }
 
-    int navigate(int current, int delta) {
-        List<Integer> indexes = selectedIndexes();
-        if (indexes.isEmpty()) return -1;
-        int ordinal = indexes.indexOf(current);
-        int start = ordinal < 0 ? 0 : ordinal;
-        return indexes.get(Math.floorMod(start + delta, indexes.size()));
-    }
-
-    int replacementFor(int current) {
-        if (isSelected(current)) return current;
-        int safeCurrent = Math.max(0, current);
-        for (int i = safeCurrent + 1; i < selected.length; i++) {
-            if (selected[i]) return i;
-        }
-        for (int i = Math.min(safeCurrent - 1, selected.length - 1); i >= 0; i--) {
-            if (selected[i]) return i;
-        }
-        return -1;
-    }
-
-    String counter(int current) {
-        List<Integer> indexes = selectedIndexes();
-        int ordinal = indexes.indexOf(current);
-        return indexes.size() <= 1 || ordinal < 0
-                ? ""
-                : (ordinal + 1) + " of " + indexes.size();
-    }
-
     List<WaypointGroup> selectedGroups(List<WaypointGroup> groups) {
         if (groups == null) return List.of();
         if (groups.size() <= 1) return groups;
@@ -100,13 +72,5 @@ final class ExportRouteSelection {
 
     boolean[] snapshot() {
         return selected.clone();
-    }
-
-    private List<Integer> selectedIndexes() {
-        List<Integer> result = new ArrayList<>();
-        for (int i = 0; i < selected.length; i++) {
-            if (selected[i]) result.add(i);
-        }
-        return result;
     }
 }

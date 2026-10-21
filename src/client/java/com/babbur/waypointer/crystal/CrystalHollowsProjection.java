@@ -98,13 +98,19 @@ public final class CrystalHollowsProjection {
         return "nucleus".equals(suffix) ? CrystalHollowsStructure.CRYSTAL_NUCLEUS.id() : suffix;
     }
 
+    public static String structureIdForGroup(WaypointGroup group) {
+        if (group == null || !group.runtimeOnly()) return null;
+        String reference = structureReferenceForGroup(group.id());
+        return reference == null ? null : reference.split(":", 2)[0];
+    }
+
     public static void refreshStyles(ActiveGroupManager manager, WaypointerConfig config) {
         if (manager == null) return;
         boolean changed = false;
         for (WaypointGroup group : manager.allGroups()) {
-            String reference = structureReferenceForGroup(group.id());
-            if (!group.runtimeOnly() || reference == null) continue;
-            var style = config.crystalHollowsStyle(reference.split(":", 2)[0]);
+            String structureId = structureIdForGroup(group);
+            if (structureId == null) continue;
+            var style = config.crystalHollowsStyle(structureId);
             if (!style.equals(group.styleOverride())) {
                 group.setStyleOverride(style);
                 changed = true;

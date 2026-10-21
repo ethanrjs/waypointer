@@ -2,11 +2,14 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.api.ImportSource;
 import com.babbur.waypointer.api.ImportSummary;
+import com.babbur.waypointer.catalog.CatalogInstallState;
 import com.babbur.waypointer.catalog.CatalogPage;
+import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -15,11 +18,14 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteCatalogScreenSearchTest {
@@ -259,6 +265,37 @@ class RouteCatalogScreenSearchTest {
         assertEquals(30 + 9, geo[3], "caret optically centered in a 20px control");
 
         assertEquals(12, RouteCatalogScreen.filterSelectGeometry(0, 0, 30, 20)[1]);
+    }
+
+    @Test
+    void aRouteThisClientCannotReadSaysWhichReleaseCan() {
+        var newer = new CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Gems", "",
+                "A", "", false, "public", "hub", "Hub", 3, 1, 12, 1, 0, "", "", "/r/a",
+                List.of(), "", "1.14.0");
+        var state = CatalogInstallState.inspect(
+                "https://waypointermod.com/api/", newer, List.of());
+        assertEquals(CatalogInstallState.Action.UNSUPPORTED_CODEC, state.action());
+        assertFalse(state.canInstall());
+        assertTrue(RouteCatalogScreen.needsAttention(state.action()));
+
+        TranslatableContents line = assertInstanceOf(TranslatableContents.class,
+                RouteCatalogScreen.installStateLine(state, newer).getContents());
+        assertEquals("waypointer.screen.route_catalog.state.requires_line", line.getKey());
+        assertEquals("1.14.0", line.getArgs()[0]);
+
+        TranslatableContents failure = assertInstanceOf(TranslatableContents.class,
+                RouteCatalogScreen.friendlyFailure(new CompletionException(
+                        assertThrows(IllegalArgumentException.class,
+                                () -> CatalogProtocol.requireInstallable(newer)))).getContents());
+        assertEquals("waypointer.screen.route_catalog.state.requires_line", failure.getKey());
+
+        var unnamed = new CatalogRouteSummary("BBBBBBBBBBBBBBBBBBBBBB", "Gems", "",
+                "B", "", false, "public", "hub", "Hub", 3, 1, 12, 1, 0, "", "", "/r/b");
+        TranslatableContents generic = assertInstanceOf(TranslatableContents.class,
+                RouteCatalogScreen.installStateLine(
+                        CatalogInstallState.inspect("https://waypointermod.com/api/", unnamed, List.of()),
+                        unnamed).getContents());
+        assertEquals("waypointer.screen.route_catalog.state.unsupported_line", generic.getKey());
     }
 
     private static CatalogRouteSummary summary() {

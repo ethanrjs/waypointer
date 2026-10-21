@@ -230,7 +230,9 @@ public final class WaypointerCommands {
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "handle"),
                                                 UniversalShareCodec.Type.CATALOG)))));
-        return d.register(cmd);
+        LiteralCommandNode<FabricClientCommandSource> node = d.register(cmd);
+        WaypointerCommandUsage.completePartialCommands(d, node);
+        return node;
     }
 
     private void scheduleOpenGui() {

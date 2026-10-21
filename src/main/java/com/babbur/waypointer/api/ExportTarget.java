@@ -7,7 +7,8 @@ public enum ExportTarget {
     SKYBLOCKER(WaypointExportCodec.Target.SKYBLOCKER),
     SKYTILS(WaypointExportCodec.Target.SKYTILS),
     SKYHANNI(WaypointExportCodec.Target.SKYHANNI),
-    SKYSOFT(WaypointExportCodec.Target.SKYSOFT);
+    SKYSOFT(WaypointExportCodec.Target.SKYSOFT),
+    ODIN(WaypointExportCodec.Target.ODIN);
 
     private final WaypointExportCodec.Target codecTarget;
 

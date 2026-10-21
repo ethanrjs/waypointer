@@ -66,7 +66,8 @@ public final class TracerRenderer implements HudElement {
                 || group.isWaypointDisabled(fade.outgoing())
                 || WaypointWorldRenderer.shouldForceHideReachedWaypoint(
                         fade.outgoing(), group.currentIndex(), group.get(fade.outgoing())))) return null;
-        if (RenderDiagnostics.shouldSuppressStraightTracer(group)) {
+        if (RenderDiagnostics.shouldSuppressStraightTracer(group)
+                && !dungeonTracersChosen(group, dungeonConfig)) {
             if (recordDecision) RenderDiagnostics.recordStraightTracerSuppressed(group);
             return null;
         }
@@ -277,6 +278,17 @@ public final class TracerRenderer implements HudElement {
                         && group.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX));
     }
 
+    static boolean dungeonTracersChosen(WaypointGroup group, DungeonConfig dungeonConfig) {
+        return group != null && !group.temp() && group.usesDungeonSteps()
+                && dungeonConfig != null && dungeonConfig.showDungeonTracers();
+    }
+
+    static boolean pathfindsTo(WaypointGroup group, WaypointerConfig config) {
+        return config != null && config.showDungeonEntryPathToFirstWaypoint()
+                && DungeonEntryPathController.shouldPrepare(
+                        group, config.showDungeonEntryPathToFollowingWaypoints());
+    }
+
     public static boolean tracersEnabled(WaypointGroup group, WaypointerConfig config,
                                   DungeonConfig dungeonConfig) {
         if (!crystalHollowsTracerAllowed(group, group == null ? null : group.current(), config)) return false;
@@ -286,7 +298,7 @@ public final class TracerRenderer implements HudElement {
                 && !group.temp()
                 && group.usesDungeonSteps()
                 && dungeonConfig != null) {
-            return dungeonConfig.showDungeonTracers();
+            return dungeonConfig.showDungeonTracers() || pathfindsTo(group, config);
         }
         return config != null && config.showTracer();
     }

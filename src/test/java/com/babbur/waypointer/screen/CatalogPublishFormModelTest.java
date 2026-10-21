@@ -80,15 +80,17 @@ class CatalogPublishFormModelTest {
         AtomicInteger edits = new AtomicInteger();
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         CatalogPublishFormModel form = new CatalogPublishFormModel(group, edits::incrementAndGet);
+        assertEquals(CatalogPublishRequest.Visibility.PUBLIC, form.visibility());
 
         form.setTitle("Route");
         form.setDescription("line one\r\nline two\u0000");
         form.setDescription("line one\nline two");
         form.setVisibility(CatalogPublishRequest.Visibility.PUBLIC);
+        form.setVisibility(CatalogPublishRequest.Visibility.UNLISTED);
 
         assertEquals(2, edits.get());
         assertEquals("line one\nline two", form.description());
-        assertEquals(CatalogPublishRequest.Visibility.PUBLIC, form.visibility());
+        assertEquals(CatalogPublishRequest.Visibility.UNLISTED, form.visibility());
     }
 
     @Test

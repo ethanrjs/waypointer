@@ -53,7 +53,7 @@ public final class WaypointerConfig {
     public static final double DEFAULT_EDIT_MODE_PLACEMENT_REACH = 5.0;
     public static final double MIN_EDIT_MODE_PLACEMENT_REACH = 1.0;
     public static final double MAX_EDIT_MODE_PLACEMENT_REACH = 64.0;
-    private static final int CONFIG_SCHEMA_VERSION = 8;
+    private static final int CONFIG_SCHEMA_VERSION = 9;
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
@@ -109,13 +109,13 @@ public final class WaypointerConfig {
     private double tracerThickness = 3.0;
     private double waypointOutlineThickness = 5.0;
     private boolean renderAntialiasing = true;
-    private boolean enableFeatureBloat = false;
     private double waypointMarkerScale = 1.0;
     private double waypointOutlineOpacity = 1.0;
     private boolean matchWaypointOutlineToWaypointColor = true;
     private int waypointOutlineColor = Waypoint.DEFAULT_COLOR;
     private double beaconOpacity = 0.33;
     private boolean showWaypointNames = true;
+    private boolean numberUnnamedWaypoints = true;
     private boolean showWaypointDistances = true;
     private boolean showRouteProgress = false;
     private double labelScale = 1.0;
@@ -124,6 +124,8 @@ public final class WaypointerConfig {
     private int waypointSkipFadeMs;
     private boolean scaleWaypointTextWithDistance = false;
     private boolean matchWaypointTextToWaypointColor = true;
+    private int labelTextColor = 0xFFFFFF;
+    private boolean labelColorForAllText;
     private int sequencePreviousWaypointCount = SequenceVisibility.DEFAULT.previous();
     private boolean showCurrentSequenceWaypoint = SequenceVisibility.DEFAULT.current();
     private int sequenceNextWaypointCount = SequenceVisibility.DEFAULT.next();
@@ -175,13 +177,12 @@ public final class WaypointerConfig {
     private boolean showContributorBadges = true;
     private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
     private int importedRouteDefaultColor = 0x00FF00;
-    private boolean exportIncludeNames = false;
-    private boolean exportIncludeColors = false;
-    private boolean exportIncludeRadii = false;
-    private boolean exportIncludeWaypointFlags = false;
-    private boolean exportIncludeGroupMeta = false;
-    private boolean exportIncludeZone = false;
-    private boolean showExportRoutePreview = false;
+    private boolean exportIncludeNames = true;
+    private boolean exportIncludeColors = true;
+    private boolean exportIncludeRadii = true;
+    private boolean exportIncludeWaypointFlags = true;
+    private boolean exportIncludeGroupMeta = true;
+    private boolean exportIncludeZone = true;
     private boolean dungeonWaypointsFeatureEnabled = false;
     private boolean skipAheadMechanicEnabled = true;
 
@@ -195,7 +196,7 @@ public final class WaypointerConfig {
     private double minimapPositionY = 0.0;
     private Map<String, Boolean> crystalHollowsDetections = new LinkedHashMap<>();
     private boolean crystalHollowsEnabled = true;
-    private boolean crystalHollowsStructureWaypoints = true;
+    private boolean crystalHollowsStructureWaypoints = false;
     private boolean crystalHollowsHideStructuresFolder = false;
     private boolean crystalHollowsShowRoughMarkers = true;
     private boolean crystalHollowsEntityDetection = true;
@@ -226,8 +227,21 @@ public final class WaypointerConfig {
     private transient IOException writeBlockCause;
     private transient volatile boolean writesBlockedForFutureSchema;
 
+    static WaypointerConfig configCodeBaseline() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.exportIncludeNames = false;
+        config.exportIncludeColors = false;
+        config.exportIncludeRadii = false;
+        config.exportIncludeWaypointFlags = false;
+        config.exportIncludeGroupMeta = false;
+        config.exportIncludeZone = false;
+        config.crystalHollowsStructureWaypoints = true;
+        return config;
+    }
+
     static WaypointerConfig legacyConfigCodeDefaults() {
         WaypointerConfig config = new WaypointerConfig();
+        config.crystalHollowsStructureWaypoints = true;
         config.exportIncludeNames = true;
         config.exportIncludeColors = true;
         config.exportIncludeRadii = true;
@@ -342,6 +356,16 @@ public final class WaypointerConfig {
         }
         if (schemaVersion < 5) {
             irisShaderHudFallback = true;
+            migratedDuringLoad = true;
+        }
+        if (schemaVersion < 9 && !exportIncludeNames && !exportIncludeColors && !exportIncludeRadii
+                && !exportIncludeWaypointFlags && !exportIncludeGroupMeta && !exportIncludeZone) {
+            exportIncludeNames = true;
+            exportIncludeColors = true;
+            exportIncludeRadii = true;
+            exportIncludeWaypointFlags = true;
+            exportIncludeGroupMeta = true;
+            exportIncludeZone = true;
             migratedDuringLoad = true;
         }
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
@@ -686,12 +710,9 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
     public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
-    public boolean enableFeatureBloat() { return enableFeatureBloat; }
-    public void setEnableFeatureBloat(boolean value) { enableFeatureBloat = value; save(); }
     public BoxStyle effectiveBoxStyle() {
         return boxStyle();
     }
-    public boolean exportRoutePreviewEnabled() { return enableFeatureBloat && showExportRoutePreview; }
 
     public boolean renderAntialiasing() { return renderAntialiasing; }
     public void setRenderAntialiasing(boolean value) {
@@ -709,6 +730,7 @@ public final class WaypointerConfig {
     }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
+    public boolean numberUnnamedWaypoints()   { return numberUnnamedWaypoints; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
     public boolean showRouteProgress()        { return showRouteProgress; }
     public boolean labelFollowCameraEffects() { return labelFollowCameraEffects; }
@@ -716,6 +738,8 @@ public final class WaypointerConfig {
         public double labelScale()                { return clamp(labelScale, 0.25, 4.0); }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
+    public int labelTextColor() { return labelTextColor & 0xFFFFFF; }
+    public boolean labelColorForAllText() { return labelColorForAllText; }
 
     public int waypointSkipFadeMs() { return Math.max(0, Math.min(5000, waypointSkipFadeMs)); }
     public void setWaypointSkipFadeMs(int value) {
@@ -749,7 +773,9 @@ public final class WaypointerConfig {
     public boolean showRouteLines()           { return showRouteLines; }
     public boolean useEtherwarpHeight()       { return useEtherwarpHeight; }
     public boolean lineOfSightOnly()          { return lineOfSightOnly; }
-    public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
+    public boolean showDungeonEntryPathToFirstWaypoint() {
+        return showDungeonEntryPathToFirstWaypoint || showDungeonEntryPathToFollowingWaypoints;
+    }
     public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
     public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
     public String etherwarpAlignmentSound() {
@@ -806,7 +832,6 @@ public final class WaypointerConfig {
     public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
     public boolean exportIncludeZone()         { return exportIncludeZone; }
-    public boolean showExportRoutePreview()    { return showExportRoutePreview; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean crystalHollowsMinimap() { return crystalHollowsMinimap; }
@@ -922,6 +947,7 @@ public final class WaypointerConfig {
         save();
     }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
+    public void setNumberUnnamedWaypoints(boolean v)   { this.numberUnnamedWaypoints = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setShowRouteProgress(boolean v)        { this.showRouteProgress = v; save(); }
     public void setLabelFollowCameraEffects(boolean v) { this.labelFollowCameraEffects = v; save(); }
@@ -937,6 +963,8 @@ public final class WaypointerConfig {
     }
     public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
+    public void setLabelTextColor(int v) { this.labelTextColor = v & 0xFFFFFF; save(); }
+    public void setLabelColorForAllText(boolean v) { this.labelColorForAllText = v; save(); }
 
     public void setShowCompleted(boolean v) {
         this.sequencePreviousWaypointCount = v ? SequenceVisibility.DEFAULT.previous() : 0;
@@ -1025,6 +1053,7 @@ public final class WaypointerConfig {
     }
     public void setShowDungeonEntryPathToFirstWaypoint(boolean v) {
         this.showDungeonEntryPathToFirstWaypoint = v;
+        if (!v) this.showDungeonEntryPathToFollowingWaypoints = false;
         save();
     }
     public void setShowDungeonEntryPathToFollowingWaypoints(boolean v) {
@@ -1107,7 +1136,6 @@ public final class WaypointerConfig {
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setExportIncludeZone(boolean v)         { this.exportIncludeZone = v; save(); }
-    public void setShowExportRoutePreview(boolean v)    { this.showExportRoutePreview = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setCrystalHollowsMinimap(boolean v) { crystalHollowsMinimap = v; save(); }
     public void setCrystalHollowsMinimapSize(int v) { crystalHollowsMinimapSize = clamp(v, 96, 224); save(); }
@@ -1220,13 +1248,13 @@ public final class WaypointerConfig {
         tracerThickness = replacement.tracerThickness;
         waypointOutlineThickness = replacement.waypointOutlineThickness;
         renderAntialiasing = replacement.renderAntialiasing;
-        enableFeatureBloat = replacement.enableFeatureBloat;
         waypointMarkerScale = replacement.waypointMarkerScale;
         waypointOutlineOpacity = replacement.waypointOutlineOpacity;
         matchWaypointOutlineToWaypointColor = replacement.matchWaypointOutlineToWaypointColor;
         waypointOutlineColor = replacement.waypointOutlineColor;
         beaconOpacity = replacement.beaconOpacity;
         showWaypointNames = replacement.showWaypointNames;
+        numberUnnamedWaypoints = replacement.numberUnnamedWaypoints;
         showWaypointDistances = replacement.showWaypointDistances;
         showRouteProgress = replacement.showRouteProgress;
         labelScale = replacement.labelScale;
@@ -1235,6 +1263,8 @@ public final class WaypointerConfig {
         waypointSkipFadeMs = replacement.waypointSkipFadeMs;
         scaleWaypointTextWithDistance = replacement.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = replacement.matchWaypointTextToWaypointColor;
+        labelTextColor = replacement.labelTextColor;
+        labelColorForAllText = replacement.labelColorForAllText;
         sequencePreviousWaypointCount = replacement.sequencePreviousWaypointCount;
         showCurrentSequenceWaypoint = replacement.showCurrentSequenceWaypoint;
         sequenceNextWaypointCount = replacement.sequenceNextWaypointCount;
@@ -1289,7 +1319,6 @@ public final class WaypointerConfig {
         exportIncludeWaypointFlags = replacement.exportIncludeWaypointFlags;
         exportIncludeGroupMeta = replacement.exportIncludeGroupMeta;
         exportIncludeZone = replacement.exportIncludeZone;
-        showExportRoutePreview = replacement.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
         crystalHollowsMinimap = replacement.crystalHollowsMinimap;
@@ -1331,7 +1360,6 @@ public final class WaypointerConfig {
         showWaypointRoleBadge = false;
 
         renderAntialiasing = false;
-        enableFeatureBloat = false;
         waypointSkipFadeMs = 0;
         resetProgressOnWorldJoin = false;
         restartRouteWhenComplete = false;
@@ -1386,7 +1414,6 @@ public final class WaypointerConfig {
         exportIncludeWaypointFlags = false;
         exportIncludeGroupMeta = false;
         exportIncludeZone = false;
-        showExportRoutePreview = false;
         dungeonWaypointsFeatureEnabled = false;
         skipAheadMechanicEnabled = false;
         crystalHollowsMinimap = false;
@@ -1466,13 +1493,13 @@ public final class WaypointerConfig {
         tracerThickness = defaults.tracerThickness;
         waypointOutlineThickness = defaults.waypointOutlineThickness;
         renderAntialiasing = defaults.renderAntialiasing;
-        enableFeatureBloat = defaults.enableFeatureBloat;
         waypointMarkerScale = defaults.waypointMarkerScale;
         waypointOutlineOpacity = defaults.waypointOutlineOpacity;
         matchWaypointOutlineToWaypointColor = defaults.matchWaypointOutlineToWaypointColor;
         waypointOutlineColor = defaults.waypointOutlineColor;
         beaconOpacity = defaults.beaconOpacity;
         showWaypointNames = defaults.showWaypointNames;
+        numberUnnamedWaypoints = defaults.numberUnnamedWaypoints;
         showWaypointDistances = defaults.showWaypointDistances;
         showRouteProgress = defaults.showRouteProgress;
         labelScale = defaults.labelScale;
@@ -1481,6 +1508,8 @@ public final class WaypointerConfig {
         waypointSkipFadeMs = defaults.waypointSkipFadeMs;
         scaleWaypointTextWithDistance = defaults.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = defaults.matchWaypointTextToWaypointColor;
+        labelTextColor = defaults.labelTextColor;
+        labelColorForAllText = defaults.labelColorForAllText;
         sequencePreviousWaypointCount = defaults.sequencePreviousWaypointCount;
         showCurrentSequenceWaypoint = defaults.showCurrentSequenceWaypoint;
         sequenceNextWaypointCount = defaults.sequenceNextWaypointCount;
@@ -1536,7 +1565,6 @@ public final class WaypointerConfig {
         exportIncludeWaypointFlags = defaults.exportIncludeWaypointFlags;
         exportIncludeGroupMeta = defaults.exportIncludeGroupMeta;
         exportIncludeZone = defaults.exportIncludeZone;
-        showExportRoutePreview = defaults.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
         crystalHollowsMinimap = defaults.crystalHollowsMinimap;

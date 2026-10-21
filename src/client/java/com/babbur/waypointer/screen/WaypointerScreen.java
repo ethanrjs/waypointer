@@ -1271,6 +1271,9 @@ public final class WaypointerScreen extends Screen {
                         ? "waypointer.screen.main.menu.hide"
                         : "waypointer.screen.main.menu.show"),
                 ContextMenuOverlay.hint("space"), () -> toggleRouteEnabled(group)));
+        items.add(ContextMenuOverlay.Item.of(
+                Component.translatable("waypointer.screen.main.menu.export"),
+                null, () -> exportRoute(group)));
         items.add(canMoveRouteZone(group)
                 ? ContextMenuOverlay.Item.of(
                         Component.translatable("waypointer.screen.main.menu.move_zone"),
@@ -1334,6 +1337,7 @@ public final class WaypointerScreen extends Screen {
             Map.entry("waypointer.screen.main.menu.appearance", Icons.Icon.BRUSH),
             Map.entry("waypointer.screen.main.menu.hide", Icons.Icon.EYE_OFF),
             Map.entry("waypointer.screen.main.menu.show", Icons.Icon.EYE),
+            Map.entry("waypointer.screen.main.menu.export", Icons.Icon.EXPORT),
             Map.entry("waypointer.screen.main.menu.move_zone", Icons.Icon.EXPORT),
             Map.entry("waypointer.screen.main.menu.delete.one", Icons.Icon.TRASH),
             Map.entry("waypointer.screen.main.menu.delete.many", Icons.Icon.TRASH),
@@ -2016,6 +2020,14 @@ public final class WaypointerScreen extends Screen {
         return routeList.selectedVisibleGroups();
     }
 
+    private void exportRoute(WaypointGroup group) {
+        if (!selectedGroupIds.contains(group.id())) {
+            selectOnlyGroupId(group.id());
+            refreshActionButtons();
+        }
+        exportZone();
+    }
+
     private void exportZone() {
         if (isDungeonRoomsZone(selectedZoneId)) {
             exportDungeonRooms();
@@ -2102,10 +2114,13 @@ public final class WaypointerScreen extends Screen {
         }
         List<WaypointGroup> routeGroups =
                 dungeonRouteGroupsForExport(selectedGroups, manager.allGroups());
+        if (routeGroups.size() == 1) {
+            ExportScreen.openForGroup(this, config, manager, routeGroups.getFirst());
+            return;
+        }
         if (!routeGroups.isEmpty()) {
-            int roomCount = DungeonRoomRouteLibrary.secretRoomCount(routeGroups);
-            DungeonRoomExportScreen.open(this, routeGroups, roomCount,
-                    DungeonRoomShareCodec.waypointCount(routeGroups));
+            ExportScreen.openForGroups(this, config, manager, routeGroups,
+                    displayZoneLabel(selectedZoneId));
             return;
         }
         flashMainNotice(emptyExportNotice(selectedZoneId));

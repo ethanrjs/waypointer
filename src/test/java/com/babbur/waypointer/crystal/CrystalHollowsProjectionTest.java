@@ -25,7 +25,7 @@ class CrystalHollowsProjectionTest {
     @Test
     void refreshingStylesAppliesBulkChangesAndResetOnlyToRuntimeStructureGroups() {
         var manager = new ActiveGroupManager();
-        var config = new WaypointerConfig();
+        var config = structureWaypointsOn();
         var style = WaypointStyle.EMPTY.with("waypointIcon", "STAR");
         var structure = new WaypointGroup(CrystalHollowsStructureFolder.GROUP_PREFIX + "fairy_grotto:2",
                 "Grotto", "crystal_hollows");
@@ -57,7 +57,7 @@ class CrystalHollowsProjectionTest {
     @Test
     void detectionPreferencesFilterCachedRemoteAndLocalPointsWithoutDeletingUserRoutes() {
         var manager = new ActiveGroupManager();
-        var config = new WaypointerConfig();
+        var config = structureWaypointsOn();
         config.setCrystalHollowsNucleusWaypoints(false);
         var projection = new CrystalHollowsProjection(manager, config);
         var lobby = new CrystalHollowsLobbyState("test", 0, 0);
@@ -90,7 +90,7 @@ class CrystalHollowsProjectionTest {
     @Test
     void structureTypeAppearanceSurvivesProjectionAndLobbyChanges() {
         var manager = new ActiveGroupManager();
-        var config = new WaypointerConfig();
+        var config = structureWaypointsOn();
         var style = WaypointStyle.EMPTY.with("waypointIcon", "STAR")
                 .with("waypointMarkerScale", 1.5);
         config.setCrystalHollowsStyle(CrystalHollowsStructure.ODAWA.id(), style);
@@ -112,7 +112,7 @@ class CrystalHollowsProjectionTest {
     void keeperDetectionReplacesRoughDivanMarkerWithVisibleCentre() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = structureWaypointsOn();
         config.setCrystalHollowsShowRoughMarkers(false);
         CrystalHollowsProjection projection = new CrystalHollowsProjection(manager, config);
         CrystalHollowsLobbyState lobby = new CrystalHollowsLobbyState("test", 0L, 0);
@@ -139,7 +139,7 @@ class CrystalHollowsProjectionTest {
 
     @Test
     void nucleusWaypointsRemainIndependentOfStructureWaypoints() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = structureWaypointsOn();
         config.setCrystalHollowsStructureWaypoints(false);
         config.setCrystalHollowsNucleusWaypoints(true);
         ActiveGroupManager manager = new ActiveGroupManager();
@@ -158,7 +158,7 @@ class CrystalHollowsProjectionTest {
 
     @Test
     void disablingBothStructureAndNucleusWaypointsLeavesNoGeneratedGroups() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = structureWaypointsOn();
         config.setCrystalHollowsStructureWaypoints(false);
         config.setCrystalHollowsNucleusWaypoints(false);
         ActiveGroupManager manager = new ActiveGroupManager();
@@ -176,7 +176,7 @@ class CrystalHollowsProjectionTest {
 
     @Test
     void hidingStructuresRemovesOnlyRuntimeProjectionAndRestoresRouteVisibility() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = structureWaypointsOn();
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup saved = new WaypointGroup("saved", "Saved", "crystal_hollows");
         manager.add(saved);
@@ -212,7 +212,7 @@ class CrystalHollowsProjectionTest {
 
     @Test
     void leavingAndRejoiningRestoresFolderAndHiddenMarkers() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = structureWaypointsOn();
         ActiveGroupManager manager = new ActiveGroupManager();
         CrystalHollowsProjection projection = new CrystalHollowsProjection(manager, config);
         CrystalHollowsLobbyState lobby = new CrystalHollowsLobbyState("test", 0L, 0);
@@ -234,5 +234,11 @@ class CrystalHollowsProjectionTest {
         projection.rebuild(lobby);
         assertNotNull(manager.folder(CrystalHollowsStructureFolder.FOLDER_ID));
         assertTrue(manager.get("crystal_hollows:structure:odawa").enabled());
+    }
+
+    private static WaypointerConfig structureWaypointsOn() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setCrystalHollowsStructureWaypoints(true);
+        return config;
     }
 }

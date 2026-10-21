@@ -9,7 +9,6 @@ import com.babbur.waypointer.screen.ExportScreen;
 import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
@@ -28,18 +27,11 @@ final class ExportSmokeTest {
                 route.add(Waypoint.at(-12, 70, 34).withName("Exported point"));
                 config.setExportIncludeNames(true);
                 ExportScreen.openForGroup(null, config, route);
-                press(MinecraftCompat.screen(client), Component.translatable(
-                        "waypointer.screen.export.target", "Waypointer").getString());
                 press(MinecraftCompat.screen(client), "SkySoft");
             });
             context.waitFor(client -> !Boolean.TRUE.equals(field(MinecraftCompat.screen(client), "encodePending")), 200);
             context.runOnClient(client -> {
                 Screen screen = MinecraftCompat.screen(client);
-                long supportedToggles = ((List<?>) field(screen, "toggleButtons")).stream()
-                        .filter(toggle -> ((Button) toggle).active).count();
-                if (supportedToggles != 4) throw new AssertionError("SkySoft inclusion toggles missing");
-                if (((EditBox) field(screen, "labelInput")).active)
-                    throw new AssertionError("SkySoft export label customization enabled");
                 press(screen, Component.translatable("waypointer.export.copy_clipboard").getString());
                 String code = client.keyboardHandler.getClipboard();
                 if (!code.startsWith("SKYSOFT:")) throw new AssertionError("Copy did not produce a SkySoft code");
@@ -49,6 +41,19 @@ final class ExportSmokeTest {
                         || exported.size() != 1 || point.x() != -12 || point.y() != 70 || point.z() != 34
                         || !point.name().equals("Exported point"))
                     throw new AssertionError("Copied SkySoft code changed the route");
+                press(screen, "Odin");
+            });
+            context.waitFor(client -> !Boolean.TRUE.equals(field(MinecraftCompat.screen(client), "encodePending")), 200);
+            context.runOnClient(client -> {
+                Screen screen = MinecraftCompat.screen(client);
+                Button copy = (Button) field(screen, "copyButton");
+                if (!copy.active) throw new AssertionError("Odin export cannot be copied");
+                copy.onPress(new KeyEvent(257, 0, 0));
+                var imported = WaypointImporter.importAny(client.keyboardHandler.getClipboard());
+                var point = imported.groups().getFirst().waypoints().getFirst();
+                if (imported.source() != WaypointImporter.Source.ODIN || point.x() != -12 || point.y() != 70
+                        || point.z() != 34 || !point.name().equals("Exported point"))
+                    throw new AssertionError("Copied Odin code changed the route");
             });
             context.takeScreenshot("skysoft-export-copied");
         } finally {

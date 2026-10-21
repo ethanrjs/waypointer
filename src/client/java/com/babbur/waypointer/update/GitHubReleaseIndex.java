@@ -42,6 +42,29 @@ final class GitHubReleaseIndex {
                 versionsBehind));
     }
 
+    static Optional<String> assetSha256(String releaseJson, String version, String fileName, long size) {
+        JsonElement root = JsonParser.parseString(releaseJson);
+        if (!root.isJsonObject()) return Optional.empty();
+        JsonObject release = root.getAsJsonObject();
+        if (booleanValue(release, "draft") || booleanValue(release, "prerelease")) return Optional.empty();
+        if (!("v" + version).equals(stringValue(release, "tag_name"))) return Optional.empty();
+        JsonElement assets = release.get("assets");
+        if (assets == null || !assets.isJsonArray()) return Optional.empty();
+        for (JsonElement element : assets.getAsJsonArray()) {
+            if (!element.isJsonObject()) continue;
+            JsonObject asset = element.getAsJsonObject();
+            if (!fileName.equals(stringValue(asset, "name"))) continue;
+            JsonElement assetSize = asset.get("size");
+            if (assetSize == null || !assetSize.isJsonPrimitive() || assetSize.getAsLong() != size) {
+                return Optional.empty();
+            }
+            String digest = stringValue(asset, "digest");
+            if (digest == null || !digest.matches("sha256:[0-9a-f]{64}")) return Optional.empty();
+            return Optional.of(digest.substring("sha256:".length()));
+        }
+        return Optional.empty();
+    }
+
     static int releaseCount(String page) {
         return parseArray(page).size();
     }

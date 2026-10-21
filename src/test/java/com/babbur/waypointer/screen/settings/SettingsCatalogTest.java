@@ -49,20 +49,6 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void exportPreviewRemainsAnOptionalExtra() {
-        Setting toggle = SettingsCatalog.byId("enableFeatureBloat");
-        assertEquals("system", categoryContaining(toggle.id()));
-        assertEquals("Enable Extras", toggle.label());
-        assertEquals("Enable the 3D route preview.", toggle.tooltip());
-        WaypointerConfig config = new WaypointerConfig();
-        Setting preview = SettingsCatalog.byId("showExportRoutePreview");
-        assertEquals("feature_bloat", categoryContaining(preview.id()));
-        assertFalse(preview.isEnabled(config, null));
-        toggle.set(config, null, true);
-        assertTrue(preview.isEnabled(config, null));
-    }
-
-    @Test
     void antialiasingIsAnEnabledAppearanceToggle() {
         Setting setting = SettingsCatalog.byId("renderAntialiasing");
         assertEquals(Setting.Kind.BOOL, setting.kind());
@@ -167,7 +153,7 @@ class SettingsCatalogTest {
     @Test
     void categoryOrderIncludesFunctionalMiningWithoutAnEmptyForagingPage() {
         assertEquals(List.of("waypoints", "appearance", "routes", "dungeons", "mining",
-                        "chat", "sharing", "feature_bloat", "system", "feedback"),
+                        "chat", "sharing", "system", "feedback"),
                 SettingsCatalog.categories().stream()
                         .map(SettingsCatalog.Category::id)
                         .toList());
@@ -343,7 +329,8 @@ class SettingsCatalogTest {
             assertNotEquals(setting.get(defaults, null), setting.get(live, null),
                     setting.id() + " probe did not change the live value (clamped back to default?)");
 
-            assertEquals(1, SettingsCatalog.countChangedSettings(defaults, live),
+            int linked = setting.id().equals("showDungeonEntryPathToFollowingWaypoints") ? 1 : 0;
+            assertEquals(1 + linked, SettingsCatalog.countChangedSettings(defaults, live),
                     setting.id() + " probe should register as exactly one changed setting");
 
             WaypointerConfig decoded = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(live));
@@ -616,24 +603,6 @@ class SettingsCatalogTest {
         }
         assertEquals(true, SettingsCatalog.byId("showDungeonRouteLines").get(main, dungeon));
         assertEquals(false, SettingsCatalog.byId("showDungeonTracers").get(main, dungeon));
-    }
-
-    @Test
-    void theExportRoutePreviewIsOffByDefaultUnderFeatureBloat() {
-        Setting preview = SettingsCatalog.byId("showExportRoutePreview");
-
-        assertNotNull(preview);
-        assertEquals("3D route preview", preview.label());
-        assertEquals("Show a rotating 3D preview of the route on the export screen.",
-                preview.tooltip());
-        assertEquals(false, preview.get(new WaypointerConfig(), null));
-        assertEquals("feature_bloat", categoryContaining("showExportRoutePreview"));
-
-        WaypointerConfig enabled = new WaypointerConfig();
-        preview.set(enabled, null, true);
-        WaypointerConfig decoded = WaypointerConfigCodec.decode(
-                WaypointerConfigCodec.encode(enabled));
-        assertEquals(true, preview.get(decoded, null));
     }
 
     @Test

@@ -89,6 +89,25 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void itemAndBatSecretsAreNotFoundByStandingOnThem() {
+        for (int kind : new int[] { Waypoint.FLAG_DUNGEON_ITEM, Waypoint.FLAG_DUNGEON_BAT }) {
+            WaypointGroup group = dungeonTriggerGroup();
+            group.add(Waypoint.at(0, 0, 0).withFlags(
+                    Waypoint.FLAG_SKIP_ON_STAND | Waypoint.FLAG_DUNGEON_SECRET | kind));
+            group.add(Waypoint.at(20, 0, 0));
+
+            assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                    false, true, false, 1_000L));
+            assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                    false, true, false, 3_000L));
+            assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                    false, false, false, 5_000L));
+
+            assertEquals(0, group.currentIndex());
+        }
+    }
+
+    @Test
     void standSkipFlagIgnoresDungeonWaypointRadius() {
         WaypointGroup group = dungeonTriggerGroup();
         group.setDefaultRadius(10.0);

@@ -1,6 +1,9 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.codec.WaypointExportCodec;
+
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.update.WaypointerUpdates;
 import com.babbur.waypointer.catalog.CatalogPage;
 import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogPublication;
@@ -12,6 +15,7 @@ import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
@@ -115,6 +119,14 @@ public final class ScreenGallery {
                 manager.get(routeId)));
         shoot(context, "export", scale, () -> new ExportScreen(null, config, List.of(manager.get(routeId)),
                 manager.get(routeId).name()));
+        shoot(context, "export-routes", scale, () -> ExportScreen.forGroups(null, config, manager,
+                manager.allGroups().stream().filter(group -> !group.temp()).limit(4).toList(), "Private World"));
+        shoot(context, "export-rooms", scale, () -> ExportScreen.forGroups(null, config, manager,
+                galleryRooms(), "Dungeon Rooms"));
+        context.runOnClient(client -> invoke(MinecraftCompat.screen(client), "selectExportTarget",
+                new Class<?>[]{WaypointExportCodec.Target.class}, WaypointExportCodec.Target.ODIN));
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-export-rooms-odin-s" + scale);
         shoot(context, "folder", scale, () -> new RouteFolderEditScreen(null, manager,
                 manager.get(routeId).zoneId(), null, List.of()));
         shoot(context, "color-picker", scale, () -> new ColorPickerScreen(null, "Waypoint color",
@@ -135,6 +147,22 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-hub-route-menu-open-s" + scale);
+        List<String> notes = List.of("#Added", "- Toggle waypoints keybind, unbound by default",
+                "#Changes", "- Crystal Hollows route names shortened in route browser",
+                "#Fixed", "- Performance issues");
+        for (WaypointerUpdates.Phase phase : List.of(WaypointerUpdates.Phase.READY,
+                WaypointerUpdates.Phase.DOWNLOADING, WaypointerUpdates.Phase.STAGED)) {
+            WaypointerUpdates.preview("1.12.1", "1.12.2", notes, phase);
+            shoot(context, "settings-update-" + phase.name().toLowerCase(java.util.Locale.ROOT), scale, () -> {
+                SettingsScreen screen = new SettingsScreen(null, config, WaypointerClient.dungeonConfig());
+                try {
+                    var f = SettingsScreen.class.getDeclaredField("activeCategoryId");
+                    f.setAccessible(true);
+                    f.set(screen, SettingsScreen.UPDATE_ID);
+                } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+                return screen;
+            });
+        }
         shoot(context, "minimap-editor", scale, () -> new CrystalHollowsMinimapEditorScreen(null, config));
         shoot(context, "minimap-options", scale, MinimapOptionsScreen::new);
         shoot(context, "debug", scale, () -> new DebugInspectScreen(null));
@@ -216,6 +244,7 @@ public final class ScreenGallery {
             @SuppressWarnings("unchecked")
             var previews = (Map<String, Object>) field(screen, "previews");
             previews.put(catalogRoutes().get(0).id(), previewOf(sampleRoute()));
+            previews.put(catalogRoutes().getLast().id(), previewOf(sampleRoute()));
             invoke(screen, "rebuildWidgets", new Class<?>[0]);
         });
         context.waitTicks(3);
@@ -244,6 +273,10 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-catalog-detail-s" + scale);
+        context.runOnClient(client -> invoke(MinecraftCompat.screen(client), "openRoute",
+                new Class<?>[]{CatalogRouteSummary.class}, catalogRoutes().getLast()));
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-catalog-requires-s" + scale);
         shootMyRoutes(context, scale);
         shootRouteView(context, scale);
     }
@@ -275,6 +308,25 @@ public final class ScreenGallery {
         });
         context.waitTicks(3);
         context.takeScreenshot("gallery-route-view-s" + scale);
+        context.runOnClient(client -> {
+            var screen = new CatalogRouteInstallScreen(null, RouteCatalogClient.production(),
+                    WaypointerClient.manager(), catalogRoutes().getLast().id());
+            setField(screen, "requested", true);
+            MinecraftCompat.setScreen(client, screen);
+            IllegalArgumentException tooNew = null;
+            try {
+                CatalogProtocol.requireInstallable(catalogRoutes().getLast());
+            } catch (IllegalArgumentException expected) {
+                tooNew = expected;
+            }
+            try {
+                invoke(screen, "onLoaded", new Class<?>[]{long.class,
+                                Class.forName(CatalogRouteInstallScreen.class.getName() + "$Loaded"), Throwable.class},
+                        field(screen, "fetchGeneration"), null, tooNew);
+            } catch (ClassNotFoundException e) { throw new AssertionError(e); }
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-route-view-requires-s" + scale);
         context.runOnClient(client -> MinecraftCompat.setScreen(client, null));
     }
 
@@ -375,8 +427,16 @@ public final class ScreenGallery {
                         "casihaingoai", false, "the_end", "The End", 5, 22, week, week, List.of()),
                 route("AAAAAAAAAAAAAAAAAAAAA7", "Automaton spawns", "Lost Precursor City automatons.",
                         "BABBUR2", true, "crystal_hollows", "Crystal Hollows", 32, 240, months, months, List.of()),
-                route("AAAAAAAAAAAAAAAAAAAAA8", "Torrhus tree protection", "Critter trees in Torrhus Canyon.",
-                        "M2AT", false, "torrhus_canyon", "Torrhus Canyon", 4, 9, now, now, List.of()));
+                tooNew(route("AAAAAAAAAAAAAAAAAAAAA8", "Torrhus tree protection", "Critter trees in Torrhus Canyon.",
+                        "M2AT", false, "torrhus_canyon", "Torrhus Canyon", 4, 9, now, now, List.of())));
+    }
+
+    private static CatalogRouteSummary tooNew(CatalogRouteSummary route) {
+        return new CatalogRouteSummary(route.id(), route.title(), route.description(), route.authorName(),
+                route.publisherId(), route.publisherVerified(), route.visibility(), route.zoneId(),
+                route.zoneLabel(), route.waypointCount(), route.groupCount(), 12, route.version(),
+                route.downloads(), route.createdAt(), route.updatedAt(), route.sharePath(), route.tags(),
+                route.icon(), "1.14.0");
     }
 
     private static CatalogRouteSummary route(
@@ -428,6 +488,21 @@ public final class ScreenGallery {
                 }
             }
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+
+    private static List<WaypointGroup> galleryRooms() {
+        List<WaypointGroup> rooms = new java.util.ArrayList<>();
+        for (String id : new String[]{"arrow-trap", "altar", "andesite", "atlas", "admin", "blue-skulls",
+                "beams", "bridges", "buttons", "cages", "chambers", "dueces"}) {
+            WaypointGroup room = WaypointGroup.create("FlameOfWar", id);
+            room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            room.add(new Waypoint(4, 70, 4, "", 0x9C2EFF,
+                    Waypoint.FLAG_SKIP_ON_STAND | Waypoint.FLAG_DUNGEON_ETHERWARP, 0.0));
+            room.add(new Waypoint(9, 70, 9, "Chest", 0x2EE0FF,
+                    Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+            rooms.add(room);
+        }
+        return rooms;
     }
 
     private static String seed(ActiveGroupManager manager) {

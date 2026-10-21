@@ -93,7 +93,7 @@ public final class SceneKeyFactory {
     }
 
     static void mixConfig(SceneKey.Builder key, WaypointerConfig config) {
-        key.mix(config.enableFeatureBloat()).mixEnum(config.effectiveBoxStyle());
+        key.mixEnum(config.effectiveBoxStyle());
         mixPaint(key, config.waypointPainterDefaultPaint());
         key.mixEnum(config.beaconBeamMode())
                 .mix(config.useBeaconBeamTextures())

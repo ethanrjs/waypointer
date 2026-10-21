@@ -133,12 +133,12 @@ class WaypointerCommandTreeTest {
     void cliExportDefaultOptionsMirrorConfigDefaultsWithoutImplicitLabel() throws Exception {
         WaypointCodec.Options options = invokeExportOptionsFromConfig(new WaypointerConfig());
 
-        assertFalse(options.includeNames);
-        assertFalse(options.includeColors);
-        assertFalse(options.includeRadii);
-        assertFalse(options.includeWaypointFlags);
-        assertFalse(options.includeGroupMeta);
-        assertFalse(options.includeZone);
+        assertTrue(options.includeNames);
+        assertTrue(options.includeColors);
+        assertTrue(options.includeRadii);
+        assertTrue(options.includeWaypointFlags);
+        assertTrue(options.includeGroupMeta);
+        assertTrue(options.includeZone);
         assertEquals("", options.label);
     }
 
@@ -365,6 +365,39 @@ class WaypointerCommandTreeTest {
         assertEquals(3, WaypointerCommandSuggestions.suggestWaypointLabels(route, builder));
         assertEquals(List.of("1", "1.1", "2"), builder.build().getList().stream()
                 .map(Suggestion::getText).toList());
+    }
+
+    @Test
+    void partialCommandsAnswerWithUsageInsteadOfFallingThroughToTheServer() throws Exception {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+        List<String> partial = new ArrayList<>();
+        collectPartial(dispatcher.getRoot().getChild("wp"), "/wp", partial);
+        assertEquals(List.of(), partial, "every partial /wp command needs its own reply");
+
+        List<Component> errors = new ArrayList<>();
+        List<Component> feedback = new ArrayList<>();
+        FabricClientCommandSource source = (FabricClientCommandSource) Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[]{FabricClientCommandSource.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "sendError" -> { errors.add((Component) args[0]); yield null; }
+                    case "sendFeedback" -> { feedback.add((Component) args[0]); yield null; }
+                    default -> throw new AssertionError("Unexpected command source call: " + method.getName());
+                });
+
+        assertEquals(0, dispatcher.execute("wp route gradient 077FFF", source));
+        assertEquals(1, errors.size());
+        assertEquals(List.of("  /wp route gradient <start> <end>"),
+                feedback.stream().map(Component::getString).toList());
+    }
+
+    private static void collectPartial(CommandNode<FabricClientCommandSource> node, String path,
+                                       List<String> out) {
+        for (CommandNode<FabricClientCommandSource> child : node.getChildren()) {
+            String childPath = path + " " + child.getUsageText();
+            if (child.getCommand() == null && child.getRedirect() == null) out.add(childPath);
+            collectPartial(child, childPath, out);
+        }
     }
 
     @Test

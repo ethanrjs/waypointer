@@ -23,13 +23,25 @@ public record CatalogRouteSummary(
         String updatedAt,
         String sharePath,
         List<String> tags,
-        String icon) {
+        String icon,
+        String requiredModVersion) {
 
     public static final String TAG_MINING_CULT = "mining-cult";
 
     public CatalogRouteSummary {
         tags = tags == null ? List.of() : List.copyOf(tags);
         icon = RouteIcon.normalize(icon);
+        requiredModVersion = requiredModVersion == null ? "" : requiredModVersion;
+    }
+
+    public CatalogRouteSummary(String id, String title, String description, String authorName,
+                               String publisherId, boolean publisherVerified, String visibility,
+                               String zoneId, String zoneLabel, int waypointCount, int groupCount,
+                               int codecVersion, int version, long downloads, String createdAt,
+                               String updatedAt, String sharePath, List<String> tags, String icon) {
+        this(id, title, description, authorName, publisherId, publisherVerified, visibility,
+                zoneId, zoneLabel, waypointCount, groupCount, codecVersion, version, downloads,
+                createdAt, updatedAt, sharePath, tags, icon, "");
     }
 
     public CatalogRouteSummary(String id, String title, String description, String authorName,
@@ -39,7 +51,7 @@ public record CatalogRouteSummary(
                                String updatedAt, String sharePath, List<String> tags) {
         this(id, title, description, authorName, publisherId, publisherVerified, visibility,
                 zoneId, zoneLabel, waypointCount, groupCount, codecVersion, version, downloads,
-                createdAt, updatedAt, sharePath, tags, "");
+                createdAt, updatedAt, sharePath, tags, "", "");
     }
 
     public CatalogRouteSummary(String id, String title, String description, String authorName,
@@ -49,7 +61,7 @@ public record CatalogRouteSummary(
                                String updatedAt, String sharePath) {
         this(id, title, description, authorName, publisherId, publisherVerified, visibility,
                 zoneId, zoneLabel, waypointCount, groupCount, codecVersion, version, downloads,
-                createdAt, updatedAt, sharePath, List.of(), "");
+                createdAt, updatedAt, sharePath, List.of(), "", "");
     }
 
     public String displayIcon() {

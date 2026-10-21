@@ -13,6 +13,7 @@ import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogRouteDetails;
 import com.babbur.waypointer.catalog.CatalogRouteInstaller;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.catalog.CatalogRouteTooNewException;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
@@ -1066,8 +1067,9 @@ public final class RouteCatalogScreen extends Screen {
         if (route == null || detailLoading) return;
         CatalogInstallState installState = installState(route);
         if (!installState.canInstall()) {
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.already_installed");
+            statusText = installState.action() == CatalogInstallState.Action.UNSUPPORTED_CODEC
+                    ? requiresLine(route.requiredModVersion())
+                    : Component.translatable("waypointer.screen.route_catalog.status.already_installed");
             statusColor = TEXT_DIM;
             refreshPrimaryButtons();
             return;
@@ -1377,9 +1379,7 @@ public final class RouteCatalogScreen extends Screen {
         }
         if (stateLine != null) {
             graphics.text(font, GuiTokens.ellipsize(font, stateLine.getString(), available), x, y,
-                    state.action() == CatalogInstallState.Action.UPDATE
-                            || state.action() == CatalogInstallState.Action.REPAIR
-                            ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
+                    needsAttention(state.action()) ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
             y += stateH;
         }
 
@@ -1464,8 +1464,22 @@ public final class RouteCatalogScreen extends Screen {
             case UPDATE -> Component.translatable("waypointer.screen.route_catalog.state.update_line",
                     state.localVersion(), route.version());
             case REPAIR -> Component.translatable("waypointer.screen.route_catalog.state.repair_line");
+            case UNSUPPORTED_CODEC -> requiresLine(route.requiredModVersion());
             default -> null;
         };
+    }
+
+    static Component requiresLine(String requiredModVersion) {
+        return requiredModVersion.isEmpty()
+                ? Component.translatable("waypointer.screen.route_catalog.state.unsupported_line")
+                : Component.translatable("waypointer.screen.route_catalog.state.requires_line",
+                        requiredModVersion);
+    }
+
+    static boolean needsAttention(CatalogInstallState.Action action) {
+        return action == CatalogInstallState.Action.UPDATE
+                || action == CatalogInstallState.Action.REPAIR
+                || action == CatalogInstallState.Action.UNSUPPORTED_CODEC;
     }
 
     static Component ageLabel(String timestamp) {
@@ -1758,11 +1772,9 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     static Component friendlyFailure(Throwable failure) {
-        Throwable cause = failure;
-        while ((cause instanceof CompletionException
-                || cause instanceof ExecutionException)
-                && cause.getCause() != null) {
-            cause = cause.getCause();
+        Throwable cause = rootCause(failure);
+        if (cause instanceof CatalogRouteTooNewException tooNew) {
+            return requiresLine(tooNew.requiredModVersion());
         }
         if (cause instanceof CatalogApiException api) {
             String key = switch (api.code()) {
@@ -1782,6 +1794,16 @@ public final class RouteCatalogScreen extends Screen {
             return Component.translatable("waypointer.screen.route_catalog.error.unreadable");
         }
         return Component.translatable("waypointer.screen.route_catalog.error.request_failed");
+    }
+
+    static Throwable rootCause(Throwable failure) {
+        Throwable cause = failure;
+        while ((cause instanceof CompletionException
+                || cause instanceof ExecutionException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     private static String formatCount(long value) {

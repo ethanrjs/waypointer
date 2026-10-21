@@ -72,7 +72,7 @@ final class CatalogRouteRowButton extends AbstractButton {
         int textX = x1 + GAP + ICON_SLOT + GAP;
         int right = x2 - GAP;
 
-        int stateW = drawInstallState(graphics, font, installAction, right, y1 + TITLE_TOP, true);
+        int stateW = drawInstallState(graphics, font, installAction, route, right, y1 + TITLE_TOP, true);
         int titleRight = right - (stateW > 0 ? stateW + GAP : 0);
         int badgeW = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT) ? miningCultWidth(font) + GAP_TIGHT : 0;
         String title = GuiTokens.ellipsize(font, route.title(), Math.max(20, titleRight - textX - badgeW));
@@ -145,7 +145,7 @@ final class CatalogRouteRowButton extends AbstractButton {
     }
 
     static int drawInstallState(GuiGraphicsExtractor graphics, Font font, CatalogInstallState.Action action,
-                                int right, int y, boolean compact) {
+                                CatalogRouteSummary route, int right, int y, boolean compact) {
         if (action == null) return 0;
         String key;
         int color;
@@ -162,11 +162,17 @@ final class CatalogRouteRowButton extends AbstractButton {
                 key = "waypointer.screen.route_catalog.state.repair";
                 color = GuiTokens.WARNING;
             }
+            case UNSUPPORTED_CODEC -> {
+                key = route.requiredModVersion().isEmpty()
+                        ? "waypointer.screen.route_catalog.state.unsupported"
+                        : "waypointer.screen.route_catalog.state.requires";
+                color = GuiTokens.WARNING;
+            }
             default -> {
                 return 0;
             }
         }
-        String text = Component.translatable(key).getString();
+        String text = Component.translatable(key, route.requiredModVersion()).getString();
         if (compact && (action == CatalogInstallState.Action.INSTALLED
                 || action == CatalogInstallState.Action.LOCAL_NEWER)) {
             Icons.drawAt(graphics, Icons.Icon.BADGE_CHECK, right - 4, y + 3, color);
@@ -229,6 +235,10 @@ final class CatalogRouteRowButton extends AbstractButton {
                 || installAction == CatalogInstallState.Action.LOCAL_NEWER) {
             description.append(Component.translatable(
                     "waypointer.screen.route_catalog.row.installed_narration"));
+        }
+        if (installAction == CatalogInstallState.Action.UNSUPPORTED_CODEC) {
+            description.append(Component.literal(". "))
+                    .append(RouteCatalogScreen.requiresLine(route.requiredModVersion()));
         }
         return selected
                 ? Component.translatable(

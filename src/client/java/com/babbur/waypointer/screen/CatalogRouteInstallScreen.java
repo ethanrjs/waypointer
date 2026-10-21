@@ -7,6 +7,7 @@ import com.babbur.waypointer.catalog.CatalogInstallState;
 import com.babbur.waypointer.catalog.CatalogRouteDetails;
 import com.babbur.waypointer.catalog.CatalogRouteInstaller;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.catalog.CatalogRouteTooNewException;
 import com.babbur.waypointer.catalog.InstallTokenStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.codec.CatalogShareLink;
@@ -195,9 +196,13 @@ public final class CatalogRouteInstallScreen extends Screen {
         if (!screenActive || generation != fetchGeneration) return;
         if (failure != null || result == null) {
             phase = Phase.FAILED;
+            statusColor = STATUS_ERROR;
             if (!RouteCatalogClient.isValidRouteId(routeId)) {
                 status = Component.translatable(
                         "waypointer.screen.catalog_install.error.unsupported_reference");
+            } else if (RouteCatalogScreen.rootCause(failure) instanceof CatalogRouteTooNewException) {
+                status = RouteCatalogScreen.friendlyFailure(failure);
+                statusColor = GuiTokens.WARNING;
             } else {
                 if (failure != null) {
                     Waypointer.LOGGER.warn(
@@ -207,7 +212,6 @@ public final class CatalogRouteInstallScreen extends Screen {
                         ? Component.translatable("waypointer.screen.route_catalog.error.request_failed")
                         : RouteCatalogScreen.friendlyFailure(failure);
             }
-            statusColor = STATUS_ERROR;
         } else {
             prepared = result.route();
             preview = result.preview();
@@ -357,10 +361,9 @@ public final class CatalogRouteInstallScreen extends Screen {
                 : RouteCatalogScreen.installStateLine(installState, summary);
         if (stateLine != null) {
             y += GAP_TIGHT;
-            boolean attention = installState.action() == CatalogInstallState.Action.UPDATE
-                    || installState.action() == CatalogInstallState.Action.REPAIR;
             graphics.text(font, GuiTokens.ellipsize(font, stateLine.getString(), contentW), contentX, y,
-                    attention ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
+                    RouteCatalogScreen.needsAttention(installState.action())
+                            ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
             y += LINE_H;
         }
         return y + GAP;

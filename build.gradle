@@ -10,8 +10,8 @@ plugins {
 }
 
 def minecraftTargets = [
-		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2'],
-		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3']
+		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2', fabricApiDependency: '>=0.145.4'],
+		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3', fabricApiDependency: '>=0.152.1']
 ]
 def targetMinecraft = project.minecraft_version.toString()
 def target = minecraftTargets[targetMinecraft]
@@ -315,14 +315,61 @@ tasks.register('validateV10Corpus', Test) {
 	}
 }
 
+tasks.register('buildFlameOfWarPack', Test) {
+	group = 'dungeons'
+	description = 'Builds the FlameOfWar room pack from SecretRoutes fowroutes.json and Skyblocker room secrets.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching 'com.babbur.waypointer.dungeon.data.FlameOfWarPackTest.writePack'
+	}
+	outputs.upToDateWhen { false }
+	testLogging.showStandardStreams = true
+	['fow.routes', 'fow.secrets', 'fow.out', 'fow.snap'].each { name ->
+		def value = providers.gradleProperty(name).orElse('').get()
+		if (!value.isEmpty()) systemProperty name, value
+	}
+	doFirst {
+		if (!providers.gradleProperty('fow.routes').isPresent() || !providers.gradleProperty('fow.secrets').isPresent()
+				|| !providers.gradleProperty('fow.out').isPresent()) {
+			throw new GradleException('buildFlameOfWarPack requires -Pfow.routes=<fowroutes.json> '
+					+ '-Pfow.secrets=<Skyblocker dungeons/catacombs folder> -Pfow.out=<output folder>')
+		}
+	}
+}
+
+tasks.register('benchmarkShares', Test) {
+	group = 'verification'
+	description = 'Prints share sizes for v10 and v11 on a route corpus and the FlameOfWar rooms.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching 'com.babbur.waypointer.codec.ShareSizeBenchmarkTest'
+		includeTestsMatching 'com.babbur.waypointer.codec.ShareTuningTest'
+	}
+	outputs.upToDateWhen { false }
+	testLogging.showStandardStreams = true
+	maxHeapSize = '2g'
+	['share.corpus', 'share.dungeons', 'share.tune', 'share.cv', 'share.train'].each { name ->
+		def value = providers.gradleProperty(name).orElse('').get()
+		if (!value.isEmpty()) systemProperty name, value
+	}
+}
+
 processResources {
 	dependsOn generateRemoteLocaleManifest
 	inputs.property "version", project.version
 	inputs.property "minecraft_dependency", target.dependency
+	inputs.property "fabric_api_dependency", target.fabricApiDependency
 
 	filesMatching("fabric.mod.json") {
 		expand "version": inputs.properties.version,
-				"minecraft_dependency": inputs.properties.minecraft_dependency
+				"minecraft_dependency": inputs.properties.minecraft_dependency,
+				"fabric_api_dependency": inputs.properties.fabric_api_dependency
 	}
 }
 

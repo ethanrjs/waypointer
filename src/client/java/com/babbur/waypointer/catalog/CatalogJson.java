@@ -70,6 +70,7 @@ final class CatalogJson {
         String payload = requiredUtf8String(route, "payload", MAX_PAYLOAD);
         if (!payload.startsWith("WP:")
                 && !payload.startsWith(DungeonRoomShareCodec.MAGIC)) {
+            CatalogProtocol.requireInstallable(summary);
             throw new IllegalArgumentException("Catalog route is not a Waypointer code");
         }
         return new CatalogRouteDetails(summary, payload);
@@ -233,7 +234,17 @@ final class CatalogJson {
                 optionalString(route, "updatedAt", MAX_TEXT, ""),
                 optionalString(route, "sharePath", 128, "/r/" + id),
                 optionalTags(route),
-                optionalIcon(route));
+                optionalIcon(route),
+                optionalRequiredVersion(route));
+    }
+
+    private static final Pattern MOD_VERSION = Pattern.compile("\\d{1,4}(\\.\\d{1,4}){1,3}");
+
+    private static String optionalRequiredVersion(JsonObject route) {
+        JsonElement value = route.get("requiresVersion");
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "";
+        String version = value.getAsString().strip();
+        return MOD_VERSION.matcher(version).matches() ? version : "";
     }
 
     private static String optionalIcon(JsonObject route) {

@@ -549,7 +549,7 @@ final class WaypointerShareCommands {
             return 0;
         }
         ImportFeedback.successDungeonRoutes(DungeonRoomRouteLibrary.secretRoomCount(routes), waypoints, origin);
-        info(src, importEditorHintComponent(true));
+        info(src, importEditorHintComponent(true, routes.getFirst().id()));
         return imported;
     }
 
@@ -558,9 +558,13 @@ final class WaypointerShareCommands {
     }
 
     static Component importEditorHintComponent(boolean dungeonRoutes) {
+        return importEditorHintComponent(dungeonRoutes, null);
+    }
+
+    static Component importEditorHintComponent(boolean dungeonRoutes, String focusGroupId) {
         return Component.translatable("waypointer.command.import.open_editor_hint")
                 .withStyle(ChatFormatting.GRAY)
-                .append(importEditorOpenComponent(dungeonRoutes));
+                .append(importEditorOpenComponent(dungeonRoutes, focusGroupId));
     }
 
     static Component importEditorOpenComponent(boolean dungeonRoutes) {
@@ -569,12 +573,12 @@ final class WaypointerShareCommands {
 
     static Component importEditorOpenComponent(boolean dungeonRoutes, String focusGroupId) {
         String command;
-        if (dungeonRoutes) {
-            command = "/waypointer gui dungeon";
-        } else if (focusGroupId == null || focusGroupId.isBlank()) {
-            command = "/waypointer gui";
-        } else {
+        if (focusGroupId != null && !focusGroupId.isBlank()) {
             command = "/waypointer gui " + StringArgumentType.escapeIfRequired(focusGroupId);
+        } else if (dungeonRoutes) {
+            command = "/waypointer gui dungeon";
+        } else {
+            command = "/waypointer gui";
         }
         return Component.translatable("waypointer.command.import.open_editor")
                 .withStyle(Style.EMPTY

@@ -1,11 +1,13 @@
-# Waypointer Codec, Wire Version 10
+# Waypointer Codec, Wire Versions 10 and 11
 
-This document specifies the Waypointer V10 share-string format. The codec source and conformance tests in this repository are authoritative.
+This document specifies the Waypointer V10 and V11 share-string formats. The codec source and conformance tests in this repository are authoritative.
+
+V11 (section 17) reuses the V10 frame with version nibble 11 and carries everything a saved route stores, including what V10 drops (icons, appearance, paint, route kind). Waypointer 1.13 writes V11 for routes, route libraries and dungeon rooms. V10 remains the format for configuration codes, catalog references, and exports that keep nothing but coordinates when the V10 bare form is shorter. Every V10 kind stays readable.
 
 This document separates three conformance profiles:
 
-1. **V10 wire codec.** This profile defines the text transport, frame, and typed bodies.
-2. **Universal importer.** This profile probes V10 first and then supports frozen V1-V9 inputs.
+1. **Wire codec.** This profile defines the text transport, frame, and typed bodies of V10 and V11.
+2. **Universal importer.** This profile probes V11 and V10 first and then supports frozen V1-V9 inputs.
 3. **Reference exporter.** This profile defines Waypointer candidate selection and product policy.
 
 A third-party decoder can support the V10 wire codec without copying the reference exporter's DEFLATE strategy. A third-party encoder MUST obey every canonical rule that applies to the body form it emits. It does not need to copy the reference exporter's candidate portfolio or DEFLATE bytes.
@@ -116,14 +118,15 @@ Implemented kinds are 0 (general route), 1 (compact single route), 2 (bare route
 
 Import order for a `WP:` string:
 
-1. Decode the first two base-91 digits. If the low nibble of the first payload byte is not 10, the string is not V10; decode it through the immutable V1-V9 path. About one legacy code in sixteen passes this filter by chance.
-2. Otherwise run the V10 probe: canonical text, mode from header bit 7, mode-1 inflation, and the header-bound CRC-16.
-3. If the probe succeeds the envelope is verified. Dispatch by kind. A reserved kind, reserved subtype, or malformed body is a V10 error and is reported as one.
-4. If the probe fails, decode through the V1-V9 path.
+1. Decode the first two base-91 digits. If the low nibble of the first payload byte is 11, run the same probe as step 3 with version 11. A verified frame of kind 0 or 1 is a V11 share (section 17); anything else continues with step 2.
+2. If the low nibble is not 10, the string is not V10; decode it through the immutable V1-V9 path. About one legacy code in sixteen passes this filter by chance.
+3. Otherwise run the V10 probe: canonical text, mode from header bit 7, mode-1 inflation, and the header-bound CRC-16.
+4. If the probe succeeds the envelope is verified. Dispatch by kind. A reserved kind, reserved subtype, or malformed body is a V10 error and is reported as one.
+5. If the probe fails, decode through the V1-V9 path.
 
 A verified envelope with a failing body is almost always a damaged V10 share. The reference importer still gives the frozen V1-V9 readers one silent attempt before it reports the V10 error, so that no pre-V10 code can be locked out by a sixteen-bit coincidence; a third-party decoder MAY skip that attempt. It MUST NOT report a legacy error for a verified V10 envelope.
 
-V1-V9 decoding is frozen. Every V10 exporter (route, route library, configuration, dungeon) writes `WP:`. The legacy `WPC:`, `WPD:`, and `WPL:1:` prefixes are frozen input forms; the universal importer still accepts them, and the compatibility codecs that write them remain callable. The reference exporter writes `WPL:1:` only when a route library exceeds the V10 frame profile (section 6.1).
+V1-V9 decoding is frozen. Every exporter (route, route library, configuration, dungeon) writes `WP:`. The legacy `WPC:`, `WPD:`, and `WPL:1:` prefixes are frozen input forms; the universal importer still accepts them, and the compatibility codecs that write them remain callable. The product exporter no longer writes `WPL:1:`; route libraries travel as V11 (section 11).
 
 V10 DEFLATE uses no preset dictionary. V10 also has no predefined waypoint-name vocabulary. Kind 0 still uses the frozen built-in zone-ID table as part of its semantic body.
 
@@ -298,7 +301,7 @@ Canonical rules:
 - Folder names MUST be nonblank and equal their whitespace-trimmed value. Folder member ordinals MUST be unique inside a folder, and a route MUST belong to at most one folder. Folder members MUST be regular routes that share one zone.
 - Colors are 24-bit RGB. Paint pixel nibbles are palette slots 0..15.
 
-The reference exporter applies the section 10.7 projection first: disabling colors drops manual colors and paints and resets folder colors to the default; disabling group metadata drops folders. When that projection leaves no metadata, the exporter writes the plain route kinds instead. Outer transport selection follows section 5.4 with the same three candidates as kind 0. When the library exceeds the frame profile, the reference exporter falls back to the legacy `WPL:1:` wrapper.
+The V10 library writer (`RouteLibraryCodec`) applies the section 10.7 projection first: disabling colors drops manual colors and paints and resets folder colors to the default; disabling group metadata drops folders. When that projection leaves no metadata, it writes the plain route kinds instead. Outer transport selection follows section 5.4 with the same three candidates as kind 0. When the library exceeds the frame profile, it falls back to the legacy `WPL:1:` wrapper. The product exporter sends libraries as V11 (section 11), so subtype 1 is an input form for shares made by earlier versions.
 
 ### 6.2 Kind 6 subtype 2: catalog reference
 
@@ -446,7 +449,7 @@ Each field starts with `token:uvarint`, then its value. Compute `token = (tagDel
 
 Class 3 MUST NOT encode lengths 1, 3, or 8. The body is at most 32,768 bytes. It has at most 256 fields. A field value is at most 4,096 bytes. A tag is at most 65,535. A string list has at most 256 entries. Each entry has at most 64 strict UTF-8 bytes.
 
-A decoder MUST skip structurally valid unknown tags. It does not retain them. Known fields decode into a new default configuration. The decoder then normalizes and re-encodes all known fields. The resulting known-field list MUST equal the input's known-field subsequence. This rejects explicit defaults and values that need normalization.
+A decoder MUST skip structurally valid unknown tags. It does not retain them. Known fields decode into the settings-code baseline: a default configuration whose export options (tags 44-48 and 69) are off and whose structure waypoints (tag 82) are on, the defaults these codes were introduced with. Newer configurations default to the opposite values, so a share of an untouched current configuration carries those tags explicitly. The decoder then normalizes and re-encodes all known fields. The resulting known-field list MUST equal the input's known-field subsequence. This rejects explicit defaults and values that need normalization.
 
 The reference writer compares direct A with DEFAULT-strategy and FILTERED-strategy B candidates. It applies the ordering in section 5.4.
 
@@ -465,7 +468,7 @@ Configuration import MUST report the object type. It MUST require user confirmat
 
 ### 8.2 Active tag registry
 
-The writer omits a field when it equals its normalized default.
+The writer omits a field when it equals its normalized baseline value. The Default column lists the baseline.
 
 | Tag | Setting | Type | Default |
 |---:|---|:---:|---|
@@ -534,7 +537,7 @@ The writer omits a field when it equals its normalized default.
 | 68 | `keepSubwaypointsVisibleUntilNextWaypoint` | B | `true` |
 | 69 | `exportIncludeZone` | B | `false` |
 | 70 | `useEtherwarpHeight` | B | `false` |
-| 71 | `showExportRoutePreview` | B | `false` |
+| 71 | Reserved: removed feature (decode only) | B | — |
 | 72 | `waypointMarkerScale` | D | `1.0` |
 | 73 | `waypointOutlineOpacity` | D | `1.0` |
 | 74 | `matchWaypointOutlineToWaypointColor` | B | `true` |
@@ -562,7 +565,7 @@ The writer omits a field when it equals its normalized default.
 | 96 | `etherwarpAlignmentSound` custom ID | S | empty |
 | 97 | `waypointSkipFadeMs` | U | `0` |
 | 98 | `renderAntialiasing` | B | `true` |
-| 99 | `enableFeatureBloat` | B | `false` |
+| 99 | Reserved: removed feature (decode only) | B | — |
 | 100 | `labelFollowCameraEffects` | B | `true` |
 | 101 | `labelOpacity` | D | `1.0` |
 | 102 | `crystalHollowsMetalDetector` | B | `true` |
@@ -581,8 +584,11 @@ The writer omits a field when it equals its normalized default.
 | 115 | `lineOfSightOnly` | B | `false` |
 | 116 | `showLabels` | B | `true` |
 | 117 | `labelMaxDistance` | D | `0.0` |
+| 118 | `labelTextColor` | C | `FFFFFF` |
+| 119 | `labelColorForAllText` | B | `false` |
+| 120 | `numberUnnamedWaypoints` | B | `true` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, 66, and 108. Tag 108 is permanently reserved: the WPC decoder consumes its historical boolean without applying it; the v10 decoder skips it as a bounded unknown field. New writers never emit it. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-107 and 109-117 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 118-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, 66, 71, 99, and 108. Tags 71, 99 and 108 are permanently reserved: the WPC decoder consumes their historical boolean without applying it; the v10 decoder skips them as bounded unknown fields. New writers never emit them. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-98, 100-107 and 109-120 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 121-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
 
 Tag 109 controls structure and metal detector tracers. Tag 111 independently controls compass target tracers, including focused targets. Tag 110 controls automatic compass focus. All three default to true. Old codes that omit tag 111 use its true default.
 
@@ -674,12 +680,12 @@ The decoded room ID MUST already equal this normalized value.
 
 The optional group radius is an IEEE-754 binary64 value in big-endian order. It MUST be finite and in `[0.5,100]`. It MUST equal `Waypoint.normalizeDefaultRadius(value)`. An explicit value of `3.0` is not canonical.
 
-Limits are 512 routes, 512 points per route, and 50,000 points in total. The collection MUST contain at least one point. One route MAY contain zero points. A route body is at most 1,048,576 bytes. The complete semantic body is at most 2,097,148 bytes.
+Limits are 512 routes, 512 points per route, and 50,000 points in total. The collection MUST contain at least one point. One route MAY contain zero points. A route body is at most 1,048,576 bytes. The complete semantic body is at most 2,097,150 bytes.
 
-The decoder work limit is 2,929,916 units:
+The decoder work limit is 2,929,918 units:
 
 ```text
-2,097,148 + 16*50,000 + 64*512
+2,097,150 + 16*50,000 + 64*512
 ```
 
 The decoder charges one unit per parsed byte, 16 per point, and 64 per route.
@@ -737,7 +743,7 @@ Field formats:
 
 ### 9.4 Outer transport selection
 
-The reference exporter compares direct A, default-strategy B, and filtered-strategy B. It uses section 5.4 ordering. A decoder accepts any valid outer transport and applies the local body canonical rules.
+The V10 dungeon writer (`V10DungeonCodec.encode`) compares direct A, default-strategy B, and filtered-strategy B. It uses section 5.4 ordering. A decoder accepts any valid outer transport and applies the local body canonical rules. The product exporter sends dungeon rooms as V11 (section 11), so kind 4 is an input form for shares made by earlier versions.
 
 ## 10. Kind 0: general route
 
@@ -772,7 +778,7 @@ The body ends after the final group. A decoder MUST reject trailing bytes.
 
 The label has a maximum wire length of 256 UTF-8 bytes. Before encode, the reference writer:
 
-1. Removes `§`, C0 controls, and `0x7F`.
+1. Removes `§`, C0 controls, `0x7F`, C1 controls (`0x80`-`0x9F`), and the invisible format characters U+061C, U+200B, U+200E, U+200F, U+202A-U+202E, U+2060-U+2069, and U+FEFF.
 2. Removes malformed surrogate halves.
 3. Keeps at most 64 UTF-16 code units without splitting a surrogate pair.
 4. Removes leading and trailing Unicode whitespace.
@@ -1059,11 +1065,13 @@ The body does not store group enabled state, current progress, temporary mode, e
 | Range payload | 1,048,576 bytes, with the tighter count-derived limit |
 | Entropy payload | Positive; bounded by the remaining semantic body and the 2 MiB frame profile |
 
-The reference writer builds direct A and two B candidates. Both B candidates use Java `Deflater.BEST_COMPRESSION`. They use the DEFAULT and FILTERED strategies. The writer applies section 5.4 ordering. An oversized optional B candidate is ignored when A fits.
+This section and section 10A.4 describe the V10 route writer (`WaypointCodec.encode`). The product exporter uses it only for exports that keep nothing but coordinates (section 11); the troubleshooting report's route code also uses it.
+
+The writer builds direct A and two B candidates. Both B candidates use Java `Deflater.BEST_COMPRESSION`. They use the DEFAULT and FILTERED strategies. The writer applies section 5.4 ordering. An oversized optional B candidate is ignored when A fits.
 
 The dungeon writer uses the same rule. It ignores an oversized optional B candidate when its direct A candidate fits.
 
-For one eligible route, the writer compares kind 0 with eligible kind 1 and kind 5 forms by complete final text length. A later candidate replaces the current result only when strictly shorter. Kind 0 wins a tie with either compact kind; kind 1 wins its tie with kind 5. The normal writer falls back to V9 only after `V10ProfileLimitException`. It does not downgrade after another encode error. The regular-route catalog writer deliberately stays full-fidelity V9; dungeon catalog packs use the strict WPD schema-2 profile described in section 12.
+For one eligible route, the writer compares kind 0 with eligible kind 1 and kind 5 forms by complete final text length. A later candidate replaces the current result only when strictly shorter. Kind 0 wins a tie with either compact kind; kind 1 wins its tie with kind 5. The normal writer falls back to V9 only after `V10ProfileLimitException`. It does not downgrade after another encode error. Catalog publication does not use this writer; section 12 describes its formats.
 
 ## 10A. Kind 1: compact single route
 
@@ -1160,35 +1168,30 @@ The writer independently builds the canonical kind-1 semantic body and its direc
 
 ## 11. Encoder product policy
 
-The six visible route fields are names, colors, radii, waypoint flags, group metadata, and zone.
+The six visible route fields are names, colors, radii, waypoint flags, group metadata, and zone. They are the "Exports" settings; new configurations include all six.
 
 | Input and request | Reference result |
 |---|---|
-| One eligible regular route, all six fields off, empty label | Kind 2 |
-| Two or more eligible regular routes, all six fields off, empty label | Kind 6 subtype 0 |
-| Explicit `BARE_COORDINATES` with a nonempty ineligible input | Reject; do not fall through to kind 0 |
-| Ordinary all-off request with a nonregular route | Kind 0 |
-| One eligible full or no-names route | Compare kind 0, kind 1, and eligible kind 5 |
-| One regular names/colors/zone route with omitted fields already equal to their defaults or required projection | Compare kind 0 and the existing kind-1 full body |
-| Dungeon collection through the typed dungeon exporter | Kind 4 |
-| Configuration through the typed configuration exporter | Kind 3 |
-| Library with folders, paints, or manual-color metadata after projection | Kind 6 subtype 1 |
-| Library that exceeds the V10 frame profile | Legacy `WPL:1:` wrapper |
-| Published catalog route shared by reference | Kind 6 subtype 2 (mode 0) |
+| Routes or a route library, any field selection | V11 after the section 17.5 projection: kind 1 when it decodes to exactly the projected routes, otherwise kind 0 |
+| The same with all six fields off, an empty label and no folders | Also builds the V10 route writer's result (kind 2, kind 6 subtype 0, kind 5, or kind 0 per sections 5-10); keeps it only when its text is strictly shorter and it decodes to exactly the same projected routes |
+| Dungeon rooms (export screen and share commands) | V11 at full fidelity |
+| Configuration through the typed configuration exporter | V10 kind 3 |
+| Published catalog route shared by reference | V10 kind 6 subtype 2 (mode 0) |
+| Catalog publication | Section 12 |
 
-The bare selection applies to generic and public API exports. It is a projection: discarded names and metadata do not block it. If a supported general route exceeds the bounded V10 frame profile, `WaypointCodec.encode` can emit a canonical V9 `WP:` share as its compatibility fallback.
+The V10 fallback keeps bare coordinate shares readable by Waypointer versions before 1.13, and it is usually the shortest spelling for them. An export that the V10 writer cannot represent (for example a dungeon route with the bare projection) is not rejected; it is sent as V11.
 
 ## 12. Identity, integrity, and security
 
 - The exact `WP:` string identifies one transport spelling. Different valid mode-B DEFLATE streams can carry the same semantic body.
 - A semantic body is not a general route-content identifier. Kind 2 can encode the same coordinates with different canonical local bodies.
-- Regular catalog routes use canonical V9 and `codecVersion=9`. Dungeon packs use `WPD:.` schema 2 and `codecVersion=2`; older catalog clients reject that unsupported version. Both hash the exact validated payload text.
+- Regular catalog routes use canonical V9 and `codecVersion=9` when V9 shows the route exactly as V11 would (manual colors that a gradient or single-color route hides do not count). Otherwise they use V11 at full fidelity and `codecVersion=11`. Dungeon packs use `WPD:.` schema 2 and `codecVersion=2`. A client rejects a codec version it does not know; Waypointer 1.12.1 and earlier cannot install `codecVersion=11` routes. All three hash the exact validated payload text.
 - Anonymous install tokens use `HMAC(deviceSecret, routeId)`. They do not hash V10 semantic bytes.
 - The source does not define a V10 semantic content ID or a signed-share digest. Do not invent one from this document.
 - CRC-16 detects accidental corruption. It is not identity or authentication. Anyone can forge it.
 - A decoder MUST apply all limits. Some bounded buffers are allocated before their decoded-size check. The transport-character limit bounds that work.
 
-Dungeon catalog packs contain only room-local dungeon routes. Their listing uses `zoneId="dungeon"`; each route keeps its room ID in the payload and installs as a standard editable DUNGEON group. Regular and dungeon routes cannot share a payload. The catalog profile requires exact `WPD:.` framing, the current ASCII alphabet, bounded zlib inflation, strict UTF-8 and JSON, schema 2, and typed fields without coercion or unknown properties. Room IDs are canonical lowercase hyphenated IDs, up to 64 characters. Limits are 256 routes, 512 waypoints per room route, 25,000 waypoints total, 1,024 UTF-16 code units per route/waypoint name, 256 KiB of payload text, and 8 MiB of inflated JSON. Precise coordinates, colors, action/SubWP flags, and reach radii retain their native values. Catalog decoding does not accept legacy schema-1 room definitions or forgiving clipboard repairs, and the service stores validated WPD bytes verbatim.
+Dungeon catalog packs contain only room-local dungeon routes. Their listing uses `zoneId="dungeon"`; each route keeps its room ID in the payload and installs as a standard editable DUNGEON group. Regular and dungeon routes cannot share a payload. The catalog profile requires exact `WPD:.` framing, the current ASCII alphabet, bounded zlib inflation, strict UTF-8 and JSON, schema 2, and typed fields without coercion or unknown properties. Room IDs are canonical lowercase hyphenated IDs, up to 64 characters. Limits are 256 routes, 1-512 waypoints per room route, 10,000 waypoints total, 1,024 UTF-16 code units per route/waypoint name, 256 KiB of payload text, and 8 MiB of inflated JSON. Precise coordinates, colors, action/SubWP flags, and reach radii retain their native values. Catalog decoding does not accept legacy schema-1 room definitions or forgiving clipboard repairs, and the service stores validated WPD bytes verbatim.
 
 ## 13. Limits summary
 
@@ -1210,10 +1213,13 @@ Dungeon catalog packs contain only room-local dungeon routes. Their listing uses
 | Kind-0 pool entries / general string | 65,536 / 1,048,576 bytes |
 | Route display name / share label | 256 / 256 strict UTF-8 bytes |
 | Dungeon routes / per-route / aggregate points | 512 / 512 / 50,000 |
-| Dungeon route body / strings / work | 1,048,576 B / 256 B each and 1,048,576 B total / 2,929,916 units |
+| Dungeon route body / strings / work | 1,048,576 B / 256 B each and 1,048,576 B total / 2,929,918 units |
 | Config body / fields / field / tag | 32,768 B / 256 / 4,096 B / 65,535 |
 | Coordinate range | [−134,217,728, 134,217,727] |
 | Zigzag delta | ≤ 536,870,910 |
+| V11 routes / aggregate waypoints / folders | 256 / 50,000 / 256 |
+| V11 kind-1 string / decoded bits | 4,096 UTF-8 bytes / 67,108,864 |
+| V11 kind-0 JSON | the bounded-JSON budget: 500,000 tokens, 300,000 scalars, 60,000 containers, depth 512, 1,048,576 string characters |
 
 ## 14. Example and golden fixtures
 
@@ -1237,6 +1243,8 @@ Repository fixtures:
 - `src/test/java/com/babbur/waypointer/codec/V10CompactRouteCodecTest.java` checks kind-1 projection, bounds, and canonical spellings.
 - `src/test/java/com/babbur/waypointer/codec/WaypointCodecV10EntropyTest.java` checks kind-0 mode-7 selection and round-trip.
 - `src/test/java/com/babbur/waypointer/codec/V10GoldenRegeneration.java` rebuilds the two V10 fixture files after a deliberate wire change (`-Pv10.regen=<repo root>`).
+- `src/test/java/com/babbur/waypointer/codec/V11CodecTest.java` checks that every route detail survives kind 1, the export projection, dungeon rooms, rejection of tampered, malformed and over-deep shares, and pins the SHA-256 of the kind-1 starting statistics.
+- `src/test/java/com/babbur/waypointer/catalog/CatalogV11Test.java` checks the catalog's V9-or-V11 choice.
 
 The digest input for `selectedWireSha256` is the fixture-order sequence of complete ASCII wire strings. Prefix each string with its four-byte big-endian byte length before hashing.
 
@@ -1264,6 +1272,12 @@ The digest input for `selectedWireSha256` is the fixture-order sequence of compl
 | `src/main/java/com/babbur/waypointer/dungeon/data/V10DungeonBodyCodec.java` | Kind-4 body |
 | `src/main/java/com/babbur/waypointer/codec/WaypointCodec.java` | Route-only entry point, kind-0 interior, V1-V9 legacy |
 | `src/main/java/com/babbur/waypointer/codec/AsciiStreamCodec.java` | Base-91 text codec |
+| `src/main/java/com/babbur/waypointer/codec/V11Codec.java` | V11 entry point, kind 0, projection, writer choice |
+| `src/main/java/com/babbur/waypointer/codec/V11CompactCodec.java` | V11 kind-1 grammar and frozen tables |
+| `src/main/java/com/babbur/waypointer/codec/V11Coder.java` | V11 binary arithmetic coder and logistic mixer |
+| `src/main/java/com/babbur/waypointer/codec/V11Model.java` | Loads the kind-1 starting statistics |
+| `src/main/resources/assets/waypointer/codec/v11-model.bin` | Kind-1 starting statistics (frozen) |
+| `src/main/java/com/babbur/waypointer/codec/CatalogCodec.java` | Catalog V9-or-V11 choice |
 
 Interoperability checks:
 
@@ -1284,4 +1298,79 @@ Interoperability checks:
 
 V1 uses CJK Base16384. V2 uses base 85. V3 uses base 93. V4 uses base 92. V5-V9 use the current base-91 alphabet. V1-V8 use the frozen 363-byte legacy DEFLATE dictionary. V9 uses a separate frozen 32 KiB dictionary. V8 introduced an internal CRC.
 
-V9 already had the three-bit content-kind field. V10 expands and unifies its use. V10 removes preset DEFLATE dictionaries and the waypoint-name vocabulary. It moves the checksum outside DEFLATE, shrinks it to CRC-16, carries the transport mode in header bit 7 instead of a selector character, and uses contextual escaping. The built-in zone-ID table remains part of kind 0. This section is historical and is not normative V10 grammar.
+V9 already had the three-bit content-kind field. V10 expands and unifies its use. V10 removes preset DEFLATE dictionaries and the waypoint-name vocabulary. It moves the checksum outside DEFLATE, shrinks it to CRC-16, carries the transport mode in header bit 7 instead of a selector character, and uses contextual escaping. The built-in zone-ID table remains part of kind 0.
+
+V11 keeps the V10 frame and adds two kinds: the saved-route JSON as a complete fallback, and an arithmetic-coded form whose statistics are trained on real routes. It carries every route detail, including the icons, appearance, paint and route kind that V10 drops. Waypointer 1.13 is the first version to read and write it. This section is historical and is not normative grammar.
+
+## 17. Wire version 11
+
+V11 uses the V10 frame unchanged (sections 2-4): the same text layer, contextual escape, header-carried mode, CRC-16, limits and probe, with wire version 11 in the low nibble of the header. Kinds 0 and 1 are defined. A verified version-11 frame with any other kind is not a V11 share and is not decoded as one. V11 carries one share label, up to 256 routes with up to 50,000 waypoints in total, and up to 256 folders.
+
+Both kinds describe the same share object. Kind 0 spells it as JSON; kind 1 codes it with an adaptive arithmetic coder. Decoding either kind yields routes, a label, and folders.
+
+### 17.1 The share object
+
+```text
+{
+  "label":   string            omitted when empty; normalized as in section 10.1
+  "routes":  [ route, ... ]    1..256
+  "folders": [ folder, ... ]   omitted when empty
+}
+
+folder := { "name": string, "color": RGB integer, "collapsed": true (omitted when false),
+            "routes": [ route ordinal, ... ] }
+```
+
+A route is Waypointer's saved-route JSON without the fields that only describe one player's copy: `id`, `currentIndex`, `enabled`, and `catalogSource` are absent. Temporary waypoints travel as ordinary waypoints. A route carries `name`, `zone`, `routeKind`, `loadMode`, `gradientMode`, `staticColor`, `gradientStartColor`, `gradientEndColor`, `defaultRadius`, `skipAheadEnabled`, `paintEnabled`, the optional `icon`, `stylePresetId`, `styleOverride` and `paint`, `manualColors`, and `waypoints`. A waypoint carries `x`, `y`, `z`, `color`, and the optional `name`, `flags`, `radius`, `preciseX`, `preciseY`, `preciseZ` and `styleOverride`. The decoder rebuilds routes with the same loader as saved routes, so every rule that applies to a saved route applies to a share. Folders follow the section 6.1 folder rules: nonblank trimmed names, members unique and in at most one folder, and members that are regular routes sharing one zone.
+
+### 17.2 Kind 0: saved-route JSON
+
+```text
+0x0B                      header (version 11, kind 0)
+json : UTF-8              the share object, to the end of the body
+```
+
+The decoder parses the JSON within the bounded-JSON budget (section 13) and rejects anything outside it. Kind 0 can carry every share and is the fallback when kind 1 cannot reproduce the input exactly. The reference writer compares direct A with default-strategy and filtered-strategy B and applies section 5.4 ordering.
+
+### 17.3 Kind 1: compact
+
+```text
+0x1B                      header (version 11, kind 1)
+payload                   arithmetic-coded share object, to the end of the body
+```
+
+The payload is one binary arithmetic-code stream: a 32-bit range coder with byte-wise carry-less renormalization (`TOP=2^24`, `BOTTOM=2^16`). Every coded bit has a 16-bit probability from an adaptive context whose learning rate starts at `1/(n+1.5)` and settles after 60 observations. Many bits are predicted by several contexts blended by an integer logistic mixer. The coder starts from frozen starting statistics, `assets/waypointer/codec/v11-model.bin` (SHA-256 `02468d7962b6aabc26feb60c929866cfa762a19e6662bee87803d75d663e08d2`), with each context's confidence capped at 6 observations, plus fixed priors. A decoder stops after 67,108,864 coded bits.
+
+The grammar, in coding order:
+
+1. Share: whether a label is present, then the label; the route count minus one; each route; whether folders are present, then the folders (count minus one, then each folder's name, color, collapsed flag, member count minus one, and member ordinals, each coded relative to the previous one).
+2. Route: whether it is a dungeon route; the name, coded as "same as the previous route" or a string; the zone, as a dungeon room index into the frozen room list, as an index into the frozen zone dictionary of kind 0, as `unknown`, or as a literal; gradient mode; load mode; skip-ahead; default radius; the three route colors, each as "default" or 24 raw bits; paint enabled; the optional icon and saved-style id; every other route field as one JSON string (paint and the route's appearance override travel this way); the waypoint count; each waypoint.
+3. Waypoint: its kind, as a rank in a most-recently-used list of kinds seeded with Waypointer's common kinds (a kind is flags, color, radius, appearance override and whether it has a precise position; a new kind is spelled out); the position, the first waypoint relative to the previous route's first waypoint and the rest as per-axis deltas whose statistics depend on the kind and the previous movement; the precise offsets when the kind has them, each in `[-8,7]` from the block center; the name, coded as none, the kind's last name, the waypoint's position number, the previous name counted up, another number (relative to the position number), or a string.
+4. Strings use a most-recently-used pool seeded with frozen common strings; a string is either a pool rank or a new literal of at most 4,096 strict UTF-8 bytes.
+
+Waypoint colors are the route's manual colors. A route whose waypoints carry fields outside this grammar cannot use kind 1.
+
+The frozen tables (the dungeon room list, the built-in kinds, the common strings, the context layout, the coder constants and the starting statistics) are part of the wire format. They may only be extended by a new kind. `V11CompactCodec` and `V11Coder` are normative for the exact bit layout; a decoder must reproduce them bit for bit.
+
+Canonical rules: the decoder re-encodes what it decoded and MUST reject the body unless the bytes are identical, so every value has one spelling (a repeated string must be a pool reference, a numeric name must use a number form, a known room or zone must use its index, and so on). The reference writer frames kind 1 in mode 0, since the payload is already entropy-coded; a decoder accepts either mode.
+
+### 17.4 Writer choice
+
+The writer builds kind 1 and decodes it again; it sends kind 1 only when the result is identical to the input, comparing everything a share preserves (an absent paint makes `paintEnabled` irrelevant). Otherwise it sends kind 0.
+
+### 17.5 Field projection
+
+Export options apply before encoding, as in section 10.7:
+
+| Disabled option | Result |
+|---|---|
+| Names | Remove waypoint names; route names stay |
+| Colors | Waypoint colors become the default and lose their appearance override; manual colors and paint are removed |
+| Colors or group metadata | MANUAL color mode, default route colors, no paint, `paintEnabled` false |
+| Radii | Remove waypoint radius overrides |
+| Group metadata | Sequence load, skip-ahead on, radius 3.0; no icon, saved style or route appearance override |
+| Zone | Zone `unknown`; dungeon routes always keep their room |
+| Waypoint flags | As section 10.7 |
+| All six, empty label | Also clears route names |
+
+Dungeon room ids are normalized as in section 9.1. Precise positions follow section 10.7.

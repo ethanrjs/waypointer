@@ -6,6 +6,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import java.util.ArrayList;
@@ -46,7 +47,12 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
                                   WaypointGroup visible, Runnable afterWrite) {
         WaypointGroup stored = DungeonRoomRouteLibrary.durableEditTarget(manager, visible);
         if (stored == null) return null;
+        String structureId = CrystalHollowsProjection.structureIdForGroup(stored);
         AppearanceScope scope = AppearanceScope.route(config, stored, style -> {
+            if (structureId != null) {
+                config.setCrystalHollowsStyle(structureId, style);
+                CrystalHollowsProjection.refreshStyles(manager, config);
+            }
             stored.setStyleOverride(style);
             if (visible != stored) visible.setStyleOverride(style);
         });

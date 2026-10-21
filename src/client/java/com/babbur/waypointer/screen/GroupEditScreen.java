@@ -17,7 +17,7 @@ import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
-import com.babbur.waypointer.text.AmpersandFormatting;
+import com.babbur.waypointer.render.LabelText;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
@@ -31,6 +31,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 
@@ -316,6 +317,9 @@ public final class GroupEditScreen extends Screen {
         labelEditor = new EditBox(font, 0, 0, 100, BTN_H,
                 Component.translatable("waypointer.screen.group_edit.label"));
         labelEditor.setMaxLength(64);
+        EditBox editor = labelEditor;
+        labelEditor.addFormatter((visible, offset) -> LabelText.editorPreview(
+                editor.getValue(), offset, visible.length(), ACCENT & 0xFFFFFF));
         labelEditor.setVisible(false);
         addRenderableWidget(labelEditor);
         if (resumeEditingIndex >= 0 && resumeEditingIndex < group.size()) {
@@ -1358,7 +1362,11 @@ public final class GroupEditScreen extends Screen {
         boolean visuallyActive = isWaypointRowVisuallyActive(group, index);
         boolean hovered = mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y1 + ROW_H;
         if (hovered && !(index == editingIndex && isOverLabelEditor(mouseX, mouseY))) {
-            g.requestCursor(CursorTypes.POINTING_HAND);
+            var cursor = rowCursor(GroupEditInputRouter.beforeWidgets(
+                    new GroupEditInputRouter.Pointer(mouseX, mouseY, 0, false, false),
+                    new GroupEditInputRouter.State(dungeonTypePickerIndex >= 0, selectedIndex),
+                    inputGeometry).type(), isOverLabelText(index, mouseX));
+            if (cursor != null) g.requestCursor(cursor);
         }
 
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
@@ -1463,11 +1471,9 @@ public final class GroupEditScreen extends Screen {
         int nameWidth = Math.max(0, textRightX - nameX);
         if (nameWidth <= 0) return;
 
-        String clippedName = font.plainSubstrByWidth(
-                AmpersandFormatting.translate(waypoint.name()), nameWidth);
-        if (!clippedName.isEmpty()) {
-            g.text(font, clippedName, nameX, rowY + 7, TEXT_DIM, false);
-        }
+        g.text(font, Language.getInstance().getVisualOrder(
+                        font.substrByWidth(LabelText.styled(waypoint.name()), nameWidth)),
+                nameX, rowY + 7, TEXT_DIM, false);
     }
 
     private int waypointRightMetadataWidth(Waypoint waypoint, boolean subwaypoint,
@@ -2592,12 +2598,13 @@ public final class GroupEditScreen extends Screen {
         editingIndex = index;
 
         Waypoint w = group.get(index);
+        positionLabelEditor(index);
         labelEditor.setValue(w.name());
+        labelEditor.moveCursorToStart(false);
         labelEditor.moveCursorToEnd(false);
         labelEditor.setVisible(true);
         setFocused(labelEditor);
         labelEditor.setFocused(true);
-        positionLabelEditor(index);
     }
 
     private void commitLabelEdit() {
@@ -2632,22 +2639,42 @@ public final class GroupEditScreen extends Screen {
         int pitch = waypointRowPitch();
         int rowY = layout.top() + ROUTE_LIST_INSET - scrollOffset + index * pitch;
 
+        int[] span = labelTextSpan(index);
+        int editorX = span[0];
+        int editorW = labelEditorWidth(editorX, span[1]);
+
+        labelEditor.setX(editorX);
+        labelEditor.setY(rowY + 1);
+        labelEditor.setWidth(editorW);
+    }
+
+    static com.mojang.blaze3d.platform.cursor.CursorType rowCursor(
+            GroupEditInputRouter.ActionType clickAction, boolean overLabelText) {
+        return switch (clickAction) {
+            case OPEN_DUNGEON_TYPE_PICKER, TOGGLE_WAYPOINT_CONTROL, TOGGLE_SUBWAYPOINT_STYLE,
+                 EDIT_COLOR, UNLOCK_COLOR, BEGIN_ROUTE_SCROLLBAR_DRAG -> CursorTypes.POINTING_HAND;
+            default -> overLabelText ? CursorTypes.IBEAM : null;
+        };
+    }
+
+    private boolean isOverLabelText(int index, double mx) {
+        int[] span = labelTextSpan(index);
+        return mx >= span[0] && mx <= span[1];
+    }
+
+    private int[] labelTextSpan(int index) {
+        Layout layout = layout();
         int rowX1 = layout.mainLeft() + ROUTE_LIST_INSET;
         int rowX2 = layout.mainRight() - ROUTE_LIST_INSET;
         Waypoint w = group.get(index);
-        LocalizedNumberFormatter numbers = displayNumbers();
-        int coordinateX = rowX1 + coordinateColumnOffset();
         boolean subwaypoint = group.isSubwaypoint(index);
         boolean isCurrent = !subwaypoint && index == group.currentIndex();
         int textRightX = waypointRowTextRightEdge(rowX2, subwaypoint,
                 usesDungeonControls(), shouldShowWaypointControls(index, selectedIndex),
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, ""));
-        int editorX = Math.min(coordinateX + font.width(coordinateLabel(w, numbers)) + GAP, textRightX);
-        int editorW = labelEditorWidth(editorX, textRightX);
-
-        labelEditor.setX(editorX);
-        labelEditor.setY(rowY + 1);
-        labelEditor.setWidth(editorW);
+        int coordinateX = rowX1 + coordinateColumnOffset();
+        int editorX = Math.min(coordinateX + font.width(coordinateLabel(w, displayNumbers())) + GAP, textRightX);
+        return new int[]{editorX, textRightX};
     }
 
     private boolean isOverLabelEditor(double mx, double my) {

@@ -387,7 +387,29 @@ public final class Storage {
         }
     }
 
+    public static JsonObject routeToShareJson(WaypointGroup g) {
+        JsonObject o = groupToJson(g, true);
+        o.remove("id");
+        o.remove("currentIndex");
+        o.remove("enabled");
+        o.remove("catalogSource");
+        return o;
+    }
+
+    public static WaypointGroup routeFromShareJson(JsonObject o) {
+        JsonObject copy = o.deepCopy();
+        copy.remove("id");
+        copy.remove("currentIndex");
+        copy.remove("enabled");
+        copy.remove("catalogSource");
+        return groupFromJson(copy);
+    }
+
         static JsonObject groupToJson(WaypointGroup g) {
+        return groupToJson(g, false);
+    }
+
+    static JsonObject groupToJson(WaypointGroup g, boolean withTemporary) {
         JsonObject o = new JsonObject();
         o.addProperty("id", g.id());
         o.addProperty("name", g.name());
@@ -416,7 +438,7 @@ public final class Storage {
         boolean hasHiddenManualColors = false;
         for (int i = 0; i < g.size(); i++) {
             Waypoint w = g.get(i);
-            if (w.isTemp()) continue;
+            if (w.isTemp() && !withTemporary) continue;
             wps.add(waypointToJson(w));
             int manualColor = manualColorSnapshot.get(i);
             manualColors.add(manualColor);

@@ -27,7 +27,8 @@ public final class WaypointExportCodec {
         SKYBLOCKER("Skyblocker", true, true, false, false, false, false, false),
         SKYTILS("Skytils", true, true, false, false, false, false, false),
         SKYHANNI("SkyHanni", false, false, false, false, false, false, false),
-        SKYSOFT("SkySoft", true, true, true, false, true, false, false);
+        SKYSOFT("SkySoft", true, true, true, false, true, false, false),
+        ODIN("Odin", true, true, true, false, false, false, false);
 
         private final String displayName;
         private final boolean supportsNames;
@@ -67,6 +68,10 @@ public final class WaypointExportCodec {
         public boolean supportsLabel()       { return supportsLabel; }
 
         public boolean supportsIslandChoice() { return supportsIslandChoice; }
+
+        public boolean supportsDungeonRooms() {
+            return this == WAYPOINTER || this == ODIN;
+        }
 
         public Target next() {
             Target[] all = values();
@@ -155,13 +160,14 @@ public final class WaypointExportCodec {
             safeOpts = safeOpts.toBuilder().includeZone(true).build();
         }
         return switch (target) {
-            case WAYPOINTER -> RouteLibraryCodec.encode(groups, safeOpts, metadata);
+            case WAYPOINTER -> V11Codec.encodeBest(groups, safeOpts, metadata);
             case SKYBLOCKER -> WaypointImporter.SKYBLOCKER_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skyblockerJson(groups, safeOpts)));
             case SKYTILS -> WaypointImporter.SKYTILS_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skytilsJson(groups, safeOpts)));
             case SKYHANNI -> skyhanniJson(groups);
             case SKYSOFT -> SkysoftWaypointExporter.encode(groups, config, safeOpts);
+            case ODIN -> OdinWaypointExporter.encode(groups, safeOpts);
         };
     }
 

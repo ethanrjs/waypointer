@@ -30,12 +30,10 @@
   "waypointer.screen.group_edit.control.stand.label": "Dúró",
   "waypointer.screen.export.routes": "Àwọn ọ̀nà",
   "waypointer.screen.export.routes.select_all": "Yan gbogbo",
-  "waypointer.screen.export.toggle.zone.label": "Erékùṣù",
   "waypointer.screen.painter.colors": "Àwọn àwọ̀",
   "waypointer.screen.painter.face_view.one": "Ọ̀kan",
   "waypointer.screen.painter.file_dialog.filter": "Àwọn fáìlì àwòrán",
   "waypointer.screen.main.delete.select": "Yan",
-  "waypointer.screen.export.preview.options": "Àwọn àṣàyàn",
   "waypointer.update.latest_version": "Ẹ̀dà tuntun: %1$s %2$s",
   "waypointer.update.open_modrinth": "Tẹ láti ṣí Modrinth"
 }

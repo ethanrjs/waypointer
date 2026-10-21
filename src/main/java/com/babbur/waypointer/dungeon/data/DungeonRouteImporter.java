@@ -158,6 +158,28 @@ public final class DungeonRouteImporter {
         return step != null && (step.has("secret") || step.has("locations"));
     }
 
+    public static boolean isOdinRoomPack(String payload) {
+        if (payload == null) return false;
+        String trimmed = payload.trim();
+        if (trimmed.length() > MAX_PAYLOAD_CHARS) return false;
+        JsonObject root;
+        try {
+            if (!trimmed.startsWith("{")) trimmed = tryBase64Gunzip(trimmed);
+            if (trimmed == null || !trimmed.startsWith("{")) return false;
+            JsonElement parsed = BoundedJson.parse(trimmed);
+            if (!parsed.isJsonObject()) return false;
+            root = parsed.getAsJsonObject();
+        } catch (RuntimeException notJson) {
+            return false;
+        }
+        if (root.has("rooms") || !looksLikeOdinPack(root)) return false;
+        Map<String, DungeonRoomCatalogEntry> index = catalogIndex();
+        for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
+            if (entry.getValue().isJsonArray() && matchRoom(index, entry.getKey()) != null) return true;
+        }
+        return false;
+    }
+
     private static boolean looksLikeOdinPack(JsonObject root) {
         JsonObject waypoint = firstArrayElementObject(root);
         return waypoint != null

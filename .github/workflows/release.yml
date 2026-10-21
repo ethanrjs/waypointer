@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Release tag to validate without publishing
         required: true
-        default: v1.12.1
+        default: v1.13.0
 
 concurrency:
   group: release-${{ github.ref }}

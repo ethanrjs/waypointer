@@ -28,16 +28,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExportScreenTest {
 
     @Test
-    void dungeonExportScreenUsesUniversalKind4Payload() {
+    void dungeonRoomsExportWholeAsV11WhateverTheSettings() {
         WaypointGroup route = WaypointGroup.create("Crypt", "crypt-a");
         route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
-        route.add(Waypoint.at(1, 70, 2));
+        route.add(new Waypoint(1, 70, 2, "Chest", 0x2EE0FF, Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+        WaypointCodec.Options stripped = WaypointCodec.Options.FULL_FIDELITY.toBuilder()
+                .includeNames(false).includeColors(false).build();
 
-        String payload = DungeonRoomExportScreen.encodePayload(List.of(route));
+        String payload = ExportScreen.encode(List.of(route), stripped,
+                WaypointExportCodec.Target.WAYPOINTER, RouteLibraryMetadata.empty(), new WaypointerConfig());
 
-        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 10);
+        assertEquals(UniversalShareCodec.encodeDungeon(List.of(route)), payload);
+        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 11);
         assertTrue(UniversalShareCodec.decode(payload)
                 instanceof UniversalShareCodec.DungeonRoutes);
+    }
+
+    @Test
+    void dungeonRoomsOfferOnlyFormatsThatUnderstandRooms() {
+        WaypointGroup room = WaypointGroup.create("Crypt", "crypt-a");
+        room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        WaypointGroup island = WaypointGroup.create("Ruby", "crystal_hollows");
+
+        assertEquals(List.of(WaypointExportCodec.Target.WAYPOINTER, WaypointExportCodec.Target.ODIN),
+                ExportScreen.formatsFor(List.of(room)));
+        assertEquals(List.of(WaypointExportCodec.Target.values()),
+                ExportScreen.formatsFor(List.of(room, island)));
+        assertEquals(List.of(WaypointExportCodec.Target.values()), ExportScreen.formatsFor(List.of(island)));
+    }
+
+    @Test
+    void aFormatThatCannotCarryTheRouteSaysWhy() {
+        WaypointGroup route = WaypointGroup.create("Odd", "custom_island_name");
+        route.add(Waypoint.at(1, 70, 2));
+
+        ExportScreen.EncodeResult result = ExportScreen.encodeResult(List.of(route),
+                WaypointCodec.Options.FULL_FIDELITY, WaypointExportCodec.Target.ODIN,
+                RouteLibraryMetadata.empty(), new WaypointerConfig());
+
+        assertEquals("", result.code());
+        assertTrue(result.error().startsWith("Odin does not recognize"), result.error());
     }
 
     @Test
@@ -154,147 +184,67 @@ class ExportScreenTest {
     }
 
     @Test
-    void routePreviewLayoutSwitchesAtExactWideBoundary() {
-        assertFalse(ExportScreen.isWidePreviewLayout(735));
-        assertTrue(ExportScreen.isWidePreviewLayout(736));
-        assertEquals(240, ExportScreen.widePreviewWidth(704, 440));
-    }
+    void everyExportLayoutKeepsFormatsCodeAndFooterOnScreen() {
+        for (int[] size : new int[][]{{320, 240}, {320, 480}, {360, 270}, {427, 240}, {480, 270},
+                {854, 480}, {960, 540}, {1280, 720}}) {
+            for (boolean multiRoute : new boolean[]{false, true}) {
+                String name = size[0] + "x" + size[1] + (multiRoute ? " routes" : " route");
+                ExportScreen.LayoutPolicy layout = ExportScreen.layoutPolicy(size[0], size[1], 6, 56,
+                        multiRoute, multiRoute, multiRoute ? 4 : 1, 10, 24, 96);
 
-    @Test
-    void disablingThePreviewCollapsesTheSplitLayoutAtEveryWidth() {
-        assertTrue(ExportScreen.isWidePreviewLayout(true, 736));
-        assertFalse(ExportScreen.isWidePreviewLayout(false, 736));
-        assertFalse(ExportScreen.isWidePreviewLayout(false, 2560));
-    }
-
-    @Test
-    void shortExportLayoutsKeepOptionsRouteSelectionAndFooterReachable() {
-        List<LayoutCase> cases = List.of(
-                new LayoutCase(320, 240, false, false),
-                new LayoutCase(320, 240, false, true),
-                new LayoutCase(320, 240, true, false),
-                new LayoutCase(320, 240, true, true),
-                new LayoutCase(320, 480, false, false),
-                new LayoutCase(320, 480, true, true),
-                new LayoutCase(360, 270, false, false),
-                new LayoutCase(360, 270, false, true),
-                new LayoutCase(360, 270, true, false),
-                new LayoutCase(360, 270, true, true),
-                new LayoutCase(480, 240, false, false),
-                new LayoutCase(480, 270, false, false),
-                new LayoutCase(480, 270, false, true),
-                new LayoutCase(480, 270, true, false),
-                new LayoutCase(480, 270, true, true));
-
-        for (LayoutCase testCase : cases) {
-            int groupCount = testCase.multiRoute() ? 4 : 1;
-            ExportScreen.LayoutPolicy layout = ExportScreen.layoutPolicy(
-                    testCase.width(), testCase.height(), testCase.preview(),
-                    testCase.multiRoute(), testCase.multiRoute(), groupCount, 10, 380);
-
-            assertTrue(layout.panelX() >= 0);
-            assertTrue(layout.panelY() >= 0);
-            assertTrue(layout.panelX() + layout.panelWidth() <= testCase.width());
-            assertTrue(layout.panelBottom() <= testCase.height(), testCase.toString());
-            assertTrue(layout.footerY() >= layout.panelY());
-            assertTrue(layout.footerY() + BTN_H <= layout.panelBottom(), testCase.toString());
-
-            int includeRowsH = ExportScreen.includeGrid(layout.contentWidth(), 6)
-                    .rowsPerColumn() * 24 - 4;
-            int routeBlockH = testCase.multiRoute()
-                    ? ExportScreen.routePickerBlockHeight(
-                    true, groupCount, testCase.height(), includeRowsH, 10) : 0;
-            if (layout.stackedFooter()) {
-                assertEquals(BTN_H + GAP, layout.footerY() - layout.footerTop());
-            }
-            if (!layout.compactLayout()) continue;
-
-            assertTrue(layout.optionsViewportBottom() > layout.optionsViewportTop(),
-                    testCase.toString());
-            assertTrue(layout.optionsMaxScrollOffset() >= 0, testCase.toString());
-
-            assertTrue(layout.optionsContentBottom() >= layout.includeRowsY() + includeRowsH,
-                    testCase.toString());
-            if (testCase.multiRoute()) {
-                assertTrue(layout.optionsContentBottom() >= layout.routeBlockY() + routeBlockH,
-                        testCase.toString());
-                assertTrue(layout.optionsMaxScrollOffset() >= layout.routeBlockY()
-                        + routeBlockH - layout.optionsViewportBottom(),
-                        testCase.toString());
+                assertTrue(layout.panelX() >= 0 && layout.panelY() >= 0, name);
+                assertTrue(layout.panelX() + layout.panelWidth() <= size[0], name);
+                assertTrue(layout.panelBottom() <= size[1], name);
+                assertTrue(layout.footerBottom() <= layout.panelBottom(), name);
+                assertTrue(layout.formatRowsY() + layout.formatRows() * BTN_H <= layout.sizeY(), name);
+                assertTrue(layout.codeY() + layout.codeHeight() < layout.footerY(), name);
+                if (multiRoute) {
+                    assertTrue(layout.routeRows() >= 1, name);
+                    assertTrue(layout.routeListY() + layout.routeRows() * 26 <= layout.sizeY(), name);
+                }
             }
         }
     }
 
     @Test
-    void footerReservesAnotherRowWhenTranslatedLabelsExceedAvailableWidth() {
-        ExportScreen.LayoutPolicy narrow = ExportScreen.layoutPolicy(
-                320, 480, false, false, false, 1, 10, 380);
+    void roomyScreensGetTheWidePanelAndAFullCodeBox() {
+        ExportScreen.LayoutPolicy layout = ExportScreen.layoutPolicy(854, 480, 6, 56, true, true, 4, 10, 24, 96);
+
+        assertEquals(480, layout.panelWidth());
+        assertEquals(4 * 10 + 16, layout.codeHeight());
+        assertEquals(4, layout.routeRows());
+    }
+
+    @Test
+    void theCodeShowsEvenAtTheLargestGuiScale() {
+        ExportScreen.LayoutPolicy layout = ExportScreen.layoutPolicy(427, 240, 6, 56, false, false, 1, 10, 24, 96);
+
+        assertTrue(layout.codeHeight() >= 10 + 16, "code box is " + layout.codeHeight());
+        assertEquals(2, layout.formatRows());
+    }
+
+    @Test
+    void footerTakesAnotherRowOnlyWhenTheCopyLabelsCannotFitBesideBack() {
+        assertArrayEquals(new int[]{133, 133, 1}, ExportScreen.footerColumns(416, 24, 96));
+        assertArrayEquals(new int[]{40, 116, 1}, ExportScreen.footerColumns(288, 24, 96));
+        assertArrayEquals(new int[]{228, 110, 2}, ExportScreen.footerColumns(228, 24, 96));
+
         ExportScreen.LayoutPolicy normal = ExportScreen.layoutPolicy(
-                736, 480, true, false, false, 1, 10, 380);
+                736, 480, 6, 56, false, false, 1, 10, 24, 96);
         ExportScreen.LayoutPolicy translated = ExportScreen.layoutPolicy(
-                736, 480, true, false, false, 1, 10, 700);
-
-        assertFalse(narrow.compactLayout());
-        assertTrue(narrow.stackedFooter());
-        assertFalse(normal.stackedFooter());
-        assertTrue(translated.stackedFooter());
+                736, 480, 6, 56, false, false, 1, 10, 24, 220);
+        assertEquals(1, normal.footerRows());
+        assertEquals(2, translated.footerRows());
         assertEquals(BTN_H + GAP, translated.panelHeight() - normal.panelHeight());
-        assertTrue(narrow.footerY() + BTN_H <= narrow.panelBottom());
-        assertTrue(translated.footerY() + BTN_H <= translated.panelBottom());
     }
 
     @Test
-    void compactPreviewPageDisablesHiddenRouteListInput() {
-        assertTrue(ExportScreen.routeListInputEnabled(true, true, true));
-        assertFalse(ExportScreen.routeListInputEnabled(false, true, true));
-        assertFalse(ExportScreen.routeListInputEnabled(true, false, true));
-        assertFalse(ExportScreen.routeListInputEnabled(true, true, false));
-    }
-
-    @Test
-    void compactOptionsScrollPolicyClampsKeyboardPaging() {
-        assertEquals(24, ExportScreen.optionsScrollPage(48));
-        assertEquals(0, ExportScreen.optionsScrollTarget(24, 120, -48));
-        assertEquals(120, ExportScreen.optionsScrollTarget(96, 120, 48));
-        assertEquals(120, ExportScreen.optionsScrollTarget(0, 120, Integer.MAX_VALUE));
-    }
-
-    private record LayoutCase(int width, int height, boolean preview, boolean multiRoute) {}
-
-    @Test
-    void previewNavigationDoesNotChangeExportSelection() {
-        ExportRouteSelection selected = ExportRouteSelection.of(true, false, true, true);
-
-        assertEquals(2, selected.navigate(0, 1));
-        assertEquals(3, selected.navigate(0, -1));
-        assertArrayEquals(new boolean[]{true, false, true, true}, selected.snapshot());
-    }
-
-    @Test
-    void previewNavigationLeavesEncodedOutputByteForByteUnchanged() {
-        WaypointGroup first = WaypointGroup.create("First", "hub");
-        first.add(Waypoint.at(1, 2, 3));
-        WaypointGroup second = WaypointGroup.create("Second", "hub");
-        second.add(Waypoint.at(4, 5, 6));
-        List<WaypointGroup> groups = List.of(first, second);
-        ExportRouteSelection selected = ExportRouteSelection.of(true, true);
-        WaypointCodec.Options options = WaypointCodec.Options.builder().build();
-        String before = WaypointExportCodec.encode(
-                selected.selectedGroups(groups), options,
-                WaypointExportCodec.Target.WAYPOINTER);
-
-        assertEquals(1, selected.navigate(0, 1));
-        String after = WaypointExportCodec.encode(
-                selected.selectedGroups(groups), options,
-                WaypointExportCodec.Target.WAYPOINTER);
-
-        assertEquals(before, after);
-    }
-
-    @Test
-    void deselectedPreviewRouteChoosesNextThenPrevious() {
-        assertEquals(3, ExportRouteSelection.of(true, false, false, true).replacementFor(2));
-        assertEquals(0, ExportRouteSelection.of(true, false, false, false).replacementFor(2));
+    void formatsShareARowUntilTheirNamesWouldNotFit() {
+        assertEquals(6, ExportScreen.formatColumns(600, 6, 56));
+        assertEquals(3, ExportScreen.formatColumns(448, 6, 56));
+        assertEquals(2, ExportScreen.formatColumns(200, 6, 56));
+        assertEquals(1, ExportScreen.formatColumns(60, 6, 56));
+        assertEquals(2, ExportScreen.formatColumns(228, 2, 56));
     }
 
     @Test
@@ -384,58 +334,26 @@ class ExportScreenTest {
     }
 
     @Test
-    void includeGridCollapsesToOneColumnOnlyWhenLabelsWouldNotFit() {
-        ExportScreen.IncludeGrid full = ExportScreen.includeGrid(416, 6);
-        assertEquals(200, full.columnWidth());
-        assertEquals(3, full.rowsPerColumn());
-
-        ExportScreen.IncludeGrid snug = ExportScreen.includeGrid(308, 6);
-        assertEquals(150, snug.columnWidth());
-        assertEquals(3, snug.rowsPerColumn());
-
-        ExportScreen.IncludeGrid narrow = ExportScreen.includeGrid(306, 6);
-        assertEquals(306, narrow.columnWidth());
-        assertEquals(6, narrow.rowsPerColumn());
-    }
-
-    @Test
-    void theSingleRoutePanelFitsEvenAtTheSmallestUsefulGuiSize() {
-        int includeRowsH = 3 * 24 - 4;
-        int fixed = ExportScreen.panelFixedHeight(includeRowsH, 0);
-        int lineH = 10;
-
-        assertEquals(3 * lineH + 12, ExportScreen.previewHeight(540, fixed, lineH));
-        assertTrue(fixed + ExportScreen.previewHeight(540, fixed, lineH) <= 540);
-
-        int tight = ExportScreen.previewHeight(270, fixed, lineH);
-        assertTrue(fixed + tight <= 270,
-                "panel is " + (fixed + tight) + " tall in a 270-unit window");
-        assertTrue(tight >= lineH + 12);
-    }
-
-    @Test
-    void toggleMarkerDistinguishesUnavailableFromOff() {
-        assertEquals("[x]", ExportScreen.toggleMarker(true, true));
-        assertEquals("[ ]", ExportScreen.toggleMarker(true, false));
-        assertEquals("[-]", ExportScreen.toggleMarker(false, true));
-        assertEquals("[-]", ExportScreen.toggleMarker(false, false));
-    }
-
-    @Test
     void builderDefaultsFollowTheConfiguredIslandPreference() {
         WaypointerConfig config = new WaypointerConfig();
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(Waypoint.at(0, 64, 0));
 
-        assertFalse(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
-
-        config.setExportIncludeZone(true);
         assertTrue(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
+
+        config.setExportIncludeZone(false);
+        assertFalse(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
     }
 
     @Test
-    void freshConfigAllOffPolicySelectsKind2AndKind6AndTracksToggleHistory() {
+    void allOffPolicySelectsKind2AndKind6AndTracksToggleHistory() {
         WaypointerConfig config = new WaypointerConfig();
+        config.setExportIncludeNames(false);
+        config.setExportIncludeColors(false);
+        config.setExportIncludeRadii(false);
+        config.setExportIncludeWaypointFlags(false);
+        config.setExportIncludeGroupMeta(false);
+        config.setExportIncludeZone(false);
         WaypointGroup first = WaypointGroup.create("Discarded first", "hub");
         first.add(Waypoint.at(1, 64, 2));
         first.add(Waypoint.at(2, 64, 3));
@@ -482,10 +400,9 @@ class ExportScreenTest {
                 RouteLibraryMetadata.empty());
 
         assertFalse(options.isBareCoordinateProjection());
-        assertTrue(WaypointCodec.debugDecode(payload).groups().stream().noneMatch(group ->
-                group.coordMode().startsWith("V10_BARE")));
+        assertEquals(11, WaypointCodec.debugDecode(payload).version());
         assertTrue(UniversalShareCodec.decode(payload)
-                instanceof UniversalShareCodec.Waypoints);
+                instanceof UniversalShareCodec.DungeonRoutes);
 
         WaypointGroup regular = WaypointGroup.create("Regular", "hub");
         regular.add(Waypoint.at(4, 65, 6));
@@ -493,26 +410,6 @@ class ExportScreenTest {
                 config, List.of(regular, dungeon)).build().isBareCoordinateProjection());
         assertFalse(ExportPolicy.optionsFromConfig(
                 config, List.of()).build().isBareCoordinateProjection());
-    }
-
-    @Test
-    void labelTooltipExplainsTargetSupport() {
-        assertEquals("Optional title shown by Waypointer imports",
-                ExportPolicy.labelTooltipText(WaypointExportCodec.Target.WAYPOINTER));
-        assertEquals("SkyHanni exports do not support Waypointer labels",
-                ExportPolicy.labelTooltipText(WaypointExportCodec.Target.SKYHANNI));
-    }
-
-    @Test
-    void waypointerLabelOverridesTheLivePreviewRouteName() {
-        assertEquals("Shared Route", ExportPolicy.previewRouteName(
-                "Original Route", " Shared Route ", WaypointExportCodec.Target.WAYPOINTER, 1));
-        assertEquals("Original Route", ExportPolicy.previewRouteName(
-                "Original Route", "   ", WaypointExportCodec.Target.WAYPOINTER, 1));
-        assertEquals("Original Route", ExportPolicy.previewRouteName(
-                "Original Route", "Shared Route", WaypointExportCodec.Target.SKYHANNI, 1));
-        assertEquals("Original Route", ExportPolicy.previewRouteName(
-                "Original Route", "Bundle Name", WaypointExportCodec.Target.WAYPOINTER, 2));
     }
 
     @Test

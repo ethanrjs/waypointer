@@ -74,24 +74,6 @@ final class ExportPolicy {
         return false;
     }
 
-    static String labelTooltipText(WaypointExportCodec.Target target) {
-        return target.supportsLabel()
-                ? Component.translatableWithFallback(
-                        "waypointer.screen.export.label_tooltip.supported",
-                        "Optional title shown by Waypointer imports").getString()
-                : Component.translatableWithFallback(
-                        "waypointer.screen.export.label_tooltip.unsupported",
-                        "%1$s exports do not support Waypointer labels",
-                        target.displayName()).getString();
-    }
-
-    static String previewRouteName(
-            String sourceName, String label, WaypointExportCodec.Target target, int selectedRouteCount) {
-        String sanitized = WaypointCodec.Options.sanitizeLabel(label);
-        return target.supportsLabel() && selectedRouteCount == 1 && !sanitized.isBlank()
-                ? sanitized : sourceName;
-    }
-
     static String previewOverflowText(int hiddenLines) {
         int safeHidden = Math.max(0, hiddenLines);
         return safeHidden == 1

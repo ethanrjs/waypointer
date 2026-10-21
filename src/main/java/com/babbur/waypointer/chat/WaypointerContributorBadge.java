@@ -64,10 +64,11 @@ public final class WaypointerContributorBadge {
         if (component == null || config == null || !config.showContributorBadges()) return component;
         Component cached = TAB_NAMES.get(component);
         if (cached != null) return cached;
-        Contributor contributor = contributorTabName(plainMessage(component.getString()).text());
-        Component result = contributor != null
-                ? badge(contributor.color()).append(Component.literal(" "))
-                        .append(Component.literal(contributor.name()).withStyle(ChatFormatting.AQUA))
+        PlainMessage message = plainMessage(component.getString());
+        TabMatch match = contributorTabName(message.text());
+        Component result = match != null
+                ? replaceLevelSpan(component, message.sourceIndex(match.levelStart()),
+                        message.sourceIndex(match.levelEnd()) + 1, match.contributor().color())
                 : component;
         if (TAB_NAMES.size() >= 512) TAB_NAMES.clear();
         TAB_NAMES.put(component, result);
@@ -127,7 +128,7 @@ public final class WaypointerContributorBadge {
         return null;
     }
 
-    private static Contributor contributorTabName(String raw) {
+    private static TabMatch contributorTabName(String raw) {
         int searchStart = 0;
         while (searchStart < raw.length()) {
             int levelStart = numericLevelStart(raw, searchStart, raw.length());
@@ -139,7 +140,7 @@ public final class WaypointerContributorBadge {
                     int nameEnd = nameStart + contributor.name().length();
                     if (raw.startsWith(contributor.name(), nameStart)
                             && (nameEnd >= raw.length() || !isUsernameCharacter(raw.charAt(nameEnd)))) {
-                        return contributor;
+                        return new TabMatch(contributor, levelStart, levelEnd);
                     }
                 }
             }
@@ -336,6 +337,9 @@ public final class WaypointerContributorBadge {
     }
 
     private record Contributor(String name, UUID id, int color) {
+    }
+
+    private record TabMatch(Contributor contributor, int levelStart, int levelEnd) {
     }
 
     private record PlainMessage(String text, int[] sourceIndexes) {

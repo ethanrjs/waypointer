@@ -102,7 +102,7 @@ class V10DungeonCodecTest {
     }
 
     @Test
-    void universalWriterAndDispatcherUseKind4WhileLegacyApiStaysWpd() {
+    void universalWriterUsesV11WhileLegacyApiStaysWpd() {
         List<WaypointGroup> source = edgeRoutes();
         String universal = UniversalShareCodec.encodeDungeon(source);
         String legacy = DungeonRoomShareCodec.encode(source);
@@ -121,9 +121,9 @@ class V10DungeonCodecTest {
     }
 
     @Test
-    void debugInspectorDecodesKind4DungeonExports() {
+    void debugInspectorDecodesKind4DungeonExports() throws Exception {
         List<WaypointGroup> source = edgeRoutes();
-        String encoded = UniversalShareCodec.encodeDungeon(source);
+        String encoded = V10DungeonCodec.encode(source);
 
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
 
@@ -132,6 +132,7 @@ class V10DungeonCodecTest {
                 WaypointCodec.v9ContentKind(debug.headerByte()));
         assertTrue(debug.groups().stream()
                 .allMatch(group -> group.coordMode().startsWith("V10_DUNGEON_")));
+        assertEquals(11, WaypointCodec.debugDecode(UniversalShareCodec.encodeDungeon(source)).version());
         assertGroupsEqual(DungeonRoomShareCodec.decode(
                 DungeonRoomShareCodec.encode(source)).routes(), debug.decodedGroups());
     }

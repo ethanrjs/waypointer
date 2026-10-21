@@ -369,6 +369,28 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void onlyOneClickControlsShowTheHandCursor() {
+        int right = 400;
+        assertFalse(RouteListPresentation.rowControlHit(true, false, 100, right), "route row body");
+        assertTrue(RouteListPresentation.rowControlHit(true, false, right - 4, right), "shown chip");
+        assertFalse(RouteListPresentation.rowControlHit(false, false, right - 4, right), "room header");
+        assertEquals(com.mojang.blaze3d.platform.cursor.CursorTypes.POINTING_HAND,
+                GroupEditScreen.rowCursor(GroupEditInputRouter.ActionType.EDIT_COLOR, false));
+        assertEquals(com.mojang.blaze3d.platform.cursor.CursorTypes.IBEAM,
+                GroupEditScreen.rowCursor(GroupEditInputRouter.ActionType.NONE, true));
+        assertNull(GroupEditScreen.rowCursor(GroupEditInputRouter.ActionType.NONE, false));
+    }
+
+    @Test
+    void singleRouteRoomRowNamesTheRouteThenSecrets() {
+        String subtitle = RouteListPresentation.roomRouteSubtitle("FlameOfWar", 6, false);
+        assertTrue(subtitle.startsWith("FlameOfWar"));
+        assertTrue(subtitle.endsWith("6 secrets"));
+        assertTrue(RouteListPresentation.roomRouteSubtitle("FlameOfWar", 1, true).endsWith("current"));
+        assertEquals("FlameOfWar", RouteListPresentation.roomRouteSubtitle("FlameOfWar", 0, false));
+    }
+
+    @Test
     void roomHeaderSubtitleShowsInstalledSecretsSoImportsDoNotReadAsEmpty() {
         assertEquals("0 routes", RouteListPresentation.roomHeaderSubtitle(0, 0, false, false));
         assertEquals("0 routes  3 secrets",

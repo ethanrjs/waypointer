@@ -41,7 +41,7 @@ class V10ConfigCodecTest {
             assertEquals(code, UniversalShareCodec.encodeConfig(decoded.config()), fixture.name());
         }
         assertEquals(V10Transport.MODE_DIRECT,
-                probeMode(UniversalShareCodec.encodeConfig(new WaypointerConfig())));
+                probeMode(UniversalShareCodec.encodeConfig(codeBaseline())));
         assertEquals(V10Transport.MODE_DEFLATE,
                 probeMode(UniversalShareCodec.encodeConfig(heavyConfig())));
     }
@@ -106,7 +106,7 @@ class V10ConfigCodecTest {
                 V10Transport.seal(V10Transport.MODE_DIRECT, heavySemantic));
         assertSameShareableConfig(heavy, decodedConfig(nonwinningA));
 
-        WaypointerConfig defaults = new WaypointerConfig();
+        WaypointerConfig defaults = codeBaseline();
         byte[] defaultSemantic = V10ConfigBodyCodec.encode(defaults);
         String nonwinningB = codeFor(V10Transport.MODE_DEFLATE,
                 alternateDeflatePayload(defaultSemantic, 1));
@@ -119,7 +119,7 @@ class V10ConfigCodecTest {
 
     @Test
     void roundTripsLabelCameraEffectsAndOpacity() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = codeBaseline();
         config.setLabelFollowCameraEffects(false);
         config.setLabelOpacity(0.4);
         WaypointerConfig decoded = decodedConfig(UniversalShareCodec.encodeConfig(config));
@@ -131,7 +131,7 @@ class V10ConfigCodecTest {
     @Test
     void skipsBoundedUnknownFieldsButRejectsNoncanonicalKnownFields() throws Exception {
         byte[] unknown = semanticWithField(V10ConfigBodyCodec.MAX_TAG, new byte[] {1, 2, 3});
-        assertSameShareableConfig(new WaypointerConfig(), decodedConfig(directCode(unknown)));
+        assertSameShareableConfig(codeBaseline(), decodedConfig(directCode(unknown)));
 
         byte[] explicitDefault = semanticWithField(2, new byte[] {1});
         assertThrows(IllegalArgumentException.class,
@@ -150,7 +150,7 @@ class V10ConfigCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(directCode(malformedUtf8)));
 
-        WaypointerConfig malformedJavaText = new WaypointerConfig();
+        WaypointerConfig malformedJavaText = codeBaseline();
         malformedJavaText.addChatCoordSenderBlacklist("\uD800");
         assertThrows(IllegalStateException.class,
                 () -> UniversalShareCodec.encodeConfig(malformedJavaText));
@@ -213,7 +213,7 @@ class V10ConfigCodecTest {
         IOException mismatch = assertThrows(IOException.class, () -> V10ConfigCodec.decode(kindTwo));
         assertTrue(mismatch.getMessage().contains("kind 3"));
 
-        String config = UniversalShareCodec.encodeConfig(new WaypointerConfig());
+        String config = UniversalShareCodec.encodeConfig(codeBaseline());
         IllegalArgumentException routeOnly = assertThrows(IllegalArgumentException.class,
                 () -> WaypointCodec.decode(config));
         assertTrue(routeOnly.getMessage().contains("v10="));
@@ -234,15 +234,27 @@ class V10ConfigCodecTest {
         assertTrue(UniversalShareCodec.encodeConfig(lightConfig()).startsWith("WP:"));
     }
 
+    static WaypointerConfig codeBaseline() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setCrystalHollowsStructureWaypoints(true);
+        config.setExportIncludeNames(false);
+        config.setExportIncludeColors(false);
+        config.setExportIncludeRadii(false);
+        config.setExportIncludeWaypointFlags(false);
+        config.setExportIncludeGroupMeta(false);
+        config.setExportIncludeZone(false);
+        return config;
+    }
+
     static List<NamedConfig> fixtures() {
-        return List.of(new NamedConfig("default", new WaypointerConfig()),
+        return List.of(new NamedConfig("default", codeBaseline()),
                 new NamedConfig("light", lightConfig()),
                 new NamedConfig("heavy", heavyConfig()),
                 new NamedConfig("edges", edgeConfig()));
     }
 
     private static WaypointerConfig lightConfig() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = codeBaseline();
         config.setDefaultReachRadius(5.5);
         config.setTracerColor(0x12ABEF);
         config.setTracerOpacity(0.72);
@@ -259,7 +271,7 @@ class V10ConfigCodecTest {
     }
 
     private static WaypointerConfig heavyConfig() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = codeBaseline();
         config.disableAllSettings();
 
         config.setCoordinateShareHelper(true);
@@ -319,7 +331,7 @@ class V10ConfigCodecTest {
     }
 
     private static WaypointerConfig edgeConfig() {
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = codeBaseline();
         config.setDefaultReachRadius(Double.POSITIVE_INFINITY);
         config.setTracerOpacity(-0.0);
         config.setMaxWaypointLabels(Integer.MAX_VALUE);

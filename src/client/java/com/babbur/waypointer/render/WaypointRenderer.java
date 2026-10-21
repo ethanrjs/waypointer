@@ -29,7 +29,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.locale.Language;
-import net.minecraft.network.chat.FormattedText;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
@@ -358,7 +357,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                     || !labelAlphaVisible(stateAlpha * (float) appearance.labelBackdropOpacity()))) return;
             int nameColor = colorizeNames && appearance.showWaypointNames()
                     ? 0xFF000000 | resolvedWaypointColor(group, i, w.color())
-                    : NAME_ARGB;
+                    : 0xFF000000 | appearance.labelTextColor();
             LabelCandidate candidate = nextLabelCandidate();
             candidate.collectionOrder = labelCandidateCount - 1;
             candidate.set(group, i, w, null, hasSubwaypoints, sx, sy, distanceSq, nameColor, alpha, labelScale);
@@ -519,7 +518,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     private void prepareCandidateBounds(Font font, LabelCandidate c) {
         WaypointerConfig a = c.appearance;
         int textWidth = 0;
-        for (String row : c.rows) textWidth = Math.max(textWidth, font.width(row));
+        for (String row : c.rows) textWidth = Math.max(textWidth, font.width(labelText(row)));
         double width = WaypointLabelAppearance.labelWidth(textWidth, !c.rows.isEmpty(), !"NONE".equals(a.waypointIcon()), c.scale);
         c.left = c.screenX - width / 2 - 2;
         c.right = c.screenX + width / 2 + 2;
@@ -533,7 +532,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         double rowY = c.screenY;
         for (int i = 0; i < c.rows.size(); i++) {
             drawCenteredLabel(g, font, c.rows.get(i), c.screenX, rowY,
-                    RenderHelpers.withAlpha(i == 0 && hasNameRow(c.appearance, c.group, c.waypoint) ? c.nameColor : DISTANCE_ARGB, c.alpha),
+                    RenderHelpers.withAlpha(labelRowColor(c.appearance,
+                            i == 0 && hasNameRow(c.appearance, c.group, c.waypoint), c.nameColor), c.alpha),
                     c.backgroundAlpha, c.scale, c.appearance);
             rowY += labelRowAdvance(font, c.scale);
         }
@@ -625,7 +625,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         FormattedCharSequence ordered = LABEL_TEXT.get(text);
         if (ordered == null) {
             if (LABEL_TEXT.size() >= MAX_CACHED_LABEL_TEXTS) LABEL_TEXT.clear();
-            ordered = language.getVisualOrder(FormattedText.of(text));
+            ordered = language.getVisualOrder(LabelText.styled(text));
             LABEL_TEXT.put(text, ordered);
         }
         return ordered;
@@ -654,6 +654,10 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         }
         if (labelAlphaVisible((argb >>> 24) / 255.0f)) g.text(font, ordered, 0, 0, argb, appearance.showLabelTextShadow());
         g.pose().popMatrix();
+    }
+
+    static int labelRowColor(WaypointerConfig appearance, boolean nameRow, int nameColor) {
+        return nameRow || appearance.labelColorForAllText() ? nameColor : DISTANCE_ARGB;
     }
 
     public static String routeProgressText(WaypointGroup group) {
@@ -720,7 +724,9 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     public static boolean hasNameRow(WaypointerConfig appearance, WaypointGroup group, Waypoint waypoint) {
-        return appearance.showWaypointNames() && (!isDungeonRoomRoute(group) || shouldShowDungeonWaypointName(waypoint));
+        if (!appearance.showWaypointNames()) return false;
+        if (isDungeonRoomRoute(group)) return shouldShowDungeonWaypointName(waypoint);
+        return waypoint != null && waypoint.hasName() || appearance.numberUnnamedWaypoints();
     }
 
     public static String labelFor(WaypointGroup g, int i, Waypoint w, boolean hasSubwaypoints) {

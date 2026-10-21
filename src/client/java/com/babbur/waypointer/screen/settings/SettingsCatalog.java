@@ -150,7 +150,6 @@ public final class SettingsCatalog {
         out.add(mining());
         out.add(chat());
         out.add(sharing());
-        out.add(featureBloat());
         out.add(system());
         out.add(Category.of("feedback", "Feedback", Group.plain(
                 Setting.action(ACTION_FEEDBACK, "Send Feedback",
@@ -364,6 +363,12 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setShowWaypointNames((Boolean) v))
                                 .impact(Setting.Impact.HIGH)
                                 .aliases("text", "title"),
+                        Setting.bool("numberUnnamedWaypoints", MAIN, "Number unnamed waypoints",
+                                null,
+                                (c, d) -> c.numberUnnamedWaypoints(),
+                                (c, d, v) -> c.setNumberUnnamedWaypoints((Boolean) v))
+                                .enabledWhen((c, d) -> c.showWaypointNames())
+                                .aliases("index", "#1", "unnamed"),
                         Setting.bool("showWaypointDistances", MAIN, "Show waypoint distances",
                                 null,
                                 (c, d) -> c.showWaypointDistances(),
@@ -379,6 +384,18 @@ public final class SettingsCatalog {
                                 (c, d) -> c.matchWaypointTextToWaypointColor(),
                                 (c, d, v) -> c.setMatchWaypointTextToWaypointColor((Boolean) v))
                                 .enabledWhen((c, d) -> c.showWaypointNames()),
+                        Setting.color("labelTextColor", MAIN, "Label color",
+                                null,
+                                "Label Color", null,
+                                (c, d) -> c.labelTextColor(),
+                                (c, d, v) -> c.setLabelTextColor(rgb(v)))
+                                .enabledWhen(ANY_LABEL_TEXT)
+                                .aliases("text color", "name color"),
+                        Setting.bool("labelColorForAllText", MAIN, "Label color for all text",
+                                "Distance, progress and coordinates use the label color too.",
+                                (c, d) -> c.labelColorForAllText(),
+                                (c, d, v) -> c.setLabelColorForAllText((Boolean) v))
+                                .enabledWhen(ANY_LABEL_TEXT),
                         Setting.bool("showLabelBackdrop", MAIN, "Show label backdrop",
                                 "Draw a dark background behind label text.",
                                 (c, d) -> c.showLabelBackdrop(),
@@ -826,16 +843,16 @@ public final class SettingsCatalog {
                                 "Imported Route Color", null,
                                 (c, d) -> c.importedRouteDefaultColor(),
                                 (c, d, v) -> c.setImportedRouteDefaultColor(rgb(v)))),
-                Group.plain("export_defaults", "Export defaults",
-                        Setting.bool("exportIncludeNames", MAIN, "Include names in default export",
+                Group.plain("export_defaults", "Exports",
+                        Setting.bool("exportIncludeNames", MAIN, "Include names",
                                 null,
                                 (c, d) -> c.exportIncludeNames(),
                                 (c, d, v) -> c.setExportIncludeNames((Boolean) v)),
-                        Setting.bool("exportIncludeColors", MAIN, "Include colors in default export",
+                        Setting.bool("exportIncludeColors", MAIN, "Include colors",
                                 null,
                                 (c, d) -> c.exportIncludeColors(),
                                 (c, d, v) -> c.setExportIncludeColors((Boolean) v)),
-                        Setting.bool("exportIncludeRadii", MAIN, "Include radii in default export",
+                        Setting.bool("exportIncludeRadii", MAIN, "Include reach radii",
                                 null,
                                 (c, d) -> c.exportIncludeRadii(),
                                 (c, d, v) -> c.setExportIncludeRadii((Boolean) v)),
@@ -847,30 +864,15 @@ public final class SettingsCatalog {
                                 null,
                                 (c, d) -> c.exportIncludeGroupMeta(),
                                 (c, d, v) -> c.setExportIncludeGroupMeta((Boolean) v)),
-                        Setting.bool("exportIncludeZone", MAIN, "Include island in default export",
+                        Setting.bool("exportIncludeZone", MAIN, "Include island",
                                 null,
                                 (c, d) -> c.exportIncludeZone(),
                                 (c, d, v) -> c.setExportIncludeZone((Boolean) v))));
     }
 
-    private static Category featureBloat() {
-        return Category.of("feature_bloat", "Extras",
-                Group.plain("export_screen", "Export screen",
-                        Setting.bool("showExportRoutePreview", MAIN, "3D route preview",
-                                "Show a rotating 3D preview of the route on the export screen.",
-                                (c, d) -> c.showExportRoutePreview(),
-                                (c, d, v) -> c.setShowExportRoutePreview((Boolean) v))
-                                .enabledWhen((c, d) -> c.enableFeatureBloat())
-                                .aliases("preview", "3d", "isometric")));
-    }
-
     private static Category system() {
         return Category.of("system", "System",
                 Group.plain(
-                        Setting.bool("enableFeatureBloat", MAIN, "Enable Extras",
-                                "Enable the 3D route preview.",
-                                (c, d) -> c.enableFeatureBloat(),
-                                (c, d, v) -> c.setEnableFeatureBloat((Boolean) v)),
                         Setting.bool("irisShaderHudFallback", MAIN, "Iris shader compatibility",
                                 null,
                                 (c, d) -> c.irisShaderHudFallback(),

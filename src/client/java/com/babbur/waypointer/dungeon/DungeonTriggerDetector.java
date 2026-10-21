@@ -24,6 +24,7 @@ import java.util.Locale;
 public final class DungeonTriggerDetector {
 
     private static final double ENTITY_TRIGGER_RANGE_SQ = 36.0;
+    private static final double BAT_TRIGGER_RANGE_SQ = 100.0;
     private static final double ITEM_PICKUP_PLAYER_RANGE_SQ = 36.0;
     private static final double ETHERWARP_JUMP_DISTANCE_SQ = 4.0;
     private static final long ETHERWARP_ARM_WINDOW_MS = 1_500L;
@@ -60,6 +61,7 @@ public final class DungeonTriggerDetector {
         ClientEntityEvents.ENTITY_UNLOAD.register(this::onEntityUnload);
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
         DungeonSoundHook.setListener(this::onSoundPacket);
+        DungeonItemPickupHook.setListener(this::onItemPickup);
     }
 
     private boolean inCatacombs() {
@@ -107,7 +109,14 @@ public final class DungeonTriggerDetector {
 
     }
 
-    private static boolean isSecretItemName(String rawName) {
+    private void onItemPickup(int collectorId, String itemName, double x, double y, double z) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || collectorId != player.getId()) return;
+        if (!inCatacombs() || !isSecretItemName(itemName)) return;
+        advanceCurrentAction(Waypoint.FLAG_DUNGEON_ITEM, x, y, z);
+    }
+
+    static boolean isSecretItemName(String rawName) {
         if (rawName == null || rawName.isEmpty()) return false;
         String name = rawName.toLowerCase(Locale.ROOT);
         for (String secretName : SECRET_ITEM_NAMES) {
@@ -156,11 +165,15 @@ public final class DungeonTriggerDetector {
             double dx = current.centerX() - x;
             double dy = current.centerY() - y;
             double dz = current.centerZ() - z;
-            if (dx * dx + dy * dy + dz * dz > ENTITY_TRIGGER_RANGE_SQ) continue;
+            if (dx * dx + dy * dy + dz * dz > triggerRangeSq(actionFlag)) continue;
             boolean secret = current.hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
             group.advancePast(currentIndex);
             if (secret) DungeonSecretCompletionSound.play(config);
         }
+    }
+
+    static double triggerRangeSq(int actionFlag) {
+        return actionFlag == Waypoint.FLAG_DUNGEON_BAT ? BAT_TRIGGER_RANGE_SQ : ENTITY_TRIGGER_RANGE_SQ;
     }
 
     static int nearestStepAction(WaypointGroup group, int actionFlag,
@@ -168,7 +181,7 @@ public final class DungeonTriggerDetector {
         boolean laterSecrets = actionFlag == Waypoint.FLAG_DUNGEON_ITEM
                 || actionFlag == Waypoint.FLAG_DUNGEON_BAT;
         int[] best = { -1 };
-        double[] bestDistance = { ENTITY_TRIGGER_RANGE_SQ };
+        double[] bestDistance = { triggerRangeSq(actionFlag) };
         DungeonStepProgress.forEachCandidate(group, laterSecrets, i -> {
             Waypoint waypoint = group.get(i);
             if (!waypoint.hasFlag(actionFlag)) return true;

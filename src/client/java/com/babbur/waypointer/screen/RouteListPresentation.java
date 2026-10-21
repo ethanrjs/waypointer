@@ -2,12 +2,14 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.i18n.Counts;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -159,6 +161,12 @@ public final class RouteListPresentation {
         return doubleClick ? FolderHeaderAction.NONE : FolderHeaderAction.TOGGLE;
     }
 
+    static boolean rowControlHit(boolean routeRow, boolean folderRow, double mouseX, int rowRight) {
+        if (routeRow) return mouseX >= routeToggleHitLeft(rowRight) && mouseX <= rowRight;
+        return folderRow && (isFolderEditControlHit(mouseX, rowRight)
+                || isFolderSelectControlHit(mouseX, rowRight));
+    }
+
     static boolean canStartRouteDrag(
             WaypointGroup group, String query, boolean shiftDown, boolean controlDown) {
         return group != null && !group.temp() && !group.runtimeOnly()
@@ -228,6 +236,31 @@ public final class RouteListPresentation {
             return selected ? CURRENT_DUNGEON_ROOM_SELECTED_BG : CURRENT_DUNGEON_ROOM_BG;
         }
         return selected ? SELECTED : hovered ? HOVER : 0;
+    }
+
+    static int secretWaypointCount(WaypointGroup group) {
+        int count = 0;
+        for (var waypoint : group.waypoints()) {
+            if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_SECRET)) count++;
+        }
+        return count;
+    }
+
+    static String roomRouteSubtitle(String routeName, int secretCount, boolean currentRoom) {
+        List<String> parts = new ArrayList<>();
+        if (routeName != null && !routeName.isBlank()) parts.add(routeName);
+        if (secretCount > 0) {
+            parts.add(secretCount == 1
+                    ? Component.translatableWithFallback(
+                            "waypointer.screen.main.room.secrets.one", "%1$s secret", secretCount).getString()
+                    : Component.translatableWithFallback(
+                            "waypointer.screen.main.room.secrets.many", "%1$s secrets", secretCount).getString());
+        }
+        if (currentRoom) {
+            parts.add(Component.translatableWithFallback(
+                    "waypointer.screen.main.room.current", "current").getString());
+        }
+        return joinParts(parts);
     }
 
     static String roomHeaderSubtitle(

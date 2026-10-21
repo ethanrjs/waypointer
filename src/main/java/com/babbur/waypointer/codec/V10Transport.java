@@ -28,6 +28,10 @@ final class V10Transport {
     private V10Transport() {}
 
     static boolean looksLikeV10(String transport) {
+        return looksLikeWireVersion(transport, WaypointCodec.V10_WIRE_VERSION);
+    }
+
+    static boolean looksLikeWireVersion(String transport, int version) {
         if (transport == null || transport.length() < 2) return false;
         String raw = unescapeContextual(transport.substring(0, Math.min(transport.length(), 4)));
         if (raw.length() < 2) return false;
@@ -35,7 +39,7 @@ final class V10Transport {
         int second = AsciiStreamCodec.alphabetIndex(raw.charAt(1));
         if (first < 0 || second < 0) return false;
         int pair = first + second * AsciiStreamCodec.alphabetSize();
-        return (pair & HEADER_VERSION_MASK) == WaypointCodec.V10_WIRE_VERSION;
+        return (pair & HEADER_VERSION_MASK) == version;
     }
 
     static String encode(byte[] payload) {
@@ -84,10 +88,14 @@ final class V10Transport {
     }
 
     static CheckedFrame probe(String transport) throws IOException {
+        return probe(transport, WaypointCodec.V10_WIRE_VERSION);
+    }
+
+    static CheckedFrame probe(String transport, int version) throws IOException {
         Frame frame = decode(transport);
         byte[] payload = frame.payload();
-        if ((payload[0] & HEADER_VERSION_MASK) != WaypointCodec.V10_WIRE_VERSION) {
-            throw new IOException("v10 version nibble did not match");
+        if ((payload[0] & HEADER_VERSION_MASK) != version) {
+            throw new IOException("v" + version + " version nibble did not match");
         }
         byte[] semantic = frame.mode() == MODE_DIRECT
                 ? unseal(MODE_DIRECT, payload)

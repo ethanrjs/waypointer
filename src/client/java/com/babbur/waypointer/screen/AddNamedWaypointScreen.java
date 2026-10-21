@@ -162,6 +162,9 @@ public final class AddNamedWaypointScreen extends Screen {
         nameBox.setMaxLength(MAX_NAME_LENGTH);
         nameBox.setValue(enteredName);
         nameBox.setResponder(this::onNameEdited);
+        EditBox box = nameBox;
+        nameBox.addFormatter((visible, offset) -> com.babbur.waypointer.render.LabelText.editorPreview(
+                box.getValue(), offset, visible.length(), ACCENT & 0xFFFFFF));
         addRenderableWidget(nameBox);
 
         if (showSubtypeOptions) {

@@ -126,17 +126,13 @@ class WaypointRendererTest {
     }
 
     @Test
-    void painterRemainsRenderedWhenExtrasAreDisabled() {
+    void painterPaintsAreRetainedAndRendered() {
         WaypointerConfig config = new WaypointerConfig();
         config.setColorSequenceWaypointsByRole(false);
         WaypointGroup painted = groupWith(waypoint(0));
         painted.setPaint(WaypointPaint.solid(0x123456));
         WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
         try {
-            config.setEnableFeatureBloat(true);
-            renderer.reserveActivePaints(List.of(painted));
-            assertTrue(WaypointPaintTextureCache.isRetained(painted.paint()));
-            config.setEnableFeatureBloat(false);
             renderer.reserveActivePaints(List.of(painted));
             assertTrue(WaypointPaintTextureCache.isRetained(painted.paint()));
             assertTrue(painted.paint() != null);
@@ -200,7 +196,6 @@ class WaypointRendererTest {
     @Test
     void roleColorsReserveStaticPaintButNotReplacedSequentialPaint() {
         WaypointerConfig config = new WaypointerConfig();
-        config.setEnableFeatureBloat(true);
         config.setColorSequenceWaypointsByRole(true);
         WaypointPaint sequentialPaint = WaypointPaint.solid(0x123456);
         WaypointGroup sequential = groupWith(waypoint(0));
@@ -241,7 +236,6 @@ class WaypointRendererTest {
     @Test
     void perRoutePaintParticipatesInRetainedVisibilityInvalidation() {
         WaypointerConfig config = new WaypointerConfig();
-        config.setEnableFeatureBloat(true);
         config.setWaypointOutlineOpacity(0.0);
         WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
         WaypointGroup painted = groupWith(waypoint(0));
@@ -412,6 +406,25 @@ class WaypointRendererTest {
         group.advancePast(1);
         assertEquals(List.of("1-6"), focusedDungeonRouteLineSegments(group, false),
                 "a step without a path keeps the plain connector");
+    }
+
+    @Test
+    void namedMembersOfTheOpenStepKeepTheirLabels() {
+        int sub = Waypoint.FLAG_SUBWAYPOINT;
+        WaypointGroup group = groupWith(
+                waypoint(Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SUPERBOOM),
+                waypoint(sub | Waypoint.FLAG_SKIP_ON_STAND | Waypoint.FLAG_DUNGEON_ETHERWARP),
+                new Waypoint(1, 64, 1, "Item", Waypoint.DEFAULT_COLOR,
+                        sub | Waypoint.FLAG_SKIP_ON_STAND | Waypoint.FLAG_DUNGEON_ITEM
+                                | Waypoint.FLAG_DUNGEON_SECRET, 0.0),
+                new Waypoint(1, 64, 1, "Chest", Waypoint.DEFAULT_COLOR,
+                        Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        group.setVisibleMainSteps(1);
+
+        assertTrue(WaypointRenderer.isFocusedDungeonRouteLabel(group, 2), "Item in the open step");
+        assertFalse(WaypointRenderer.isFocusedDungeonRouteLabel(group, 1), "unnamed etherwarp stays quiet");
+        assertFalse(WaypointRenderer.isFocusedDungeonRouteLabel(group, 3), "next step is not open yet");
     }
 
     @Test
@@ -711,6 +724,23 @@ class WaypointRendererTest {
     }
 
     @Test
+    void unnamedWaypointsCanDropTheirNumberWhileNamedOnesKeepTheirName() {
+        var named = new Waypoint(1, 64, 0, "Chest", 0, 0, 0);
+        var unnamed = waypointAt(0, 64, 0, 0);
+        var group = groupWith(unnamed, named);
+        var config = new WaypointerConfig();
+        config.setShowWaypointDistances(false);
+        assertEquals(List.of("#1"),
+                WaypointRenderer.labelRows(config, group, 0, unnamed, true, "current", 4, null));
+
+        config.setNumberUnnamedWaypoints(false);
+        assertEquals(List.of(),
+                WaypointRenderer.labelRows(config, group, 0, unnamed, true, "current", 4, null));
+        assertEquals(List.of("Chest"),
+                WaypointRenderer.labelRows(config, group, 1, named, true, "next", 4, null));
+    }
+
+    @Test
     void irisFallbackMovesWaypointOutlinesToTheHudWithoutSuppressingFills() {
         assertTrue(WaypointRenderer.worldBoxOutlinesEnabled(
                 WaypointerConfig.BoxStyle.OUTLINED, false));
@@ -782,6 +812,31 @@ class WaypointRendererTest {
         assertFalse(WaypointRenderer.routeLinesEnabled(dungeon, config, dungeonConfig));
         assertFalse(TracerRenderer.tracersEnabled(normal, config, dungeonConfig));
         assertTrue(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+    }
+
+    @Test
+    void pathfindingFallsBackToTheTracerWhenNoWalkingRouteIsDrawn() {
+        WaypointerConfig config = new WaypointerConfig();
+        DungeonConfig dungeonConfig = new DungeonConfig();
+        dungeonConfig.setShowDungeonTracers(false);
+        WaypointGroup dungeon = groupWith(waypoint(0), waypoint(1));
+        dungeon.setZoneId("altar");
+        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        assertFalse(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+
+        config.setShowDungeonEntryPathToFirstWaypoint(true);
+        assertTrue(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+        dungeon.setCurrentIndex(1);
+        assertFalse(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig),
+                "only the first waypoint is pathfound unless all of them are");
+        config.setShowDungeonEntryPathToFollowingWaypoints(true);
+        assertTrue(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+
+        assertFalse(TracerRenderer.dungeonTracersChosen(dungeon, dungeonConfig),
+                "a stand-in tracer gives way to the path");
+        dungeonConfig.setShowDungeonTracers(true);
+        assertTrue(TracerRenderer.dungeonTracersChosen(dungeon, dungeonConfig),
+                "tracers switched on keep drawing next to the path");
     }
 
     @Test

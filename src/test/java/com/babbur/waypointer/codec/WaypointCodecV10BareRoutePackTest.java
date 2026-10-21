@@ -99,7 +99,7 @@ class WaypointCodecV10BareRoutePackTest {
                 routes, WaypointCodec.Options.BARE_COORDINATES,
                 RouteLibraryMetadata.empty()));
         assertV9(WaypointCodec.encodeCatalog(routes));
-        assertV10Kind(0, WaypointExportCodec.encode(
+        assertV11(WaypointExportCodec.encode(
                 routes,
                 WaypointCodec.Options.FULL_FIDELITY,
                 WaypointExportCodec.Target.WAYPOINTER,
@@ -114,9 +114,9 @@ class WaypointCodecV10BareRoutePackTest {
                 WaypointExportCodec.Target.WAYPOINTER,
                 richMetadata);
         assertFalse(rich.startsWith(RouteLibraryCodec.MAGIC));
-        assertV10Kind(V10RouteLibraryCodec.CONTENT_KIND, rich);
-        assertTrue(V10RouteLibraryCodec.isLibrarySemantic(V10Transport.probe(
-                rich.substring(WaypointCodec.MAGIC.length())).semantic()));
+        assertV11(rich);
+        assertEquals(List.of(0x123456, 0x654321),
+                WaypointCodec.decode(rich).getFirst().manualColorSnapshot());
 
         WaypointGroup dungeon = route("dungeon", new int[][] {{9, 65, 9}});
         dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
@@ -126,8 +126,12 @@ class WaypointCodecV10BareRoutePackTest {
                 List.of(first, dungeon), WaypointCodec.Options.BARE_COORDINATES));
         assertBareRejected(() -> WaypointCodec.encode(
                 List.of(first, dungeon), WaypointCodec.Options.BARE_COORDINATES));
-        assertBareRejected(() -> UniversalShareCodec.encodeWaypoints(
-                List.of(first, dungeon), WaypointCodec.Options.BARE_COORDINATES));
+        String mixed = UniversalShareCodec.encodeWaypoints(
+                List.of(first, dungeon), WaypointCodec.Options.BARE_COORDINATES);
+        assertV11(mixed);
+        WaypointGroup room = WaypointCodec.decode(mixed).get(1);
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, room.routeKind());
+        assertEquals("mining-3", room.zoneId(), "a coordinate-only export keeps a dungeon route's room");
     }
 
     @Test
@@ -168,7 +172,7 @@ class WaypointCodecV10BareRoutePackTest {
         WaypointCodec.Options almostBare = WaypointCodec.Options.BARE_COORDINATES
                 .toBuilder().includeZone(true).build();
         assertFalse(almostBare.isBareCoordinateProjection());
-        assertV10Kind(0, WaypointExportCodec.encode(
+        assertV11(WaypointExportCodec.encode(
                 routes, almostBare, WaypointExportCodec.Target.WAYPOINTER,
                 RouteLibraryMetadata.empty()));
 
@@ -374,6 +378,10 @@ class WaypointCodecV10BareRoutePackTest {
 
     private static void assertV9(String encoded) {
         assertEquals(9, WaypointCodec.debugDecode(encoded).version(), encoded);
+    }
+
+    private static void assertV11(String encoded) {
+        assertEquals(11, WaypointCodec.debugDecode(encoded).version(), encoded);
     }
 
     private static void assertV10Kind(int expectedKind, String encoded) throws Exception {

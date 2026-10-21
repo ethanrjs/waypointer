@@ -15,7 +15,7 @@ import java.util.Map;
 
 final class OdinWaypointImporter {
 
-    private static final Map<String, String> ISLANDS = Map.ofEntries(
+    static final Map<String, String> ISLANDS = Map.ofEntries(
             Map.entry("SinglePlayer", Zone.PRIVATE_WORLD.id()),
             Map.entry("PrivateIsland", "private_island"),
             Map.entry("Garden", "garden"),

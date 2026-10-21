@@ -761,8 +761,7 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.BitNote("[" + category.label() + "]"));
             for (SettingsCatalog.Group group : category.groups()) {
                 for (Setting setting : group.settings()) {
-                    if (setting.store() == Setting.Store.NONE
-                            || !SettingsScreen.featureAvailable(setting, config)) continue;
+                    if (setting.store() == Setting.Store.NONE) continue;
                     if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) {
                         rows.add(new Row.KVWarn(setting.id(), "Unavailable"));
                         continue;

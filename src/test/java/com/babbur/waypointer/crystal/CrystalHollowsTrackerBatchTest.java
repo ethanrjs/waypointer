@@ -23,7 +23,7 @@ class CrystalHollowsTrackerBatchTest {
     void fairyGrottoSidebarCreatesAndCorrectsWaypointAtReportedPosition() throws Exception {
         for (boolean hasRemote : new boolean[] {false, true}) {
             var manager = new ActiveGroupManager();
-            var config = new WaypointerConfig();
+            var config = structureWaypointsOn();
             config.setCrystalHollowsShowRoughMarkers(true);
             var tracker = new CrystalHollowsTracker(manager, config, null);
             var lobby = new CrystalHollowsLobbyState("mini196BN", 1, 6);
@@ -58,7 +58,7 @@ class CrystalHollowsTrackerBatchTest {
     @Test
     void incorrectSkyblockerRequiresContinuousArrivalAndCannotReturnFromSocket() throws Exception {
         var manager = new ActiveGroupManager();
-        var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
+        var tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), null);
         var lobby = new CrystalHollowsLobbyState("m14ap", 1, 17);
         set(tracker, "active", true);
         set(tracker, "lobby", lobby);
@@ -94,7 +94,7 @@ class CrystalHollowsTrackerBatchTest {
 
     @Test
     void rejectsFairyGrottoAtReportedFourMeterPosition() throws Exception {
-        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), new WaypointerConfig(), null);
+        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), structureWaypointsOn(), null);
         var lobby = new CrystalHollowsLobbyState("mini192AF", 1, 8);
         set(tracker, "active", true);
         set(tracker, "lobby", lobby);
@@ -113,7 +113,7 @@ class CrystalHollowsTrackerBatchTest {
     @Test
     void disabledStructureRejectsEveryAutomaticSourceButKeepsExplicitNavigation() throws Exception {
         for (SightingConfidence confidence : SightingConfidence.values()) {
-            var config = new WaypointerConfig();
+            var config = structureWaypointsOn();
             config.setCrystalHollowsDetectionEnabled("odawa", false);
             var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), config, null);
             var lobby = new CrystalHollowsLobbyState("test", 0, 0);
@@ -139,7 +139,7 @@ class CrystalHollowsTrackerBatchTest {
     @Test
     void detectionToggleRebuildsExistingRoutesAndAllowsEntityRediscovery() throws Exception {
         var manager = new ActiveGroupManager();
-        var config = new WaypointerConfig();
+        var config = structureWaypointsOn();
         config.setCrystalHollowsNucleusWaypoints(false);
         var tracker = new CrystalHollowsTracker(manager, config, null);
         var lobby = new CrystalHollowsLobbyState("test", 0, 0);
@@ -169,7 +169,7 @@ class CrystalHollowsTrackerBatchTest {
 
     @Test
     void caveInWarningsAreExactScopedAndDoNotExtendTheDeadline() throws Exception {
-        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), new WaypointerConfig(), null);
+        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), structureWaypointsOn(), null);
         String warning = "You can hear mighty rumbles and explosions in the distance...";
         tracker.observeCaveInWarning(warning, 100_000);
         assertEquals(-1, tracker.closingInSeconds(null, 100_000));
@@ -195,7 +195,7 @@ class CrystalHollowsTrackerBatchTest {
     void relaySnapshotReplacesOnlyRelayDataAndClearsRemovedNavigation() throws Exception {
         var manager = new ActiveGroupManager();
         var store = new CrystalHollowsStore(directory.resolve("relay-snapshot.json"));
-        var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), store);
+        var tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), store);
         long now = System.currentTimeMillis();
         var lobby = new CrystalHollowsLobbyState("m14ap", now, 17);
         set(tracker, "active", true);
@@ -235,7 +235,7 @@ class CrystalHollowsTrackerBatchTest {
     void removedCompassWaypointStopsMinimapNavigationEvenWhenTheGroupRemains() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
-        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
+        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), null);
         StructureSighting target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                 606, 88, 265, SightingConfidence.COMPASS, "compass", 1L);
         tracker.focusCompassTarget(target);
@@ -255,7 +255,7 @@ class CrystalHollowsTrackerBatchTest {
     void compassAutoFocusCanBeDisabledWithoutArrivalOrStealingManualFocus() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
-        WaypointerConfig config = new WaypointerConfig();
+        WaypointerConfig config = structureWaypointsOn();
         CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, config, null);
         StructureSighting target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
                 606, 88, 265, SightingConfidence.COMPASS, "compass", 1L);
@@ -289,7 +289,7 @@ class CrystalHollowsTrackerBatchTest {
     void expiredRemoteNavigationWithoutLocalEvidenceIsRemoved() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
-        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
+        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), null);
         CrystalHollowsLobbyState lobby = new CrystalHollowsLobbyState("test", 0, 0);
         set(tracker, "active", true);
         set(tracker, "lobby", lobby);
@@ -311,7 +311,7 @@ class CrystalHollowsTrackerBatchTest {
             ActiveGroupManager manager = new ActiveGroupManager();
             manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
             CrystalHollowsStore store = new CrystalHollowsStore(directory.resolve("shared-" + sharedFirst + ".json"));
-            CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), store);
+            CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), store);
             set(tracker, "active", true);
             set(tracker, "lobby", new CrystalHollowsLobbyState("test", System.currentTimeMillis(), 0));
             StructureSighting compass = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
@@ -353,7 +353,7 @@ class CrystalHollowsTrackerBatchTest {
     void localDetectionEndsNavigationAndSurvivesProjectionRebuild() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         CrystalHollowsStore store = new CrystalHollowsStore(directory.resolve("arrival.json"));
-        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), store);
+        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), store);
         CrystalHollowsLobbyState lobby = new CrystalHollowsLobbyState("test", System.currentTimeMillis(), 0);
         set(tracker, "active", true);
         set(tracker, "lobby", lobby);
@@ -389,7 +389,7 @@ class CrystalHollowsTrackerBatchTest {
     void batchesProjectionAndSnapshotButOutsideMergesStayImmediate() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         CrystalHollowsStore store = new CrystalHollowsStore(directory.resolve("structures.json"));
-        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), store);
+        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, structureWaypointsOn(), store);
         CrystalHollowsLobbyState lobby = new CrystalHollowsLobbyState("test", System.currentTimeMillis(), 0);
         set(tracker, "active", true);
         set(tracker, "serverId", "test");
@@ -434,5 +434,11 @@ class CrystalHollowsTrackerBatchTest {
         } catch (ReflectiveOperationException failure) {
             throw new AssertionError(failure);
         }
+    }
+
+    private static WaypointerConfig structureWaypointsOn() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setCrystalHollowsStructureWaypoints(true);
+        return config;
     }
 }

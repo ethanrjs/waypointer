@@ -80,9 +80,9 @@ public final class WaypointCodec {
     private static final int GROUP_FLAG_V9_PERSISTENT_META = 1 << 7;
     private static final int V9_GROUP_META_SKIP_AHEAD = 1 << 2;
     private static final int V9_GROUP_META_RESERVED_MASK = 0xF8;
-    private static final int DEFAULT_STATIC_COLOR = Waypoint.DEFAULT_COLOR;
-    private static final int DEFAULT_GRADIENT_START_COLOR = 0x00BFFF;
-    private static final int DEFAULT_GRADIENT_END_COLOR = 0xFF3040;
+    static final int DEFAULT_STATIC_COLOR = Waypoint.DEFAULT_COLOR;
+    static final int DEFAULT_GRADIENT_START_COLOR = 0x00BFFF;
+    static final int DEFAULT_GRADIENT_END_COLOR = 0xFF3040;
 
     private static final int FIXED_X_BITS = 12;
     private static final int FIXED_Y_BITS = 9;
@@ -398,6 +398,10 @@ public final class WaypointCodec {
             throw new IllegalArgumentException("not a Waypointer export (expected " + MAGIC + " prefix)");
         }
         String payload = trimmed.substring(MAGIC.length());
+        if (V11Codec.isPayload(trimmed)) {
+            V11Codec.Decoded v11 = V11Codec.decode(trimmed);
+            return new Decoded(v11.groups(), v11.label(), v11.metadata());
+        }
         Exception v10Failure = null;
         boolean committedV10 = false;
         V10Transport.CheckedFrame v10Frame = null;
@@ -548,6 +552,14 @@ public final class WaypointCodec {
         Exception v10Failure = null;
         boolean committedV10 = false;
         V10Transport.CheckedFrame v10Frame = null;
+        if (V11Codec.isPayload(trimmed)) {
+            try {
+                return debugDecodePayloadV11(trimmed, payload, t0,
+                        V10Transport.probe(payload, V11Codec.WIRE_VERSION));
+            } catch (IOException | IllegalArgumentException failure) {
+                throw new IllegalArgumentException("codec debug decode failed: v11=" + failure.getMessage(), failure);
+            }
+        }
         if (V10Transport.looksLikeV10(payload)) {
             try {
                 v10Frame = V10Transport.probe(payload);
@@ -1032,6 +1044,28 @@ public final class WaypointCodec {
                     ? "V10_DUNGEON_DIRECT" : "V10_DUNGEON_DEFLATE";
             default -> "V10_KIND_" + frame.contentKind();
         };
+        return debugFromDecoded(input, payload, startNanos, frame, transport, decoded, semantic,
+                coordinateMode, V10_WIRE_VERSION,
+                frame.contentKind() == V10GeneralRouteCodec.LABELED_CONTENT_KIND);
+    }
+
+    private static DecodeDebug debugDecodePayloadV11(String input, String payload, long startNanos,
+                                                      V10Transport.CheckedFrame frame)
+            throws IOException {
+        V10Transport.Frame transport = V10Transport.decode(payload);
+        V11Codec.Decoded v11 = V11Codec.decode(input);
+        Decoded decoded = new Decoded(v11.groups(), v11.label(), v11.metadata());
+        String coordinateMode = (frame.contentKind() == V11Codec.KIND_COMPACT ? "V11_COMPACT" : "V11_JSON")
+                + (frame.mode() == V10Transport.MODE_DIRECT ? "_DIRECT" : "_DEFLATE");
+        return debugFromDecoded(input, payload, startNanos, frame, transport, decoded, frame.semantic(),
+                coordinateMode, V11Codec.WIRE_VERSION, !v11.label().isEmpty());
+    }
+
+    private static DecodeDebug debugFromDecoded(String input, String payload, long startNanos,
+                                                V10Transport.CheckedFrame frame,
+                                                V10Transport.Frame transport, Decoded decoded,
+                                                byte[] semantic, String coordinateMode,
+                                                int version, boolean labeled) {
         List<DecodeDebug.GroupDebug> groupDebug = new ArrayList<>(decoded.groups().size());
         boolean includesNames = false;
         for (int groupIndex = 0; groupIndex < decoded.groups().size(); groupIndex++) {
@@ -1082,9 +1116,9 @@ public final class WaypointCodec {
                 semantic.length,
                 ratio,
                 frame.header(),
-                V10_WIRE_VERSION,
+                version,
                 includesNames,
-                frame.contentKind() == V10GeneralRouteCodec.LABELED_CONTENT_KIND,
+                labeled,
                 false,
                 false,
                 decoded.label(),

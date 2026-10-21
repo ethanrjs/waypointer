@@ -107,28 +107,9 @@ class SettingsScreenTest {
     }
 
     @Test
-    void featureBloatCategoryRequiresTheSystemOptIn() {
-        WaypointerConfig config = new WaypointerConfig();
-        assertFalse(SettingsScreen.categoryAvailable("feature_bloat", config));
-        assertTrue(SettingsScreen.categoryAvailable("system", config));
-        config.setEnableFeatureBloat(true);
-        assertTrue(SettingsScreen.categoryAvailable("feature_bloat", config));
-    }
-
-    @Test
     void childGuidesStopAtTheLastVisibleChildsBranch() {
         assertEquals(28, SettingsScreen.childGuideHeight(28, false));
         assertEquals(13, SettingsScreen.childGuideHeight(28, true));
-    }
-
-    @Test
-    void featureBloatRowsAreHiddenUntilEnabled() {
-        WaypointerConfig config = new WaypointerConfig();
-        Setting preview = SettingsCatalog.byId("showExportRoutePreview");
-        assertFalse(SettingsScreen.featureAvailable(preview, config));
-        assertTrue(SettingsScreen.featureAvailable(SettingsCatalog.byId("boxStyle"), config));
-        config.setEnableFeatureBloat(true);
-        assertTrue(SettingsScreen.featureAvailable(preview, config));
     }
 
     @Test

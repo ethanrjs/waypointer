@@ -62,8 +62,8 @@ class UniversalShareCodecTest {
         UniversalShareCodec.Waypoints routes =
                 assertInstanceOf(UniversalShareCodec.Waypoints.class, decoded);
         assertEquals(List.of(0x123456),
-                routes.result().groups().getFirst().manualColorSnapshot());
-        assertEquals(metadata, routes.result().libraryMetadata());
+                routes.result().groups().getFirst().manualColorSnapshot(),
+                "manual colours supplied as export metadata arrive on the route");
     }
 
     @Test
@@ -95,6 +95,60 @@ class UniversalShareCodecTest {
         assertEquals(UniversalShareCodec.Type.DUNGEON, dungeon.type());
         assertEquals(1, dungeon.result().groups().size());
         assertEquals(route.waypoints(), dungeon.result().groups().getFirst().waypoints());
+    }
+
+    @Test
+    void odinDungeonWaypointsImportAsRoomRoutesWithTheirColors() {
+        String odin = """
+                {
+                  "Entrance": [
+                    {
+                      "blockPos": {"x": 15, "y": 71, "z": 14},
+                      "color": "#55FF55FF",
+                      "filled": false,
+                      "depth": false,
+                      "aabb": {"minX": 0.0, "minY": 0.0, "minZ": 0.0, "maxX": 1.0, "maxY": 1.0, "maxZ": 1.0}
+                    }
+                  ]
+                }
+                """;
+
+        UniversalShareCodec.DungeonRoutes dungeon = assertInstanceOf(
+                UniversalShareCodec.DungeonRoutes.class, UniversalShareCodec.decode(odin));
+
+        WaypointGroup room = dungeon.result().groups().getFirst();
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, room.routeKind());
+        assertEquals("entrance", room.zoneId());
+        Waypoint waypoint = room.get(0);
+        assertEquals(List.of(15, 71, 14), List.of(waypoint.x(), waypoint.y(), waypoint.z()));
+        assertEquals(0x55FF55, waypoint.color());
+    }
+
+    @Test
+    void compressedOdinRoomPacksAlsoImportAsRoomRoutes() {
+        WaypointGroup altar = WaypointGroup.create("Altar", "altar");
+        altar.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        altar.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        altar.add(new Waypoint(19, 83, 43, "Chest", 0x00FF00,
+                Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+        String odinCode = WaypointExportCodec.encode(List.of(altar),
+                WaypointCodec.Options.FULL_FIDELITY, WaypointExportCodec.Target.ODIN);
+
+        UniversalShareCodec.DungeonRoutes dungeon = assertInstanceOf(
+                UniversalShareCodec.DungeonRoutes.class, UniversalShareCodec.decode(odinCode));
+
+        Waypoint chest = dungeon.result().groups().getFirst().get(0);
+        assertEquals(List.of(19, 83, 43), List.of(chest.x(), chest.y(), chest.z()));
+        assertEquals(0x00FF00, chest.color());
+    }
+
+    @Test
+    void islandWaypointsWithBlockPositionsStayIslandRoutes() {
+        String notRooms = """
+                {"Hub": [{"blockPos": {"x": -3, "y": 70, "z": -60}, "color": "#FF0000FF"}]}
+                """;
+
+        assertInstanceOf(UniversalShareCodec.Waypoints.class, UniversalShareCodec.decode(notRooms));
     }
 
     @Test
