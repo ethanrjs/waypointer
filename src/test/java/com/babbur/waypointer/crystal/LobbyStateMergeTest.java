@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.babbur.waypointer.crystal.compass.Crystal;
 import com.babbur.waypointer.crystal.compass.CrystalState;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -67,6 +68,38 @@ class LobbyStateMergeTest {
         assertEquals(List.of(area), arrivedFirst.localSightings());
         assertTrue(arrivedFirst.clearRemoteSightings(SkyblockerStructureProtocol.SOURCE));
         assertEquals(List.of(area), arrivedFirst.sightings());
+    }
+
+    @Test
+    void waypointerDetectionsBeatSkyblockerSharesAndAreasNeverBeatEither() {
+        var structure = CrystalHollowsStructure.JUNGLE_TEMPLE;
+        var skyblocker = new StructureSighting(structure, 300, 100, 300,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 1);
+        var area = new StructureSighting(structure, 330, 100, 320, SightingConfidence.ROUGH_AREA, "sidebar", 3);
+        var farArea = new StructureSighting(structure, 600, 100, 600, SightingConfidence.ROUGH_AREA, "sidebar", 3);
+        List<StructureSighting> waypointer = new ArrayList<>();
+        for (var local : List.of(SightingConfidence.ENTITY, SightingConfidence.COMPASS, SightingConfidence.NPC_CHAT)) {
+            waypointer.add(new StructureSighting(structure, 310, 100, 310, local, "local", 2));
+        }
+        for (var evidence : List.of(SightingConfidence.ENTITY, SightingConfidence.COMPASS, SightingConfidence.NPC_CHAT)) {
+            waypointer.add(new StructureSighting(structure, 310, 100, 310, SightingConfidence.SHARED_REMOTE,
+                    "relay:45fdbbc1-e3dd-4a82-a898-1d43b48ebf07", 2, List.of(), "", evidence));
+        }
+        for (var detection : waypointer) {
+            for (var order : List.of(List.of(skyblocker, detection), List.of(detection, skyblocker))) {
+                var lobby = lobby();
+                order.forEach(lobby::merge);
+                assertEquals(List.of(detection), lobby.sightings(), detection + " after " + order.getFirst());
+                lobby.merge(area);
+                lobby.merge(farArea);
+                assertEquals(List.of(detection), lobby.sightings(), "an area estimate never replaces " + detection);
+            }
+        }
+        for (var order : List.of(List.of(skyblocker, area), List.of(area, skyblocker))) {
+            var lobby = lobby();
+            order.forEach(lobby::merge);
+            assertEquals(List.of(skyblocker), lobby.sightings());
+        }
     }
 
     @Test
