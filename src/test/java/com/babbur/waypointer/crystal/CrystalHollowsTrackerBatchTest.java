@@ -11,6 +11,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Zone;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ class CrystalHollowsTrackerBatchTest {
     @TempDir Path directory;
 
     @Test
-    void fairyGrottoSidebarCreatesAndCorrectsWaypointAtReportedPosition() throws Exception {
+    void fairyGrottoSidebarCreatesTheWaypointAndNeverMovesASharedOne() throws Exception {
         for (boolean hasRemote : new boolean[] {false, true}) {
             var manager = new ActiveGroupManager();
             var config = structureWaypointsOn();
@@ -36,23 +37,49 @@ class CrystalHollowsTrackerBatchTest {
             if (hasRemote) lobby.merge(remote);
             tracker.sampleRoughArea(246.220, 104, 625.300);
             assertEquals(1, lobby.sightings().size());
-            var observed = lobby.sightings().getFirst();
+            var observed = lobby.localSightings().getFirst();
             assertEquals(new CrystalHollowsPosition(246, 104, 625), observed.position());
             assertEquals(SightingConfidence.ROUGH_AREA, observed.confidence());
             assertEquals("sidebar", observed.source());
+            var shown = hasRemote ? remote.position() : observed.position();
             var group = manager.get(CrystalHollowsStructureFolder.GROUP_PREFIX + "fairy_grotto");
             assertNotNull(group, "sidebar alone must create the generated waypoint");
-            assertEquals(246, group.get(0).x());
-            assertEquals(104, group.get(0).y());
-            assertEquals(625, group.get(0).z());
+            assertEquals(shown.x(), group.get(0).x());
+            assertEquals(shown.y(), group.get(0).y());
+            assertEquals(shown.z(), group.get(0).z());
             assertEquals(hasRemote ? CrystalHollowsLobbyState.MergeResult.IGNORED
-                    : CrystalHollowsLobbyState.MergeResult.REFINED, lobby.merge(remote));
+                    : CrystalHollowsLobbyState.MergeResult.UPGRADED, lobby.merge(remote));
             assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(remote));
-            assertFalse(lobby.sightings().getFirst().approximate());
+            assertEquals(remote, lobby.sightings().getFirst());
             tracker.sampleRoughArea(252.220, 104, 629.300);
-            assertEquals(new CrystalHollowsPosition(249, 104, 627), lobby.sightings().getFirst().position());
+            assertEquals(remote, lobby.sightings().getFirst(), "walking around inside keeps the shared waypoint");
+            assertEquals(new CrystalHollowsPosition(252, 104, 629), lobby.localSightings().getFirst().position());
             assertEquals(1, lobby.sightings().size(), "refinement must not duplicate the grotto");
         }
+    }
+
+    @Test
+    void aShareAtTheEdgeOfAnAreaWeStoodInIsNotCalledIncorrect() throws Exception {
+        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), structureWaypointsOn(), null);
+        var lobby = new CrystalHollowsLobbyState("m14ap", 1, 17);
+        set(tracker, "active", true);
+        set(tracker, "lobby", lobby);
+        var remote = new StructureSighting(CrystalHollowsStructure.JUNGLE_TEMPLE, 300, 100, 300,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 1);
+        lobby.merge(remote);
+        @SuppressWarnings("unchecked")
+        var sessions = (Map<CrystalHollowsStructure, CrystalHollowsAreaSession>) get(tracker, "areaSessions");
+        sessions.put(remote.structure(), new CrystalHollowsAreaSession(remote.structure(), 312, 100, 305));
+        for (int i = 0; i < 60; i++) {
+            assertTrue(tracker.checkIncorrectStructures("Jungle", 300.5, 100, 300.5, true).isEmpty());
+        }
+        assertEquals(List.of(remote), lobby.sightings());
+        sessions.clear();
+        for (int i = 0; i < 29; i++) {
+            assertTrue(tracker.checkIncorrectStructures("Jungle", 300.5, 100, 300.5, true).isEmpty());
+        }
+        assertEquals(List.of(remote.structure()),
+                tracker.checkIncorrectStructures("Jungle", 300.5, 100, 300.5, true));
     }
 
     @Test

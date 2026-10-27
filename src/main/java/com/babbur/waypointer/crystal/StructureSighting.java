@@ -40,10 +40,8 @@ public record StructureSighting(
         this(structure, x, y, z, confidence, source, atMillis, List.of(), "");
     }
 
-    public static final String CONFIRMED_AREA = "confirmed by share";
-
     public boolean approximate() {
-        return confidence == SightingConfidence.ROUGH_AREA && !CONFIRMED_AREA.equals(note);
+        return confidence == SightingConfidence.ROUGH_AREA;
     }
 
     public CrystalHollowsPosition position() {

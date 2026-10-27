@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.babbur.waypointer.crystal.compass.Crystal;
 import com.babbur.waypointer.crystal.compass.CrystalState;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -39,7 +40,7 @@ class LobbyStateMergeTest {
     }
 
     @Test
-    void aShareNearTheAreaWeAreInConfirmsItSoTheMarkerIsNotApproximate() {
+    void walkingIntoTheAreaKeepsTheSharedWaypointAndHoldsOurEstimateBehindIt() {
         var structure = CrystalHollowsStructure.MINES_OF_DIVAN;
         var shared = new StructureSighting(structure, 720, 100, 300,
                 SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
@@ -48,39 +49,70 @@ class LobbyStateMergeTest {
 
         var lobby = lobby();
         lobby.merge(shared);
-        lobby.merge(area);
-        var shown = lobby.sightings().getFirst();
-        assertEquals(area.position(), shown.position(), "our own estimate is shown");
-        assertFalse(shown.approximate(), "a known structure never turns into an approximate marker");
-        lobby.merge(new StructureSighting(structure, 700, 110, 320, SightingConfidence.ROUGH_AREA, "sidebar", 3));
-        assertFalse(lobby.sightings().getFirst().approximate(), "refining keeps the confirmation");
-        assertEquals(700, lobby.sightings().getFirst().x());
-
-        var arrivedFirst = lobby();
-        arrivedFirst.merge(area);
-        assertTrue(arrivedFirst.sightings().getFirst().approximate());
-        assertEquals(CrystalHollowsLobbyState.MergeResult.REFINED, arrivedFirst.merge(shared));
-        assertEquals(area.position(), arrivedFirst.sightings().getFirst().position());
-        assertFalse(arrivedFirst.sightings().getFirst().approximate());
-    }
-
-    @Test
-    void aSharePositionFarFromTheAreaWeAreInLosesToTheArea() {
-        var structure = CrystalHollowsStructure.MINES_OF_DIVAN;
-        var wrong = new StructureSighting(structure, 300, 100, 300,
-                SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
-        var area = new StructureSighting(structure, 700, 110, 320,
-                SightingConfidence.ROUGH_AREA, "sidebar", 2);
-        var lobby = lobby();
-        lobby.merge(wrong);
-        lobby.merge(area);
-        assertEquals(List.of(area), lobby.sightings());
+        assertEquals(CrystalHollowsLobbyState.MergeResult.REFINED, lobby.merge(area));
+        assertEquals(List.of(shared), lobby.sightings(), "the waypoint the player followed stays put");
+        assertEquals(List.of(area), lobby.localSightings());
+        var walked = new StructureSighting(structure, 700, 110, 320, SightingConfidence.ROUGH_AREA, "sidebar", 3);
+        assertEquals(CrystalHollowsLobbyState.MergeResult.REFINED, lobby.merge(walked));
+        assertEquals(List.of(shared), lobby.sightings());
+        assertEquals(List.of(walked), lobby.localSightings());
+        assertTrue(lobby.rejectSkyblocker(shared));
+        assertEquals(List.of(walked), lobby.sightings(), "our estimate returns if the share is proven wrong");
         assertTrue(lobby.sightings().getFirst().approximate());
 
         var arrivedFirst = lobby();
         arrivedFirst.merge(area);
-        assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, arrivedFirst.merge(wrong));
+        assertTrue(arrivedFirst.sightings().getFirst().approximate());
+        assertEquals(CrystalHollowsLobbyState.MergeResult.UPGRADED, arrivedFirst.merge(shared));
+        assertEquals(List.of(shared), arrivedFirst.sightings());
+        assertEquals(List.of(area), arrivedFirst.localSightings());
+        assertTrue(arrivedFirst.clearRemoteSightings(SkyblockerStructureProtocol.SOURCE));
         assertEquals(List.of(area), arrivedFirst.sightings());
+    }
+
+    @Test
+    void waypointerDetectionsBeatSkyblockerSharesAndAreasNeverBeatEither() {
+        var structure = CrystalHollowsStructure.JUNGLE_TEMPLE;
+        var skyblocker = new StructureSighting(structure, 300, 100, 300,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 1);
+        var area = new StructureSighting(structure, 330, 100, 320, SightingConfidence.ROUGH_AREA, "sidebar", 3);
+        var farArea = new StructureSighting(structure, 600, 100, 600, SightingConfidence.ROUGH_AREA, "sidebar", 3);
+        List<StructureSighting> waypointer = new ArrayList<>();
+        for (var local : List.of(SightingConfidence.ENTITY, SightingConfidence.COMPASS, SightingConfidence.NPC_CHAT)) {
+            waypointer.add(new StructureSighting(structure, 310, 100, 310, local, "local", 2));
+        }
+        for (var evidence : List.of(SightingConfidence.ENTITY, SightingConfidence.COMPASS, SightingConfidence.NPC_CHAT)) {
+            waypointer.add(new StructureSighting(structure, 310, 100, 310, SightingConfidence.SHARED_REMOTE,
+                    "relay:45fdbbc1-e3dd-4a82-a898-1d43b48ebf07", 2, List.of(), "", evidence));
+        }
+        for (var detection : waypointer) {
+            for (var order : List.of(List.of(skyblocker, detection), List.of(detection, skyblocker))) {
+                var lobby = lobby();
+                order.forEach(lobby::merge);
+                assertEquals(List.of(detection), lobby.sightings(), detection + " after " + order.getFirst());
+                lobby.merge(area);
+                lobby.merge(farArea);
+                assertEquals(List.of(detection), lobby.sightings(), "an area estimate never replaces " + detection);
+            }
+        }
+        for (var order : List.of(List.of(skyblocker, area), List.of(area, skyblocker))) {
+            var lobby = lobby();
+            order.forEach(lobby::merge);
+            assertEquals(List.of(skyblocker), lobby.sightings());
+        }
+    }
+
+    @Test
+    void aShareAtTheFarSideOfALargeAreaIsStillTheSameStructure() {
+        var structure = CrystalHollowsStructure.LOST_PRECURSOR_CITY;
+        var shared = new StructureSighting(structure, 600, 110, 600,
+                SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
+        var entered = new StructureSighting(structure, 720, 100, 700,
+                SightingConfidence.ROUGH_AREA, "sidebar", 2);
+        var lobby = lobby();
+        lobby.merge(shared);
+        lobby.merge(entered);
+        assertEquals(List.of(shared), lobby.sightings());
     }
 
     @Test

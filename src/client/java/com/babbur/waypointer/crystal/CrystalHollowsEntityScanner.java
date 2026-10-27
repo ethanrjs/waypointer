@@ -11,6 +11,7 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
@@ -34,7 +35,9 @@ public final class CrystalHollowsEntityScanner {
             if (processedIds.contains(entity.getId())) continue;
             Vec3 target = entity.getEyePosition();
             double distance = playerEye.distanceTo(target);
-            if (distance > EntityVisibility.MAX_DISTANCE) continue;
+            double cameraDistanceSquared = client.getEntityRenderDispatcher().distanceToSqr(entity);
+            if (distance > EntityVisibility.MAX_DISTANCE
+                    && !EntityVisibility.nameTagInRange(cameraDistanceSquared)) continue;
             if (MagmaCubeCompat.isLargeMagmaCube(entity)) {
                 boolean matchesBal = sidebarStructure == CrystalHollowsStructure.KHAZAD_DUM;
                 if (CrystalHollowsGeometry.insideHollows(
@@ -53,7 +56,9 @@ public final class CrystalHollowsEntityScanner {
             if (anchor.isEmpty()
                     || !CrystalHollowsGeometry.insideHollows(
                             entity.getX(), entity.getY(), entity.getZ())) continue;
-            if (!EntityVisibility.shouldAccept(
+            boolean nameTagSeen = EntityVisibility.nameTagThroughWalls(
+                    anchor.orElseThrow().nameTag(), entity.isDiscrete(), cameraDistanceSquared);
+            if (!nameTagSeen && !EntityVisibility.shouldAccept(
                     distance,
                     anchor.isPresent(),
                     sidebarSame,
@@ -96,7 +101,8 @@ public final class CrystalHollowsEntityScanner {
             String name = entity.getCustomName().getString();
             Optional<CrystalHollowsEntityAnchor.Match> match = CrystalHollowsEntityAnchor.match(name);
             if (match.isPresent() && !playerNames.contains(cleanName(name))) {
-                return Optional.of(new NamedAnchor(name, match.orElseThrow()));
+                return Optional.of(new NamedAnchor(name, match.orElseThrow(),
+                        entity instanceof ArmorStand && entity.isCustomNameVisible()));
             }
         }
         if (!(entity instanceof Player)) return Optional.empty();
@@ -105,13 +111,13 @@ public final class CrystalHollowsEntityScanner {
                 && CrystalHollowsEntityAnchor.isCorleoneProfile(player.getName().getString(),
                         player.getAttributeBaseValue(Attributes.MAX_HEALTH))) {
             return Optional.of(new NamedAnchor("Boss Corleone",
-                    CrystalHollowsEntityAnchor.match("Boss Corleone").orElseThrow()));
+                    CrystalHollowsEntityAnchor.match("Boss Corleone").orElseThrow(), false));
         }
         String[] names = {entity.getName().getString(), entity.getDisplayName().getString()};
         for (String name : names) {
             Optional<CrystalHollowsEntityAnchor.Match> match = CrystalHollowsEntityAnchor.match(name);
             if (match.isPresent() && !playerNames.contains(cleanName(name))) {
-                return Optional.of(new NamedAnchor(name, match.orElseThrow()));
+                return Optional.of(new NamedAnchor(name, match.orElseThrow(), false));
             }
         }
         return Optional.empty();
@@ -145,5 +151,5 @@ public final class CrystalHollowsEntityScanner {
                 Mth.floor(entity.getZ()) + offsetZ);
     }
 
-    private record NamedAnchor(String name, CrystalHollowsEntityAnchor.Match match) {}
+    private record NamedAnchor(String name, CrystalHollowsEntityAnchor.Match match, boolean nameTag) {}
 }

@@ -58,6 +58,8 @@ public final class CrystalHollowsTracker {
     private int currentDay = -1;
     private CrystalHollowsStructure sidebarStructure;
     private CrystalHollowsAreaSession areaSession;
+    private final EnumMap<CrystalHollowsStructure, CrystalHollowsAreaSession> areaSessions =
+            new EnumMap<>(CrystalHollowsStructure.class);
     private CrystalHollowsPosition lastRoughPosition;
     private boolean lastStructureWaypoints;
     private boolean lastHideStructuresFolder;
@@ -507,6 +509,7 @@ public final class CrystalHollowsTracker {
         serverId = null;
         sidebarStructure = null;
         areaSession = null;
+        areaSessions.clear();
         lastRoughPosition = null;
         processedEntityIds.clear();
         tabCrystalStates.clear();
@@ -606,8 +609,8 @@ public final class CrystalHollowsTracker {
             return;
         }
         if (areaSession == null || areaSession.structure() != next) {
-            areaSession = new CrystalHollowsAreaSession(next,
-                    client.player.getX(), client.player.getY(), client.player.getZ());
+            areaSession = areaSessions.computeIfAbsent(next, structure -> new CrystalHollowsAreaSession(
+                    structure, client.player.getX(), client.player.getY(), client.player.getZ()));
             lastRoughPosition = null;
         }
     }
@@ -621,6 +624,8 @@ public final class CrystalHollowsTracker {
         List<CrystalHollowsStructure> rejected = new ArrayList<>();
         for (StructureSighting sighting : List.copyOf(lobby.sightings())) {
             if (!CrystalHollowsDetectionPolicy.contradictsSkyblocker(sighting, area, x, y, z)) continue;
+            CrystalHollowsAreaSession visited = areaSessions.get(sighting.structure());
+            if (visited != null && visited.stoodNear(sighting.position())) continue;
             if (incorrectStructureTicks.merge(sighting, 2, Integer::sum) < 60) continue;
             if (lobby.rejectSkyblocker(sighting)) {
                 rejected.add(sighting.structure());
@@ -830,6 +835,7 @@ public final class CrystalHollowsTracker {
         hasKingsScent = false;
         sidebarStructure = null;
         areaSession = null;
+        areaSessions.clear();
         lastRoughPosition = null;
         delayTicks = TELEPORT_DELAY_TICKS;
         if (compassController != null) compassController.reset();

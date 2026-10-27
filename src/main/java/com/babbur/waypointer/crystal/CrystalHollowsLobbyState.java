@@ -23,7 +23,6 @@ public final class CrystalHollowsLobbyState {
     private static final double EQUAL_REFINEMENT_DISTANCE_SQUARED = 2.0 * 2.0;
     private static final int MAX_WISHING_TARGETS = 8;
     private static final double COMPASS_CONFIRM_DISTANCE_SQUARED = 80.0 * 80.0;
-    private static final double AREA_CONFIRM_DISTANCE_SQUARED = 96.0 * 96.0;
 
     private final String serverId;
     private final long firstSeenMillis;
@@ -259,14 +258,13 @@ public final class CrystalHollowsLobbyState {
         boolean incomingRemote = incoming.confidence() == SightingConfidence.SHARED_REMOTE;
         boolean existingRemote = existing.confidence() == SightingConfidence.SHARED_REMOTE;
         int confidence = Integer.compare(evidenceStrength(incoming), evidenceStrength(existing));
-        if (localSidebar(incoming) && existingRemote && existing.remoteEvidence() == null) {
-            sightings.set(index, withinArea(existing, incoming)
-                    ? incoming.withNote(StructureSighting.CONFIRMED_AREA) : incoming);
+        if (localSidebar(incoming) && existingRemote && existing.remoteEvidence() == null
+                && !sameArea(existing, incoming)) {
+            sightings.set(index, incoming);
             return MergeResult.UPGRADED;
-        } else if (localSidebar(existing) && incomingRemote && incoming.remoteEvidence() == null) {
-            if (!withinArea(existing, incoming) || !existing.approximate()) return MergeResult.IGNORED;
-            sightings.set(index, existing.withNote(StructureSighting.CONFIRMED_AREA));
-            return MergeResult.REFINED;
+        } else if (localSidebar(existing) && incomingRemote && incoming.remoteEvidence() == null
+                && !sameArea(existing, incoming)) {
+            return MergeResult.IGNORED;
         }
         if (confidence == 0 && incomingRemote != existingRemote) {
             confidence = incomingRemote ? -1 : 1;
@@ -287,8 +285,7 @@ public final class CrystalHollowsLobbyState {
                 if (samePosition(existing, incoming) && incoming.atMillis() <= existing.atMillis()) {
                     return MergeResult.IGNORED;
                 }
-                sightings.set(index, existing.approximate() ? incoming
-                        : incoming.withNote(StructureSighting.CONFIRMED_AREA));
+                sightings.set(index, incoming);
                 return MergeResult.REFINED;
             }
             if (existing.position().distanceSquared(incoming.position())
@@ -332,8 +329,8 @@ public final class CrystalHollowsLobbyState {
                 : sighting.remoteEvidence()).ordinal();
     }
 
-    private static boolean withinArea(StructureSighting a, StructureSighting b) {
-        return a.position().distanceSquared(b.position()) <= AREA_CONFIRM_DISTANCE_SQUARED;
+    private static boolean sameArea(StructureSighting a, StructureSighting b) {
+        return CrystalHollowsAreaSession.sameArea(a.position(), b.position());
     }
 
     private static boolean localSidebar(StructureSighting sighting) {

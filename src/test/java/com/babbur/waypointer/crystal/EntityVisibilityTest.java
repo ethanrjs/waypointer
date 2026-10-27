@@ -30,6 +30,14 @@ class EntityVisibilityTest {
     }
 
     @Test
+    void nameTagsCountThroughWallsWhereTheGameDrawsThem() {
+        assertTrue(EntityVisibility.nameTagThroughWalls(true, false, 63.9 * 63.9));
+        assertFalse(EntityVisibility.nameTagThroughWalls(true, false, 64.0 * 64.0), "beyond nametag range");
+        assertFalse(EntityVisibility.nameTagThroughWalls(true, true, 10.0 * 10.0), "crouching hides it behind walls");
+        assertFalse(EntityVisibility.nameTagThroughWalls(false, false, 10.0 * 10.0), "no nametag shown");
+    }
+
+    @Test
     void raycastsOnlyMatchedEntitiesWithoutSidebarConfirmation() {
         AtomicInteger clips = new AtomicInteger();
 
