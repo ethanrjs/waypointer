@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -32,8 +33,8 @@ public final class AddNamedWaypointScreen extends Screen {
     private static final int PANEL_H = 98;
     private static final int OPTIONS_PANEL_H = 158;
     private static final int DUNGEON_OPTIONS_PANEL_H = 174;
-    private static final int GLFW_KEY_ENTER = 257;
-    private static final int GLFW_KEY_KP_ENTER = 335;
+    private static final int KEY_ENTER = 257;
+    private static final int KEY_KP_ENTER = 335;
     private static final int MAX_NAME_LENGTH = 64;
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
     private static final int DUNGEON_TYPE_ROW_WIDTH = PANEL_W - PAD_OUTER * 2;
@@ -262,7 +263,7 @@ public final class AddNamedWaypointScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
-        if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        if (key == KEY_ENTER || key == KEY_KP_ENTER) {
             createAndClose();
             return true;
         }
@@ -564,7 +565,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             int typeIndex = dungeonTypeAt(event.x(), event.y());
             if (typeIndex >= 0) {
                 selectedDungeonType = toggleDungeonType(

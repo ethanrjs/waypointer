@@ -149,11 +149,12 @@ public final class OverlayPass implements AutoCloseable {
         GpuTextureView color = OverlayPassCompat.mainColorView();
         GpuTextureView depth = depthOverride != null ? depthOverride : OverlayPassCompat.mainDepthView();
         int[] drawCalls = {0};
-        try (RenderPass pass = OverlayPassCompat.beginPass(() -> "Waypointer overlay", color, depth)) {
+        CommandEncoder drawEncoder = GpuMeshCompat.createCommandEncoder();
+        try (RenderPass pass = OverlayPassCompat.beginPass(drawEncoder, () -> "Waypointer overlay", color, depth)) {
             DrawSchedule.plan(streams, (stream, start, end) -> {
                 MeshBucket bucket = stream.bucket;
                 OverlayPipelines.Slot slot = pipelines.slot(bucket);
-                pass.setPipeline(slot.forCompositing(compositing));
+                OverlayPassCompat.setPipeline(pass, slot.forCompositing(compositing));
                 OverlayPassCompat.bindUniforms(pass, transforms, projection, fog);
                 if (bucket.texture() != null
                         && !OverlayPassCompat.bindTexture(pass, "Sampler0", textures.get(bucket.texture()))) {
@@ -164,6 +165,7 @@ public final class OverlayPass implements AutoCloseable {
                 drawCalls[0]++;
             });
         }
+        GpuMeshCompat.submit(drawEncoder);
         lastDrawCalls = drawCalls[0];
     }
 

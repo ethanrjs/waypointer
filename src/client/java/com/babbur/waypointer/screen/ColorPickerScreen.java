@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -291,7 +292,7 @@ public final class ColorPickerScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double mx = event.x(), my = event.y();
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             if (inside(mx, my, svX, svY, SV_SIZE, SV_SIZE)) {
                 drag = Drag.SV;
                 updateSv(mx, my);

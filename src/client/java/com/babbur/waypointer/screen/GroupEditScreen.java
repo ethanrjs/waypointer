@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.WaypointerClient;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
@@ -186,11 +187,11 @@ public final class GroupEditScreen extends Screen {
                 }
             };
 
-    private static final int GLFW_KEY_ESCAPE   = 256;
-    private static final int GLFW_KEY_ENTER    = 257;
-    private static final int GLFW_KEY_TAB      = 258;
-    private static final int GLFW_KEY_KP_ENTER = 335;
-    private static final int GLFW_KEY_MENU     = 348;
+    private static final int KEY_ESCAPE   = 256;
+    private static final int KEY_ENTER    = 257;
+    private static final int KEY_TAB      = 258;
+    private static final int KEY_KP_ENTER = 335;
+    private static final int KEY_MENU     = 348;
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
         super(Component.translatable("waypointer.screen.group_edit.title", group.name()));
@@ -2279,8 +2280,8 @@ public final class GroupEditScreen extends Screen {
 
     private static boolean hasShiftDown() {
         var win = Minecraft.getInstance().getWindow();
-        return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(win, 344  );
+        return InputCompat.isKeyDown(win, InputConstants.KEY_LSHIFT)
+                || InputCompat.isKeyDown(win, InputConstants.KEY_RSHIFT);
     }
 
     private int swatchIndexAt(double mx, double my) {
@@ -2548,35 +2549,35 @@ public final class GroupEditScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int k = event.key();
         if (!(getFocused() instanceof EditBox)
-                && (InputConstants.isKeyDown(minecraft.getWindow(), 341)
-                || InputConstants.isKeyDown(minecraft.getWindow(), 345))
+                && (InputCompat.isKeyDown(minecraft.getWindow(), InputConstants.KEY_LCONTROL)
+                || InputCompat.isKeyDown(minecraft.getWindow(), InputConstants.KEY_RCONTROL))
                 && (k == 90 || k == 89)) {
             restoreEdit(k == 89 || hasShiftDown());
             return true;
         }
         if (contextMenu.keyPressed(k)) return true;
-        if (!peeking && k == GLFW_KEY_MENU && hasSelectedWaypoint()) {
+        if (!peeking && k == KEY_MENU && hasSelectedWaypoint()) {
             Layout layout = layout();
             int rowBottom = layout.top() + ROUTE_LIST_INSET - scrollOffset
                     + selectedIndex * waypointRowPitch() + ROW_H;
             openWaypointMenu(selectedIndex, layout.mainLeft() + GAP_SECTION, rowBottom);
             return true;
         }
-        if (k == GLFW_KEY_ESCAPE && dungeonTypePickerIndex >= 0) {
+        if (k == KEY_ESCAPE && dungeonTypePickerIndex >= 0) {
             dungeonTypePickerIndex = -1;
             return true;
         }
         if (editingIndex >= 0) {
-            if (k == GLFW_KEY_ESCAPE) {
+            if (k == KEY_ESCAPE) {
                 cancelLabelEdit();
                 return true;
             }
-            if (k == GLFW_KEY_ENTER || k == GLFW_KEY_KP_ENTER) {
+            if (k == KEY_ENTER || k == KEY_KP_ENTER) {
                 commitLabelEdit();
                 return true;
             }
         }
-        if (k == GLFW_KEY_ESCAPE
+        if (k == KEY_ESCAPE
                 && (getFocused() == nameBox
                 || getFocused() == coordXBox
                 || getFocused() == coordYBox
@@ -2588,7 +2589,7 @@ public final class GroupEditScreen extends Screen {
             if (coordZBox != null) coordZBox.setFocused(false);
             return true;
         }
-        if (k == GLFW_KEY_TAB && focusAdjacentSidebarWidget(hasShiftDown())) return true;
+        if (k == KEY_TAB && focusAdjacentSidebarWidget(hasShiftDown())) return true;
         return super.keyPressed(event);
     }
 

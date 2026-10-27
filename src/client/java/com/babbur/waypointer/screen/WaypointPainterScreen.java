@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -16,18 +17,17 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.util.tinyfd.TinyFileDialogs;
+import com.babbur.waypointer.compat.ImageFilePicker;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
-import static org.lwjgl.glfw.GLFW.*;
+import static com.babbur.waypointer.compat.InputCompat.*;
 
 public final class WaypointPainterScreen extends Screen {
 
@@ -279,29 +279,23 @@ public final class WaypointPainterScreen extends Screen {
     }
 
     private void importFromFiles() {
-        String path;
-        try {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                PointerBuffer filters = stack.mallocPointer(4);
-                filters.put(stack.UTF8("*.png"));
-                filters.put(stack.UTF8("*.jpg"));
-                filters.put(stack.UTF8("*.jpeg"));
-                filters.put(stack.UTF8("*.bmp"));
-                filters.flip();
-                path = TinyFileDialogs.tinyfd_openFileDialog(
-                        Component.translatable("waypointer.screen.painter.file_dialog.title")
-                                .getString(),
-                        null, filters,
-                        Component.translatable("waypointer.screen.painter.file_dialog.filter")
-                                .getString(),
-                        false);
-            }
-        } catch (RuntimeException | LinkageError e) {
-            status = Component.translatable(
-                    "waypointer.screen.painter.status.picker_failed").getString();
-            return;
-        }
-        if (path == null) return;
+        if (importing) return;
+        importing = true;
+        refreshEditingState();
+        ImageFilePicker.open(Component.translatable("waypointer.screen.painter.file_dialog.title").getString(),
+                List.of("png", "jpg", "jpeg", "bmp"),
+                Component.translatable("waypointer.screen.painter.file_dialog.filter").getString())
+                .whenComplete((path, failure) -> {
+                    importing = false;
+                    if (MinecraftCompat.screen(minecraft) != this) return;
+                    if (failure != null) {
+                        status = Component.translatable("waypointer.screen.painter.status.picker_failed").getString();
+                    } else if (path != null) importFromFile(path);
+                    refreshEditingState();
+                });
+    }
+
+    private void importFromFile(String path) {
 
         WaypointPaint current = new WaypointPaint(palette, pixels);
         boolean atlas = faceView == FaceView.ALL;
@@ -468,7 +462,7 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             PaintCell cell = cellAt(layout(), event.x(), event.y());
             if (cell != null) {
                 setFocused(null);
@@ -490,7 +484,7 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (painting && event.button() == 0) {
+        if (painting && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             PaintCell cell = cellAt(layout(), event.x(), event.y());
             if (cell != null) paint(cell);
             return true;
@@ -506,19 +500,19 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if ((event.modifiers() & GLFW_MOD_CONTROL) != 0) {
-            if (event.key() == GLFW_KEY_Z || event.key() == GLFW_KEY_Y) {
-                moveHistory(event.key() == GLFW_KEY_Y || (event.modifiers() & GLFW_MOD_SHIFT) != 0);
+        if ((event.modifiers() & MOD_CONTROL) != 0) {
+            if (event.key() == KEY_Z || event.key() == KEY_Y) {
+                moveHistory(event.key() == KEY_Y || (event.modifiers() & MOD_SHIFT) != 0);
                 return true;
             }
         }
-        if (getFocused() == canvasButton && event.key() != GLFW_KEY_TAB) {
+        if (getFocused() == canvasButton && event.key() != KEY_TAB) {
             switch (event.key()) {
-                case GLFW_KEY_LEFT -> moveCursor(-1, 0);
-                case GLFW_KEY_RIGHT -> moveCursor(1, 0);
-                case GLFW_KEY_UP -> moveCursor(0, -1);
-                case GLFW_KEY_DOWN -> moveCursor(0, 1);
-                case GLFW_KEY_SPACE, GLFW_KEY_ENTER -> {
+                case KEY_LEFT -> moveCursor(-1, 0);
+                case KEY_RIGHT -> moveCursor(1, 0);
+                case KEY_UP -> moveCursor(0, -1);
+                case KEY_DOWN -> moveCursor(0, 1);
+                case KEY_SPACE, KEY_ENTER -> {
                     lastPaintOffset = -1;
                     paint(new PaintCell(cursorFace, cursorX, cursorY));
                     remember();

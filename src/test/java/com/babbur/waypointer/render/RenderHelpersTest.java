@@ -151,6 +151,8 @@ class RenderHelpersTest {
     }
 
     private static final class RecordingConsumer implements VertexConsumer {
+
+
         private int vertices;
         private int colors;
         private int uvs;
@@ -183,6 +185,8 @@ class RenderHelpersTest {
             textureUs.add(u);
             return this;
         }
+
+        public VertexConsumer setUv3(float u, float v) { return this; }
 
         @Override
         public VertexConsumer setUv1(int u, int v) {

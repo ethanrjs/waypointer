@@ -79,7 +79,7 @@ final class StructureEditorSmokeTest {
     private static void click(Screen screen, AbstractWidget widget) {
         if (!widget.active || !widget.visible) throw new AssertionError("Inactive action: " + widget.getMessage().getString());
         var mouse = new MouseButtonEvent(widget.getX() + widget.getWidth() / 2.0,
-                widget.getY() + widget.getHeight() / 2.0, new MouseButtonInfo(0, 0));
+                widget.getY() + widget.getHeight() / 2.0, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0));
         screen.mouseClicked(mouse, false);
         screen.mouseReleased(mouse);
     }

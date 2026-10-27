@@ -124,6 +124,8 @@ public final class MeshBuilder implements VertexConsumer, AutoCloseable {
         return this;
     }
 
+    public VertexConsumer setUv3(float u, float v) { return this; }
+
     @Override
     public VertexConsumer setUv1(int u, int v) {
         if (uv1Offset >= 0 && currentVertexStart >= 0) {

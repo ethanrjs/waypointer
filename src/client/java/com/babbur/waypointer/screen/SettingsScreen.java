@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
@@ -51,13 +52,13 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_END;
+import static com.babbur.waypointer.compat.InputCompat.KEY_F;
+import static com.babbur.waypointer.compat.InputCompat.KEY_HOME;
+import static com.babbur.waypointer.compat.InputCompat.KEY_LEFT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_RIGHT_CONTROL;
 
 public final class SettingsScreen extends Screen {
 
@@ -2093,7 +2094,7 @@ public final class SettingsScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         if (peeking) return super.keyPressed(event);
         if (contextMenu.keyPressed(event.key())) return true;
-        if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
+        if (event.key() == KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
             return true;
@@ -2105,19 +2106,19 @@ public final class SettingsScreen extends Screen {
         int maxScroll = maxScrollFor(contentHeight, viewportH);
         int page = Math.max(SETTING_ROW_PITCH, viewportH - SETTING_ROW_PITCH);
         switch (event.key()) {
-            case GLFW_KEY_PAGE_UP -> {
+            case KEY_PAGE_UP -> {
                 scrollOffset = MathUtil.clamp(scrollOffset - page, 0, maxScroll);
                 return true;
             }
-            case GLFW_KEY_PAGE_DOWN -> {
+            case KEY_PAGE_DOWN -> {
                 scrollOffset = MathUtil.clamp(scrollOffset + page, 0, maxScroll);
                 return true;
             }
-            case GLFW_KEY_HOME -> {
+            case KEY_HOME -> {
                 scrollOffset = 0;
                 return true;
             }
-            case GLFW_KEY_END -> {
+            case KEY_END -> {
                 scrollOffset = maxScroll;
                 return true;
             }
@@ -2129,8 +2130,8 @@ public final class SettingsScreen extends Screen {
 
     private static boolean controlDown() {
         var win = Minecraft.getInstance().getWindow();
-        return InputConstants.isKeyDown(win, GLFW_KEY_LEFT_CONTROL)
-                || InputConstants.isKeyDown(win, GLFW_KEY_RIGHT_CONTROL);
+        return InputCompat.isKeyDown(win, InputConstants.KEY_LCONTROL)
+                || InputCompat.isKeyDown(win, InputConstants.KEY_RCONTROL);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.babbur.waypointer.input;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -424,8 +425,8 @@ public final class WaypointRepositionMode {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
-        return InputConstants.isKeyDown(window, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(window, 344                           );
+        return InputCompat.isKeyDown(window, InputConstants.KEY_LSHIFT)
+                || InputCompat.isKeyDown(window, InputConstants.KEY_RSHIFT);
     }
 
     private static void playEditSound(Minecraft mc, WaypointerConfig config) {

@@ -41,8 +41,8 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_KP_ENTER;
 
 public final class RoutePublishScreen extends Screen implements RoutePickerHost {
     private static final int PANEL_MARGIN = 16;
@@ -713,7 +713,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        boolean enter = event.key() == GLFW_KEY_ENTER || event.key() == GLFW_KEY_KP_ENTER;
+        boolean enter = event.key() == KEY_ENTER || event.key() == KEY_KP_ENTER;
         if (enter && publishButton != null && publishButton.active && !anyEditBoxFocused()) {
             publish();
             return true;

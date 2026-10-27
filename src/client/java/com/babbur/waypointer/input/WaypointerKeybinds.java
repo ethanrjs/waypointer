@@ -28,7 +28,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
+import com.babbur.waypointer.compat.InputCompat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,7 +47,7 @@ public final class WaypointerKeybinds {
     static final String TOGGLE_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.toggle_edit_mode";
     static final String REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY = "key.waypointer.reposition_add_waypoint";
     static final String TOGGLE_WAYPOINTS_TRANSLATION_KEY = "key.waypointer.toggle_waypoints";
-    static final int OPEN_EDITOR_DEFAULT_KEY = GLFW.GLFW_KEY_U;
+    static final int OPEN_EDITOR_DEFAULT_KEY = InputCompat.KEY_U;
     static final int UNBOUND_DEFAULT_KEY = InputConstants.UNKNOWN.getValue();
     static final List<String> KEYBIND_TRANSLATION_KEYS = List.of(
             OPEN_EDITOR_TRANSLATION_KEY,
@@ -118,7 +118,7 @@ public final class WaypointerKeybinds {
 
     private static KeyMapping register(String translationKey, int defaultKey) {
         return KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                translationKey, InputConstants.Type.KEYSYM, defaultKey, CATEGORY));
+                translationKey, InputCompat.keyboardType(), defaultKey, CATEGORY));
     }
 
     public void install() {

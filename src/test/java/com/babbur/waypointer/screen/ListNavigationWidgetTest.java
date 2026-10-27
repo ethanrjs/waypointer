@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.glfw.GLFW;
+import com.babbur.waypointer.compat.InputCompat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,7 +42,7 @@ class ListNavigationWidgetTest {
         widget.visible = true;
 
         assertEquals(true, widget.keyPressed(new KeyEvent(
-                GLFW.GLFW_KEY_SPACE, 0, 0)));
+                InputCompat.KEY_SPACE, 0, 0)));
         assertEquals(1, toggled.get(),
                 "space must act on the cursor row without pressing the widget");
     }

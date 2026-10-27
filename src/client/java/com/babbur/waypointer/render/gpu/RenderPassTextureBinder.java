@@ -16,7 +16,7 @@ final class RenderPassTextureBinder {
 
     static boolean bind(RenderPass pass, String samplerName, AbstractTexture texture) {
         if (texture == null) return false;
-        pass.bindTexture(samplerName, texture.getTextureView(), texture.getSampler());
+        OverlayPassCompat.bindTextureUniform(pass, samplerName, texture);
         return true;
     }
 }

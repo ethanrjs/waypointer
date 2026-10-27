@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -18,7 +19,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
-import static org.lwjgl.glfw.GLFW.*;
+import static com.babbur.waypointer.compat.InputCompat.*;
 
 public final class CrystalHollowsMinimapEditorScreen extends Screen {
     private final Screen parent;
@@ -143,7 +144,7 @@ public final class CrystalHollowsMinimapEditorScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         updateHandle();
-        if (event.button() == GLFW_MOUSE_BUTTON_LEFT && handle.isMouseOver(event.x(), event.y())) {
+        if (event.button() == MOUSE_BUTTON_LEFT && handle.isMouseOver(event.x(), event.y())) {
             setFocused(handle);
             dragging = true;
             grabX = event.x() - handle.getX();
@@ -155,14 +156,14 @@ public final class CrystalHollowsMinimapEditorScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (!dragging || event.button() != GLFW_MOUSE_BUTTON_LEFT) return super.mouseDragged(event, dx, dy);
+        if (!dragging || event.button() != MOUSE_BUTTON_LEFT) return super.mouseDragged(event, dx, dy);
         moveTo(event.x() - grabX, event.y() - grabY, !shiftDown());
         return true;
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if (!dragging || event.button() != GLFW_MOUSE_BUTTON_LEFT) return super.mouseReleased(event);
+        if (!dragging || event.button() != MOUSE_BUTTON_LEFT) return super.mouseReleased(event);
         moveTo(event.x() - grabX, event.y() - grabY, !shiftDown());
         dragging = false;
         return true;
@@ -210,8 +211,8 @@ public final class CrystalHollowsMinimapEditorScreen extends Screen {
 
     private boolean shiftDown() {
         var window = minecraft.getWindow();
-        return InputConstants.isKeyDown(window, GLFW_KEY_LEFT_SHIFT)
-                || InputConstants.isKeyDown(window, GLFW_KEY_RIGHT_SHIFT);
+        return InputCompat.isKeyDown(window, InputConstants.KEY_LSHIFT)
+                || InputCompat.isKeyDown(window, InputConstants.KEY_RSHIFT);
     }
 
     private void save() {
@@ -242,12 +243,12 @@ public final class CrystalHollowsMinimapEditorScreen extends Screen {
         public boolean keyPressed(KeyEvent event) {
             int step = shiftDown() ? 10 : 1;
             switch (event.key()) {
-                case GLFW_KEY_LEFT -> moveTo(getX() - step, getY(), false);
-                case GLFW_KEY_RIGHT -> moveTo(getX() + step, getY(), false);
-                case GLFW_KEY_UP -> moveTo(getX(), getY() - step, false);
-                case GLFW_KEY_DOWN -> moveTo(getX(), getY() + step, false);
-                case GLFW_KEY_EQUAL, GLFW_KEY_KP_ADD -> changeScale(1);
-                case GLFW_KEY_MINUS, GLFW_KEY_KP_SUBTRACT -> changeScale(-1);
+                case KEY_LEFT -> moveTo(getX() - step, getY(), false);
+                case KEY_RIGHT -> moveTo(getX() + step, getY(), false);
+                case KEY_UP -> moveTo(getX(), getY() - step, false);
+                case KEY_DOWN -> moveTo(getX(), getY() + step, false);
+                case KEY_EQUAL, KEY_KP_ADD -> changeScale(1);
+                case KEY_MINUS, KEY_KP_SUBTRACT -> changeScale(-1);
                 default -> { return false; }
             }
             return true;

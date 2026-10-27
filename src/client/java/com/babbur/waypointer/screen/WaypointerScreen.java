@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.babbur.waypointer.i18n.Counts;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -44,12 +45,12 @@ import java.util.Set;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static com.babbur.waypointer.screen.WaypointerZoneCatalog.*;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_MENU;
+import static com.babbur.waypointer.compat.InputCompat.KEY_A;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DELETE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ESCAPE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_KP_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_MENU;
 
 public final class WaypointerScreen extends Screen {
 
@@ -1519,16 +1520,16 @@ public final class WaypointerScreen extends Screen {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
-        return InputConstants.isKeyDown(window, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(window, 344  );
+        return InputCompat.isKeyDown(window, InputConstants.KEY_LSHIFT)
+                || InputCompat.isKeyDown(window, InputConstants.KEY_RSHIFT);
     }
 
     static boolean routeSelectionControlDown() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
-        return InputConstants.isKeyDown(window, 341  )
-                || InputConstants.isKeyDown(window, 345  );
+        return InputCompat.isKeyDown(window, InputConstants.KEY_LCONTROL)
+                || InputCompat.isKeyDown(window, InputConstants.KEY_RCONTROL);
     }
 
     private void replaceRouteSelection(Set<String> nextSelectionIds) {
@@ -1641,14 +1642,14 @@ public final class WaypointerScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (contextMenu.keyPressed(event.key())) return true;
-        if (event.key() == GLFW_KEY_ESCAPE && (islandDropdownOpen || importExportMenuOpen)) {
+        if (event.key() == KEY_ESCAPE && (islandDropdownOpen || importExportMenuOpen)) {
             closeIslandDropdown();
             importExportMenuOpen = false;
             zoneMoveGroupId = null;
             return true;
         }
         if (zoneSearchShown() && zoneSearchBox != null && getFocused() == zoneSearchBox) {
-            if (event.key() == GLFW_KEY_ENTER || event.key() == GLFW_KEY_KP_ENTER) {
+            if (event.key() == KEY_ENTER || event.key() == KEY_KP_ENTER) {
                 List<String> matches = islandDropdownIds();
                 if (zoneSearchActive() && !matches.isEmpty()) selectZoneFromDropdown(matches.get(0));
                 return true;
@@ -1658,13 +1659,13 @@ public final class WaypointerScreen extends Screen {
             return true;
         }
         if (super.keyPressed(event)) return true;
-        if (event.key() == GLFW_KEY_A && routeSelectionControlDown()
+        if (event.key() == KEY_A && routeSelectionControlDown()
                 && !islandDropdownOpen && !importExportMenuOpen) {
             selectAllMatchingRoutes();
             return true;
         }
-        if (event.key() == GLFW_KEY_MENU && routeList.openContextMenuAtCursor()) return true;
-        if (event.key() == GLFW_KEY_DELETE && !islandDropdownOpen && !importExportMenuOpen) {
+        if (event.key() == KEY_MENU && routeList.openContextMenuAtCursor()) return true;
+        if (event.key() == KEY_DELETE && !islandDropdownOpen && !importExportMenuOpen) {
             onDeleteClicked();
             return true;
         }

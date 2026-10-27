@@ -44,7 +44,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
-            world.getClientLevel().waitForChunksRender();
+            GameTestCompat.waitForChunksRender(world);
             if (System.getProperty("waypointer.test.perfProbe") != null) {
                 PerfProbe.run(context, world);
                 return;
@@ -60,6 +60,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             }
             context.waitFor(client -> ServerTimingDiagnostics.estimator()
                     .snapshot(System.nanoTime()).shortWindow().samples() >= 2, 200);
+            InputSmokeTest.run(context);
             DiagnosticsSmokeTest.run(context);
             CrystalHollowsMinimapSmokeTest.run(context);
             ShaderCompatibilitySmokeTest.prepare(context);

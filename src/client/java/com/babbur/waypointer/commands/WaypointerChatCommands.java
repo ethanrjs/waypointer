@@ -1,5 +1,6 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.crystal.CrystalHollowsShare;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -183,8 +184,8 @@ final class WaypointerChatCommands {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var win = mc.getWindow();
-        return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(win, 344                           );
+        return InputCompat.isKeyDown(win, InputConstants.KEY_LSHIFT)
+                || InputCompat.isKeyDown(win, InputConstants.KEY_RSHIFT);
     }
 
     String zoneSuffix() {

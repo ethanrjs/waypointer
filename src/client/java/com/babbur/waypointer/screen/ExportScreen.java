@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -866,7 +867,7 @@ public final class ExportScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (event.button() != 0) return false;
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return false;
         int idx = routeIndexAt(event.x(), event.y());
         if (idx < 0) return false;
         if (routeListNavigation != null) routeListNavigation.setCursor(idx);

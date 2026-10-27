@@ -17,10 +17,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.util.FormattedCharSequence;
-import org.lwjgl.PointerBuffer;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.util.tinyfd.TinyFileDialogs;
+import com.babbur.waypointer.compat.InputCompat;
+import com.babbur.waypointer.compat.ImageFilePicker;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -257,18 +255,20 @@ public final class FeedbackScreen extends Screen {
 
     private void chooseImage() {
         if (busy || sent || images.size() >= FeedbackSubmission.MAX_IMAGES) return;
-        String path;
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            PointerBuffer filters = stack.mallocPointer(3);
-            filters.put(stack.UTF8("*.png")).put(stack.UTF8("*.jpg")).put(stack.UTF8("*.jpeg")).flip();
-            path = TinyFileDialogs.tinyfd_openFileDialog(tr("images.picker", "Choose feedback image").getString(),
-                    null, filters, "PNG / JPEG", false);
-        } catch (RuntimeException | LinkageError e) {
-            status = tr("images.picker.failed", "The file picker could not open. Try again or send without images.").getString();
-            rebuild = true;
-            return;
-        }
-        if (path == null) return;
+        busy = true;
+        freezeDraft();
+        ImageFilePicker.open(tr("images.picker", "Choose feedback image").getString(),
+                List.of("png", "jpg", "jpeg"), "PNG / JPEG").whenComplete((path, failure) -> {
+            busy = false;
+            if (MinecraftCompat.screen(minecraft) != this) return;
+            if (failure != null) {
+                status = tr("images.picker.failed", "The file picker could not open. Try again or send without images.").getString();
+                rebuild = true;
+            } else if (path != null) attachImage(path);
+        });
+    }
+
+    private void attachImage(String path) {
         busy = true;
         freezeDraft();
         status = tr("images.loading", "Preparing image...").getString();
@@ -341,12 +341,12 @@ public final class FeedbackScreen extends Screen {
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
-        if (event.key() == GLFW.GLFW_KEY_TAB) {
+        if (event.key() == InputCompat.KEY_TAB) {
             List<AbstractWidget> controls = children().stream()
                     .filter(child -> child instanceof AbstractWidget)
                     .map(child -> (AbstractWidget) child).filter(widget -> widget.active).toList();
             if (!controls.isEmpty()) {
-                int direction = (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0 ? -1 : 1;
+                int direction = (event.modifiers() & InputCompat.MOD_SHIFT) != 0 ? -1 : 1;
                 int index = controls.indexOf(getFocused());
                 AbstractWidget next = controls.get(Math.floorMod(index + direction, controls.size()));
                 for (BodyWidget row : bodyWidgets) {
@@ -361,9 +361,9 @@ public final class FeedbackScreen extends Screen {
                 return true;
             }
         }
-        if (event.key() == GLFW.GLFW_KEY_PAGE_DOWN
-                || event.key() == GLFW.GLFW_KEY_PAGE_UP) {
-            scroll += event.key() == GLFW.GLFW_KEY_PAGE_DOWN ? bottom - TOP : TOP - bottom;
+        if (event.key() == InputCompat.KEY_PAGE_DOWN
+                || event.key() == InputCompat.KEY_PAGE_UP) {
+            scroll += event.key() == InputCompat.KEY_PAGE_DOWN ? bottom - TOP : TOP - bottom;
             positionBody();
             return true;
         }

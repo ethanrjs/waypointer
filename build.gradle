@@ -11,7 +11,8 @@ plugins {
 
 def minecraftTargets = [
 		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2', fabricApiDependency: '>=0.145.4'],
-		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3', fabricApiDependency: '>=0.152.1']
+		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3', fabricApiDependency: '>=0.152.1'],
+		'26.3'  : [fabricApi: '0.162.0+26.3',   dependency: '>=26.3 <26.4', fabricApiDependency: '>=0.162.0']
 ]
 def targetMinecraft = project.minecraft_version.toString()
 def target = minecraftTargets[targetMinecraft]
@@ -22,7 +23,8 @@ if (target == null) {
 def shaderPack = providers.gradleProperty('shaderPack').map { file(it) }
 def shaderTestMods = [
 		'26.1.2': [iris: '5H9TsVy4', sodium: 'vf7UgZpC'],
-		'26.2'  : [iris: 'oaD6KQls', sodium: '2Yom1N68']
+		'26.2'  : [iris: 'oaD6KQls', sodium: '2Yom1N68'],
+		'26.3'  : [iris: 'vTN4NRGW', sodium: 'bAZQdGpg']
 ]
 if (shaderPack.isPresent() && (!shaderPack.get().isFile()
 		|| !shaderPack.get().name.toLowerCase(Locale.ROOT).endsWith('.zip'))) {
@@ -54,10 +56,16 @@ def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
 			+ ['build', '-Pminecraft_version=26.2', '--console=plain']
 			+ forwardedBuildArguments)
 }
+def buildMinecraft26_3 = tasks.register('buildMinecraft26_3', Exec) {
+	dependsOn buildMinecraft26_2
+	commandLine(wrapperCommand
+			+ ['build', '-Pminecraft_version=26.3', '--console=plain']
+			+ forwardedBuildArguments)
+}
 tasks.register('buildAllTargets') {
 	group = 'build'
 	description = 'Builds and tests every supported Minecraft target serially.'
-	dependsOn buildMinecraft26_2
+	dependsOn buildMinecraft26_3
 }
 
 def previousSmokeTask = null
@@ -101,10 +109,18 @@ repositories {
 	mavenCentral()
 }
 
+def targetAccessWidener = file(targetMinecraft == '26.3'
+		? 'src/client-26.3/resources/waypointer.accesswidener'
+		: 'src/main/resources/waypointer.accesswidener')
+sourceSets.main.resources.exclude('waypointer.accesswidener')
+if (targetMinecraft == '26.3') {
+	sourceSets.main.resources.exclude('assets/waypointer/shaders/core/*')
+}
+
 loom {
 	splitEnvironmentSourceSets()
 
-	accessWidenerPath = file("src/main/resources/waypointer.accesswidener")
+	accessWidenerPath = targetAccessWidener
 
 	mods {
 		"waypointer" {
@@ -185,7 +201,39 @@ tasks.named('runClientGameTest') {
 	}
 }
 
+// RenderPearl relocated the public GPU types in 26.3. Keep the shared renderer
+// in one place; only import names change here, while API differences live in Compat classes.
+def renderPearlImports = [
+	'com.mojang.blaze3d.pipeline.': 'com.mojang.renderpearl.api.pipeline.',
+	'com.mojang.blaze3d.buffers.Gpu': 'com.mojang.renderpearl.api.buffers.Gpu',
+	'com.mojang.blaze3d.textures.': 'com.mojang.renderpearl.api.textures.',
+	'com.mojang.blaze3d.systems.CommandEncoder': 'com.mojang.renderpearl.api.commands.CommandEncoder',
+	'com.mojang.blaze3d.systems.RenderPass': 'com.mojang.renderpearl.api.commands.RenderPass',
+	'com.mojang.blaze3d.platform.CompareOp': 'com.mojang.renderpearl.api.pipeline.CompareOp'
+]
+if (targetMinecraft == '26.3') {
+	['client', 'test', 'gametest'].each { sourceSetName ->
+		def original = file("src/${sourceSetName}/java")
+		def generated = layout.buildDirectory.dir("generated/26.3/${sourceSetName}")
+		def prepare = tasks.register("prepare${sourceSetName.capitalize()}RenderPearlImports", Sync) {
+			from original
+			into generated
+			inputs.property('relocatedImports', renderPearlImports)
+			filter { String line ->
+				if (line.startsWith('import ') && !line.contains('pipeline.RenderTarget;')) {
+					renderPearlImports.each { before, after -> line = line.replace(before, after) }
+				}
+				line
+			}
+		}
+		sourceSets.named(sourceSetName) { java.setSrcDirs([prepare]) }
+	}
+} else {
+	sourceSets.client.java.srcDir('src/client-legacy/java')
+}
 sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
+sourceSets.test.java.srcDir(targetMinecraft == '26.3' ? 'src/test-26.3/java' : 'src/test-legacy/java')
+sourceSets.gametest.java.srcDir(targetMinecraft == '26.3' ? 'src/gametest-26.3/java' : 'src/gametest-legacy/java')
 
 def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')
 def generatedRemoteLocaleResources = layout.buildDirectory.dir('generated/remote-locale-resources')
@@ -361,6 +409,10 @@ tasks.register('benchmarkShares', Test) {
 }
 
 processResources {
+	from(targetAccessWidener)
+	if (targetMinecraft == '26.3') {
+		from('src/client-26.3/resources') { exclude('waypointer.accesswidener') }
+	}
 	dependsOn generateRemoteLocaleManifest
 	inputs.property "version", project.version
 	inputs.property "minecraft_dependency", target.dependency
@@ -389,7 +441,7 @@ tasks.register('verifyDocumentationVersion') {
 		def expectedApiSnippets = [
 				"# Waypointer API ${expectedVersion}",
 				"maven.modrinth:waypointer:${expectedVersion}",
-				"libs/waypointer-${expectedVersion}-mc26.2.jar"
+				"libs/waypointer-${expectedVersion}-mc26.3.jar"
 		]
 
 		expectedApiSnippets.each { snippet ->
@@ -460,6 +512,10 @@ java {
 }
 
 tasks.named('sourcesJar', Jar) {
+	from(targetAccessWidener)
+	if (targetMinecraft == '26.3') {
+		from('src/client-26.3/resources') { exclude('waypointer.accesswidener') }
+	}
 	archiveFileName = "${releaseArchiveBase}-sources.jar"
 }
 

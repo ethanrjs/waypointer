@@ -128,6 +128,7 @@ public final class MeshCaptureSink implements GeometrySink {
         @Override public VertexConsumer setColor(int r, int g, int b, int a) { target().setColor(r, g, b, a); return this; }
         @Override public VertexConsumer setColor(int argb) { target().setColor(argb); return this; }
         @Override public VertexConsumer setUv(float u, float v) { target().setUv(u, v); return this; }
+        public VertexConsumer setUv3(float u, float v) { return this; }
         @Override public VertexConsumer setUv1(int u, int v) { target().setUv1(u, v); return this; }
         @Override public VertexConsumer setUv2(int u, int v) { target().setUv2(u, v); return this; }
         @Override public VertexConsumer setNormal(float x, float y, float z) { target().setNormal(x, y, z); return this; }
@@ -139,6 +140,7 @@ public final class MeshCaptureSink implements GeometrySink {
         @Override public VertexConsumer setColor(int r, int g, int b, int a) { return this; }
         @Override public VertexConsumer setColor(int argb) { return this; }
         @Override public VertexConsumer setUv(float u, float v) { return this; }
+        public VertexConsumer setUv3(float u, float v) { return this; }
         @Override public VertexConsumer setUv1(int u, int v) { return this; }
         @Override public VertexConsumer setUv2(int u, int v) { return this; }
         @Override public VertexConsumer setNormal(float x, float y, float z) { return this; }

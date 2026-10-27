@@ -12,13 +12,13 @@ import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.function.IntSupplier;
 
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_END;
+import static com.babbur.waypointer.compat.InputCompat.KEY_HOME;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_SPACE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
 final class ListNavigationWidget extends AbstractButton {
 
@@ -91,7 +91,7 @@ final class ListNavigationWidget extends AbstractButton {
         syncCursor();
         int count = count();
         if (count == 0) return false;
-        if (event.key() == GLFW_KEY_SPACE && spaceAction != null) {
+        if (event.key() == KEY_SPACE && spaceAction != null) {
             if (cursor >= 0) {
                 spaceAction.accept(cursor);
                 refreshMessage();
@@ -100,12 +100,12 @@ final class ListNavigationWidget extends AbstractButton {
         }
         int page = Math.max(1, getHeight() / rowPitch);
         int next = switch (event.key()) {
-            case GLFW_KEY_UP -> moveIndex(cursor, count, -1);
-            case GLFW_KEY_DOWN -> moveIndex(cursor, count, 1);
-            case GLFW_KEY_PAGE_UP -> moveIndex(cursor, count, -page);
-            case GLFW_KEY_PAGE_DOWN -> moveIndex(cursor, count, page);
-            case GLFW_KEY_HOME -> 0;
-            case GLFW_KEY_END -> count - 1;
+            case KEY_UP -> moveIndex(cursor, count, -1);
+            case KEY_DOWN -> moveIndex(cursor, count, 1);
+            case KEY_PAGE_UP -> moveIndex(cursor, count, -page);
+            case KEY_PAGE_DOWN -> moveIndex(cursor, count, page);
+            case KEY_HOME -> 0;
+            case KEY_END -> count - 1;
             default -> -1;
         };
         if (next >= 0) {

@@ -19,12 +19,12 @@ import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ESCAPE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_KP_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_SPACE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
 final class ContextMenuOverlay {
 
@@ -241,19 +241,19 @@ final class ContextMenuOverlay {
     boolean keyPressed(int keyCode) {
         if (!open) return false;
         switch (keyCode) {
-            case GLFW_KEY_ESCAPE -> {
+            case KEY_ESCAPE -> {
                 close();
                 return true;
             }
-            case GLFW_KEY_UP -> {
+            case KEY_UP -> {
                 moveCursor(-1);
                 return true;
             }
-            case GLFW_KEY_DOWN -> {
+            case KEY_DOWN -> {
                 moveCursor(1);
                 return true;
             }
-            case GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER, GLFW_KEY_SPACE -> {
+            case KEY_ENTER, KEY_KP_ENTER, KEY_SPACE -> {
                 if (cursor >= 0 && cursor < items.size() && items.get(cursor).enabled()) {
                     Runnable action = items.get(cursor).action();
                     close();

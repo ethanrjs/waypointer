@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.RouteIcon;
 import net.minecraft.ChatFormatting;
@@ -274,7 +275,7 @@ public final class RouteIconPickerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0 && hovered != null) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hovered != null) {
             boolean same = hovered.id().equals(selectedId);
             selectedId = hovered.id();
             if (doubleClick && same) save();

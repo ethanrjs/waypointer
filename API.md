@@ -34,11 +34,12 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.13.0-mc26.2.jar")
+    modImplementation files("libs/waypointer-1.13.0-mc26.3.jar")
 }
 ```
 
-Use the `mc26.2` jar when compiling for Minecraft 26.2.
+Use the `mc26.1.2`, `mc26.2`, or `mc26.3` jar when compiling for Minecraft 26.1.x,
+26.2, or 26.3, respectively.
 
 Register both the integration entrypoint and runtime dependency in your
 `fabric.mod.json`:

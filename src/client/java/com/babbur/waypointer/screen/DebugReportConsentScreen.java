@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.debug.DebugReportExport;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -171,7 +172,7 @@ public final class DebugReportConsentScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (event.button() != 0
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT
                 || event.x() < panelX + GAP
                 || event.x() > panelX + panelW - GAP
                 || event.y() < entriesTop) {

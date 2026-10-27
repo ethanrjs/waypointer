@@ -47,7 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: verification-reports-mc26.2
+          name: verification-reports-mc26.3
           path: |
             build/reports/tests/test
             build/reports/jacoco/test
@@ -67,7 +67,7 @@ jobs:
           fi
 
           mkdir -p artifacts
-          for target in 26.1.2 26.2; do
+          for target in 26.1.2 26.2 26.3; do
             source="build/libs/waypointer-${mod_version}-mc${target}.jar"
             artifact="waypointer-${mod_version}-build${GITHUB_RUN_NUMBER}-mc${target}.jar"
 
@@ -94,6 +94,15 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           path: artifacts/${{ steps.artifacts.outputs.jar_26_2 }}
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+      - name: Upload Minecraft 26.3 JAR
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          path: artifacts/${{ steps.artifacts.outputs.jar_26_3 }}
           archive: false
           if-no-files-found: error
           overwrite: true

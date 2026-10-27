@@ -91,8 +91,8 @@ jobs:
               -print0 | sort -z
           )
 
-          if [[ "${#jars[@]}" -ne 2 ]]; then
-            echo "Expected 2 distributable JARs, found ${#jars[@]}"
+          if [[ "${#jars[@]}" -ne 3 ]]; then
+            echo "Expected 3 distributable JARs, found ${#jars[@]}"
             printf '%s\n' "${jars[@]}"
             exit 1
           fi
@@ -123,6 +123,7 @@ jobs:
 
           check_metadata "release/waypointer-${mod_version}-mc26.1.2.jar" ">=26.1 <26.2" ">=25" ">=1.0.2"
           check_metadata "release/waypointer-${mod_version}-mc26.2.jar" ">=26.2 <26.3" ">=25" ">=1.0.2"
+          check_metadata "release/waypointer-${mod_version}-mc26.3.jar" ">=26.3 <26.4" ">=25" ">=1.0.2"
 
           verify_languages() {
             local jar="$1"
@@ -152,13 +153,17 @@ jobs:
 
           verify_languages "release/waypointer-${mod_version}-mc26.1.2.jar"
           verify_languages "release/waypointer-${mod_version}-mc26.2.jar"
+          verify_languages "release/waypointer-${mod_version}-mc26.3.jar"
           cmp \
             <(unzip -p "release/waypointer-${mod_version}-mc26.1.2.jar" assets/waypointer/i18n/remote-locales.json) \
             <(unzip -p "release/waypointer-${mod_version}-mc26.2.jar" assets/waypointer/i18n/remote-locales.json)
+          cmp \
+            <(unzip -p "release/waypointer-${mod_version}-mc26.1.2.jar" assets/waypointer/i18n/remote-locales.json) \
+            <(unzip -p "release/waypointer-${mod_version}-mc26.3.jar" assets/waypointer/i18n/remote-locales.json)
 
           mapfile -t jars < <(find release -maxdepth 1 -type f -name '*.jar' -print | sort)
-          if [[ "${#jars[@]}" -ne 2 ]]; then
-            echo "Expected 2 distributable JARs, found ${#jars[@]}"
+          if [[ "${#jars[@]}" -ne 3 ]]; then
+            echo "Expected 3 distributable JARs, found ${#jars[@]}"
             printf '%s\n' "${jars[@]}"
             exit 1
           fi
@@ -215,8 +220,8 @@ jobs:
           set -euo pipefail
 
           mapfile -t jars < <(find release -maxdepth 1 -type f -name '*.jar' -print | sort)
-          if [[ "${#jars[@]}" -ne 2 ]]; then
-            echo "Expected 2 verified distributable JARs, found ${#jars[@]}"
+          if [[ "${#jars[@]}" -ne 3 ]]; then
+            echo "Expected 3 verified distributable JARs, found ${#jars[@]}"
             exit 1
           fi
 

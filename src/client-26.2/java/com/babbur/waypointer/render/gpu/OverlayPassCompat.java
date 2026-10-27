@@ -29,6 +29,10 @@ import java.util.function.Supplier;
 
 final class OverlayPassCompat {
 
+    static void setPipeline(RenderPass pass, com.mojang.blaze3d.pipeline.RenderPipeline pipeline) {
+        pass.setPipeline(pipeline);
+    }
+
     private static final Matrix4f IDENTITY = new Matrix4f();
     private static final Vector4f WHITE = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
     private static final int FOG_UBO_BYTES = 48;
@@ -71,9 +75,9 @@ final class OverlayPassCompat {
         return mainTarget().height;
     }
 
-    static RenderPass beginPass(Supplier<String> label, GpuTextureView color, GpuTextureView depth) {
+    static RenderPass beginPass(CommandEncoder encoder, Supplier<String> label, GpuTextureView color, GpuTextureView depth) {
         Optional<Vector4fc> noClear = Optional.empty();
-        return encoder().createRenderPass(label, color, noClear, depth, OptionalDouble.empty());
+        return encoder.createRenderPass(label, color, noClear, depth, OptionalDouble.empty());
     }
 
     static GpuBufferSlice writeTransform(Matrix4fc modelView, Vector3fc modelOffset) {
@@ -92,6 +96,10 @@ final class OverlayPassCompat {
 
     static GpuBufferSlice currentFog() {
         return RenderSystem.getShaderFog();
+    }
+
+    static void bindTextureUniform(RenderPass pass, String sampler, AbstractTexture texture) {
+        pass.bindTexture(sampler, texture.getTextureView(), texture.getSampler());
     }
 
     static boolean bindTexture(RenderPass pass, String sampler, AbstractTexture texture) {

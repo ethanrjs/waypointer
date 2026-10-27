@@ -52,7 +52,7 @@ final class GallerySmokeTest {
                 assertBounds(screen, cards);
                 AbstractWidget first = cards.getFirst();
                 screen.mouseClicked(new MouseButtonEvent(first.getX() + 8, first.getY() + 8,
-                        new MouseButtonInfo(0, 0)), false);
+                        new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 if (!"gallery-0".equals(field(field(screen, "model"), "selectedRouteId")))
                     throw new AssertionError("My Routes row did not select its publication");
             });

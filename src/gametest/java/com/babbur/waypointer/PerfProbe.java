@@ -66,7 +66,7 @@ final class PerfProbe {
             client.options.inactivityFpsLimit().set(InactivityFpsLimit.MINIMIZED);
         });
         context.waitTicks(60);
-        world.getClientLevel().waitForChunksRender();
+        GameTestCompat.waitForChunksRender(world);
         context.waitForScreen(null);
 
         List<String> report = new ArrayList<>();

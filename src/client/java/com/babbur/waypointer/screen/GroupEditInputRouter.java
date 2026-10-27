@@ -1,12 +1,13 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import static com.babbur.waypointer.screen.GroupEditPolicy.SUBWAY_STYLE_ACTION_NONE;
 import static com.babbur.waypointer.screen.GroupEditPolicy.WAYPOINT_CONTROL_ACTION_NONE;
 
 final class GroupEditInputRouter {
-    static final int MOUSE_BUTTON_LEFT = 0;
-    static final int MOUSE_BUTTON_RIGHT = 1;
-    static final int MOUSE_BUTTON_MIDDLE = 2;
+    static final int MOUSE_BUTTON_LEFT = InputConstants.MOUSE_BUTTON_LEFT;
+    static final int MOUSE_BUTTON_RIGHT = InputConstants.MOUSE_BUTTON_RIGHT;
+    static final int MOUSE_BUTTON_MIDDLE = InputConstants.MOUSE_BUTTON_MIDDLE;
 
     private GroupEditInputRouter() {
     }

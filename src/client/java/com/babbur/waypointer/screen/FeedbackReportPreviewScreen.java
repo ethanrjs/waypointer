@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.util.FormattedCharSequence;
 import java.util.List;
-import org.lwjgl.glfw.GLFW;
+import com.babbur.waypointer.compat.InputCompat;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
 final class FeedbackReportPreviewScreen extends Screen {
@@ -36,9 +36,9 @@ final class FeedbackReportPreviewScreen extends Screen {
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
-        if (event.key() == GLFW.GLFW_KEY_PAGE_DOWN
-                || event.key() == GLFW.GLFW_KEY_PAGE_UP) {
-            mouseScrolled(0, 0, 0, event.key() == GLFW.GLFW_KEY_PAGE_DOWN ? -5 : 5);
+        if (event.key() == InputCompat.KEY_PAGE_DOWN
+                || event.key() == InputCompat.KEY_PAGE_UP) {
+            mouseScrolled(0, 0, 0, event.key() == InputCompat.KEY_PAGE_DOWN ? -5 : 5);
             return true;
         }
         return super.keyPressed(event);

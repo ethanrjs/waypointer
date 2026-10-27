@@ -48,7 +48,7 @@ final class ExportSmokeTest {
                 Screen screen = MinecraftCompat.screen(client);
                 Button copy = (Button) field(screen, "copyButton");
                 if (!copy.active) throw new AssertionError("Odin export cannot be copied");
-                copy.onPress(new KeyEvent(257, 0, 0));
+                copy.onPress(new KeyEvent(com.babbur.waypointer.compat.InputCompat.KEY_ENTER, 0, 0));
                 var imported = WaypointImporter.importAny(client.keyboardHandler.getClipboard());
                 var point = imported.groups().getFirst().waypoints().getFirst();
                 if (imported.source() != WaypointImporter.Source.ODIN || point.x() != -12 || point.y() != 70
@@ -78,6 +78,6 @@ final class ExportSmokeTest {
     private static void press(Screen screen, String label) {
         Button button = button(screen, label);
         if (!button.active) throw new AssertionError("Disabled screen action: " + label);
-        button.onPress(new KeyEvent(257, 0, 0));
+        button.onPress(new KeyEvent(com.babbur.waypointer.compat.InputCompat.KEY_ENTER, 0, 0));
     }
 }

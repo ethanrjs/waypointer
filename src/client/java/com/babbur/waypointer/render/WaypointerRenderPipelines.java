@@ -119,10 +119,11 @@ public final class WaypointerRenderPipelines {
                 .withLocation(location)
                 .withDepthStencilState(depth)
                 .withFragmentShader(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/screen_line"));
+        builder.withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT));
+        ScreenLinePipelineCompat.worldLines(builder);
         if (smooth) {
             Identifier shader = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/antialiased_lines");
-            builder.withVertexShader(shader).withShaderDefine("ANTIALIASING")
-                    .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT));
+            builder.withVertexShader(shader).withShaderDefine("ANTIALIASING");
         }
         return builder.build();
     }

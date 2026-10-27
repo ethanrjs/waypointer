@@ -9,11 +9,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_A;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ESCAPE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
 class ContextMenuOverlayTest {
 
@@ -89,8 +89,8 @@ class ContextMenuOverlayTest {
                 ContextMenuOverlay.Item.disabled(Component.literal("second"), null),
                 item("third", () -> ran.addAndGet(10))));
 
-        assertTrue(menu.keyPressed(GLFW_KEY_UP), "up from nowhere lands on the last enabled row");
-        assertTrue(menu.keyPressed(GLFW_KEY_ENTER));
+        assertTrue(menu.keyPressed(KEY_UP), "up from nowhere lands on the last enabled row");
+        assertTrue(menu.keyPressed(KEY_ENTER));
         assertEquals(10, ran.get());
         assertFalse(menu.isOpen());
 
@@ -98,24 +98,24 @@ class ContextMenuOverlayTest {
                 item("first", ran::incrementAndGet),
                 ContextMenuOverlay.Item.disabled(Component.literal("second"), null),
                 item("third", () -> ran.addAndGet(10))));
-        assertTrue(menu.keyPressed(GLFW_KEY_DOWN));
-        assertTrue(menu.keyPressed(GLFW_KEY_DOWN));
-        assertTrue(menu.keyPressed(GLFW_KEY_ENTER), "down skips the disabled middle row");
+        assertTrue(menu.keyPressed(KEY_DOWN));
+        assertTrue(menu.keyPressed(KEY_DOWN));
+        assertTrue(menu.keyPressed(KEY_ENTER), "down skips the disabled middle row");
         assertEquals(20, ran.get());
 
         menu = openedMenu(List.of(item("only", ran::incrementAndGet)));
-        assertTrue(menu.keyPressed(GLFW_KEY_ESCAPE));
+        assertTrue(menu.keyPressed(KEY_ESCAPE));
         assertFalse(menu.isOpen());
 
         menu = openedMenu(List.of(item("only", ran::incrementAndGet)));
-        assertTrue(menu.keyPressed(GLFW_KEY_ENTER),
+        assertTrue(menu.keyPressed(KEY_ENTER),
                 "enter with no cursor just dismisses");
         assertFalse(menu.isOpen());
         assertEquals(20, ran.get(), "nothing runs without a cursor");
 
         menu = openedMenu(List.of(item("only", ran::incrementAndGet)));
-        assertFalse(menu.keyPressed(GLFW_KEY_A), "unhandled keys close and fall through");
+        assertFalse(menu.keyPressed(KEY_A), "unhandled keys close and fall through");
         assertFalse(menu.isOpen());
-        assertFalse(menu.keyPressed(GLFW_KEY_ENTER), "closed menus ignore keys");
+        assertFalse(menu.keyPressed(KEY_ENTER), "closed menus ignore keys");
     }
 }

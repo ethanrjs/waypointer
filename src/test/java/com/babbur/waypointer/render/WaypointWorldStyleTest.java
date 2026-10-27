@@ -147,6 +147,8 @@ class WaypointWorldStyleTest {
     }
 
     private static final class Recording implements VertexConsumer {
+        public VertexConsumer setUv3(float u, float v) { return this; }
+
         final List<Float> x = new ArrayList<>();
         int alpha;
         float width;

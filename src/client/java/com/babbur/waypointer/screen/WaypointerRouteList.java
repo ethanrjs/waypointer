@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.core.RouteIcon;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.WaypointerClient;
@@ -36,8 +37,8 @@ final class WaypointerRouteList {
     private static final int ROUTE_TOGGLE_CHIP_W = 54;
     private static final int ROUTE_TOGGLE_CHIP_H = 14;
     private static final int FOLDER_ICON_SIZE = Icons.SIZE;
-    private static final int MOUSE_BUTTON_LEFT = 0;
-    private static final int MOUSE_BUTTON_RIGHT = 1;
+    private static final int MOUSE_BUTTON_LEFT = InputConstants.MOUSE_BUTTON_LEFT;
+    private static final int MOUSE_BUTTON_RIGHT = InputConstants.MOUSE_BUTTON_RIGHT;
     private static final double DRAG_THRESHOLD_SQUARED = 16.0;
     static final int INFO_BUTTON_SIZE = 11;
     private static final String[] INFO_IDS = {

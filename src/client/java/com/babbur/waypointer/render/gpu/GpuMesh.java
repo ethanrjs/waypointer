@@ -67,7 +67,11 @@ public final class GpuMesh implements AutoCloseable {
     public int prepareIndices(CommandEncoder encoder,
                               double cameraX, double cameraY, double cameraZ) {
         Objects.requireNonNull(encoder, "encoder");
-        if (!sorted || isEmpty()) return 0;
+        if (!sorted) {
+            if (!isEmpty()) GpuMeshCompat.prepareSequentialIndexBuffer(topology, indexCount());
+            return 0;
+        }
+        if (isEmpty()) return 0;
         if (!sortDirty && cameraWithinResortDistance(cameraX, cameraY, cameraZ)) return 0;
 
         int quads = storedVertices / 4;

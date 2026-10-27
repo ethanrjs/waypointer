@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.catalog.InstallTokenStore;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
@@ -69,19 +70,19 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ESCAPE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_F;
+import static com.babbur.waypointer.compat.InputCompat.KEY_F5;
+import static com.babbur.waypointer.compat.InputCompat.KEY_HOME;
+import static com.babbur.waypointer.compat.InputCompat.KEY_END;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_KP_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_LEFT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_RIGHT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
 public final class RouteCatalogScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
@@ -1563,37 +1564,37 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (sortMenu.isOpen()) {
-            if (event.key() == GLFW_KEY_ESCAPE) sortMenu.close();
+            if (event.key() == KEY_ESCAPE) sortMenu.close();
             else sortMenu.keyPressed(event.key());
             return true;
         }
-        if (zoneDropdownOpen && event.key() == GLFW_KEY_ESCAPE) {
+        if (zoneDropdownOpen && event.key() == KEY_ESCAPE) {
             closeZoneDropdown();
             return true;
         }
-        if (showingDetail && event.key() == GLFW_KEY_ESCAPE) {
+        if (showingDetail && event.key() == KEY_ESCAPE) {
             onBack();
             return true;
         }
-        if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
+        if (event.key() == KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
             return true;
         }
-        if (event.key() == GLFW_KEY_F5) {
+        if (event.key() == KEY_F5) {
             requestManualRefresh();
             return true;
         }
         if (zoneDropdownOpen) return super.keyPressed(event);
-        if (event.key() == GLFW_KEY_DOWN) return moveSelection(1);
-        if (event.key() == GLFW_KEY_UP) return moveSelection(-1);
-        if (event.key() == GLFW_KEY_PAGE_DOWN) return moveSelection(visibleRowCount());
-        if (event.key() == GLFW_KEY_PAGE_UP) return moveSelection(-visibleRowCount());
+        if (event.key() == KEY_DOWN) return moveSelection(1);
+        if (event.key() == KEY_UP) return moveSelection(-1);
+        if (event.key() == KEY_PAGE_DOWN) return moveSelection(visibleRowCount());
+        if (event.key() == KEY_PAGE_UP) return moveSelection(-visibleRowCount());
         if (searchBox == null || !searchBox.isFocused()) {
-            if (event.key() == GLFW_KEY_HOME) return moveSelection(-browser.routes().size());
-            if (event.key() == GLFW_KEY_END) return moveSelection(browser.routes().size());
+            if (event.key() == KEY_HOME) return moveSelection(-browser.routes().size());
+            if (event.key() == KEY_END) return moveSelection(browser.routes().size());
         }
-        boolean enter = event.key() == GLFW_KEY_ENTER || event.key() == GLFW_KEY_KP_ENTER;
+        boolean enter = event.key() == KEY_ENTER || event.key() == KEY_KP_ENTER;
         if (enter && searchBox != null && searchBox.isFocused()) {
             if (browser.searchPending()) runPendingSearch();
             return true;
@@ -1847,8 +1848,8 @@ public final class RouteCatalogScreen extends Screen {
 
     private static boolean controlDown() {
         var window = Minecraft.getInstance().getWindow();
-        return InputConstants.isKeyDown(window, GLFW_KEY_LEFT_CONTROL)
-                || InputConstants.isKeyDown(window, GLFW_KEY_RIGHT_CONTROL);
+        return InputCompat.isKeyDown(window, InputConstants.KEY_LCONTROL)
+                || InputCompat.isKeyDown(window, InputConstants.KEY_RCONTROL);
     }
 
 }

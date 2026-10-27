@@ -56,10 +56,10 @@ class OverlayPipelinesTest {
                             depth ? DepthStencilState.DEFAULT.depthTest() : CompareOp.ALWAYS_PASS, false);
                     for (var pipeline : new RenderPipeline[]{
                             legacy, retained.inWorld(), retained.postWorld()}) {
-                        assertEquals("waypointer:core/screen_line", pipeline.getFragmentShader().toString());
+                        assertEquals("waypointer:core/screen_line", PipelineShaders.fragment(pipeline).toString());
                         assertEquals(expectedDepth, pipeline.getDepthStencilState());
                         assertEquals(smooth, pipeline.getShaderDefines().flags().contains("ANTIALIASING"));
-                        assertEquals(legacy.getVertexShader(), pipeline.getVertexShader());
+                        assertEquals(PipelineShaders.vertex(legacy), PipelineShaders.vertex(pipeline));
                     }
                 }
             }
@@ -87,12 +87,12 @@ class OverlayPipelinesTest {
                 assertEquals(bucket, pipelines.bucketFor(sharpType));
                 assertEquals(bucket, pipelines.bucketFor(smoothType));
                 assertEquals(sharp.layout(), smooth.layout());
-                assertNotEquals(sharp.inWorld().getVertexShader(), smooth.inWorld().getVertexShader());
-                assertEquals(smooth.inWorld().getVertexShader(), smooth.postWorld().getVertexShader());
-                assertEquals("waypointer:core/screen_line", sharp.inWorld().getFragmentShader().toString());
-                assertEquals(sharp.inWorld().getFragmentShader(), sharp.postWorld().getFragmentShader());
-                assertEquals(sharp.inWorld().getFragmentShader(), smooth.inWorld().getFragmentShader());
-                assertEquals(sharp.inWorld().getFragmentShader(), smooth.postWorld().getFragmentShader());
+                assertNotEquals(PipelineShaders.vertex(sharp.inWorld()), PipelineShaders.vertex(smooth.inWorld()));
+                assertEquals(PipelineShaders.vertex(smooth.inWorld()), PipelineShaders.vertex(smooth.postWorld()));
+                assertEquals("waypointer:core/screen_line", PipelineShaders.fragment(sharp.inWorld()).toString());
+                assertEquals(PipelineShaders.fragment(sharp.inWorld()), PipelineShaders.fragment(sharp.postWorld()));
+                assertEquals(PipelineShaders.fragment(sharp.inWorld()), PipelineShaders.fragment(smooth.inWorld()));
+                assertEquals(PipelineShaders.fragment(sharp.inWorld()), PipelineShaders.fragment(smooth.postWorld()));
                 assertFalse(sharp.inWorld().getShaderDefines().flags().contains("ANTIALIASING"));
                 assertTrue(smooth.inWorld().getShaderDefines().flags().contains("ANTIALIASING"));
                 WaypointerRenderPipelines.setAntialiasing(false);

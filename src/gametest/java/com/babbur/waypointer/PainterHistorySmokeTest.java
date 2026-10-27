@@ -11,7 +11,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import java.util.Arrays;
-import static org.lwjgl.glfw.GLFW.*;
+import static com.babbur.waypointer.compat.InputCompat.*;
 
 @SuppressWarnings("UnstableApiUsage")
 final class PainterHistorySmokeTest {
@@ -31,14 +31,14 @@ final class PainterHistorySmokeTest {
                 stroke(painter, x, y, x + cell, y);
                 byte[] painted = pixels.clone();
                 check(!Arrays.equals(initial, painted), "Texture stroke did not paint");
-                shortcut(painter, GLFW_KEY_Z, 0);
+                shortcut(painter, KEY_Z, 0);
                 check(Arrays.equals(initial, pixels), "Texture undo did not undo the whole stroke");
                 click(painter, (AbstractWidget) field(painter, "redoButton"));
                 check(Arrays.equals(painted, pixels), "Texture redo button did not restore stroke");
                 stroke(painter, x, y, x + cell, y);
                 click(painter, (AbstractWidget) field(painter, "undoButton"));
                 check(Arrays.equals(initial, pixels), "No-op stroke added an undo step");
-                shortcut(painter, GLFW_KEY_Y, 0);
+                shortcut(painter, KEY_Y, 0);
                 check(Arrays.equals(painted, pixels), "Ctrl+Y did not redo texture stroke");
 
             } finally {
@@ -62,11 +62,11 @@ final class PainterHistorySmokeTest {
     }
 
     private static MouseButtonEvent mouse(double x, double y) {
-        return new MouseButtonEvent(x, y, new MouseButtonInfo(0, 0));
+        return new MouseButtonEvent(x, y, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0));
     }
 
     private static void shortcut(Screen screen, int key, int modifiers) {
-        check(screen.keyPressed(new KeyEvent(key, 0, GLFW_MOD_CONTROL | modifiers)), "Shortcut not handled");
+        check(screen.keyPressed(new KeyEvent(key, 0, MOD_CONTROL | modifiers)), "Shortcut not handled");
     }
 
     private static Object field(Object target, String name) {

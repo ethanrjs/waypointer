@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -21,7 +22,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
-import static org.lwjgl.glfw.GLFW.*;
+import static com.babbur.waypointer.compat.InputCompat.*;
 
 public final class WaypointPaintApplyScreen extends Screen {
 
@@ -189,7 +190,7 @@ public final class WaypointPaintApplyScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (mode != Mode.GROUPS || event.button() != 0) return false;
+        if (mode != Mode.GROUPS || event.button() != InputConstants.MOUSE_BUTTON_LEFT) return false;
         if (event.x() < listLeft() || event.x() >= listLeft() + listWidth()
                 || event.y() < listTop() || event.y() >= listBottom()) return false;
         List<WaypointGroup> groups = matchingGroups(manager, searchQuery);
@@ -214,17 +215,17 @@ public final class WaypointPaintApplyScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         if (mode == Mode.GROUPS) {
             List<WaypointGroup> groups = matchingGroups(manager, searchQuery);
-            if (event.key() == GLFW_KEY_DOWN && !groups.isEmpty()) {
+            if (event.key() == KEY_DOWN && !groups.isEmpty()) {
                 selectedRow = Math.min(groups.size() - 1, selectedRow + 1);
                 scrollSelectedIntoView(groups.size());
                 return true;
             }
-            if (event.key() == GLFW_KEY_UP && !groups.isEmpty()) {
+            if (event.key() == KEY_UP && !groups.isEmpty()) {
                 selectedRow = Math.max(0, selectedRow - 1);
                 scrollSelectedIntoView(groups.size());
                 return true;
             }
-            if (event.key() == GLFW_KEY_ENTER && !groups.isEmpty()) {
+            if (event.key() == KEY_ENTER && !groups.isEmpty()) {
                 painter.applyToGroup(groups.get(MathUtil.clamp(selectedRow, 0, groups.size() - 1)));
                 MinecraftCompat.setScreen(minecraft, painter);
                 return true;

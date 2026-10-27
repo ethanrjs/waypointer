@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.crystal.SkyblockerAuthentication;
@@ -1122,7 +1123,7 @@ public final class DebugInspectScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (event.button() != 0 || sections.isEmpty()) return false;
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT || sections.isEmpty()) return false;
 
         double mx = event.x();
         double my = event.y();

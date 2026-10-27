@@ -227,7 +227,7 @@ final class CrystalHollowsMinimapSmokeTest {
     }
 
     private static MouseButtonEvent mouse(double x, double y) {
-        return new MouseButtonEvent(x, y, new MouseButtonInfo(0, 0));
+        return new MouseButtonEvent(x, y, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0));
     }
 
     private static void clickEditorButton(Screen screen, String key) {

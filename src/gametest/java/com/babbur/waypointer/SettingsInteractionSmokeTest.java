@@ -39,7 +39,7 @@ final class SettingsInteractionSmokeTest {
                     SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
                     AbstractWidget checkbox = control(screen, "crystalHollowsEnabled");
                     screen.mouseClicked(new MouseButtonEvent(checkbox.getX() + checkbox.getWidth() / 2.0,
-                            checkbox.getY() + checkbox.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
+                            checkbox.getY() + checkbox.getHeight() / 2.0, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 });
                 context.waitTicks(2);
                 context.runOnClient(client -> {
@@ -57,7 +57,7 @@ final class SettingsInteractionSmokeTest {
                 SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
                 AbstractWidget checkbox = control(screen, "showRouteLines");
                 screen.mouseClicked(new MouseButtonEvent(checkbox.getX() + checkbox.getWidth() / 2.0,
-                        checkbox.getY() + checkbox.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
+                        checkbox.getY() + checkbox.getHeight() / 2.0, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 if (!config.showRouteLines()) throw new AssertionError("Route-line section did not expand");
                 MinecraftCompat.setScreen(client, SettingsScreen.atSetting(null, config, null, "useEtherwarpHeight"));
             });
@@ -68,7 +68,7 @@ final class SettingsInteractionSmokeTest {
                 if (config.useEtherwarpHeight()) throw new AssertionError("Etherwarp height should default off");
                 AbstractWidget checkbox = control(screen, "useEtherwarpHeight");
                 screen.mouseClicked(new MouseButtonEvent(checkbox.getX() + checkbox.getWidth() / 2.0,
-                        checkbox.getY() + checkbox.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
+                        checkbox.getY() + checkbox.getHeight() / 2.0, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 if (!config.useEtherwarpHeight()) throw new AssertionError("Inline appearance setting did not toggle");
             });
             context.waitTicks(2);
@@ -80,7 +80,7 @@ final class SettingsInteractionSmokeTest {
                 SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
                 AbstractWidget painter = control(screen, SettingsCatalog.ACTION_WAYPOINT_PAINT);
                 screen.mouseClicked(new MouseButtonEvent(painter.getX() + painter.getWidth() / 2.0,
-                        painter.getY() + painter.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
+                        painter.getY() + painter.getHeight() / 2.0, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 if (!(MinecraftCompat.screen(client) instanceof WaypointPainterScreen))
                     throw new AssertionError("Painter must open without enabling Extras");
             });
@@ -157,7 +157,7 @@ final class SettingsInteractionSmokeTest {
 
     private static void click(Screen screen, AbstractWidget widget) {
         screen.mouseClicked(new MouseButtonEvent(widget.getX() + widget.getWidth() / 2.0,
-                widget.getY() + widget.getHeight() / 2.0, new MouseButtonInfo(0, 0)), false);
+                widget.getY() + widget.getHeight() / 2.0, new MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
     }
 
     private static int[] positions(SettingsScreen screen) {

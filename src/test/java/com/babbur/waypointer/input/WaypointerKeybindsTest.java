@@ -15,7 +15,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import org.lwjgl.glfw.GLFW;
+import com.babbur.waypointer.compat.InputCompat;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -73,9 +73,9 @@ class WaypointerKeybindsTest {
     void keybindDefaultsLeaveAllOptionalKeybindsUnbound() {
         assertEquals(WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size(),
                 WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.size());
-        assertEquals(GLFW.GLFW_KEY_U, WaypointerKeybinds.OPEN_EDITOR_DEFAULT_KEY);
+        assertEquals(InputCompat.KEY_U, WaypointerKeybinds.OPEN_EDITOR_DEFAULT_KEY);
         assertEquals(InputConstants.UNKNOWN.getValue(), WaypointerKeybinds.UNBOUND_DEFAULT_KEY);
-        assertEquals(GLFW.GLFW_KEY_U, WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.get(0));
+        assertEquals(InputCompat.KEY_U, WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.get(0));
 
         for (int index = 1; index < WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size(); index++) {
             int keyIndex = index;
@@ -90,9 +90,9 @@ class WaypointerKeybindsTest {
     @Test
     void screenKeyFallbackMatchesDefaultOpenEditorKey() {
         assertTrue(WaypointerKeybinds.isOpenEditorKey(
-                new KeyEvent(GLFW.GLFW_KEY_U, 0, 0)));
+                new KeyEvent(InputCompat.KEY_U, 0, 0)));
         assertFalse(WaypointerKeybinds.isOpenEditorKey(
-                new KeyEvent(GLFW.GLFW_KEY_Y, 0, 0)));
+                new KeyEvent(InputCompat.KEY_Y, 0, 0)));
     }
 
     @Test

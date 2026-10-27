@@ -1,5 +1,6 @@
 package com.babbur.waypointer.mixin.client;
 
+import com.babbur.waypointer.compat.ParticlePacketCompat;
 import com.babbur.waypointer.dungeon.DungeonItemPickupHook;
 import com.babbur.waypointer.dungeon.DungeonSoundHook;
 import com.babbur.waypointer.crystal.CrystalHollowsParticleHook;
@@ -47,11 +48,6 @@ public abstract class ClientPacketListenerMixin {
 
     @Inject(method = "handleParticleEvent", at = @At("TAIL"))
     private void waypointer$onParticleEvent(ClientboundLevelParticlesPacket packet, CallbackInfo ci) {
-        CrystalHollowsParticleHook.onParticlePacket(
-                packet.getParticle().getType(),
-                packet.getX(),
-                packet.getY(),
-                packet.getZ(),
-                packet.getCount());
+        ParticlePacketCompat.onPacket(packet);
     }
 }

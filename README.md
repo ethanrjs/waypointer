@@ -43,23 +43,28 @@ This mod interoperates with the Skyblocker API and has safeguards to prevent abu
 
 Requirements
 
-- Minecraft 26.1 to 26.2
+- Minecraft 26.1 to 26.3
 - Java 25+
 - Fabric Loader 0.19.3+
 - [Fabric API](https://modrinth.com/mod/fabric-api):
   - Minecraft 26.1.x: a compatible 26.1.x release (the build target uses 0.154.2+26.1.2)
   - Minecraft 26.2: 0.154.2+26.2 or newer compatible 26.2 release
+  - Minecraft 26.3: 0.162.0+26.3 or newer compatible 26.3 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
 Building
 ```powersh
 ./gradlew buildAllTargets
 ```
-This builds and tests both targets serially and produces separate runnable jars;
+This builds and tests all three targets serially and produces separate runnable jars;
 it does not produce one universal jar:
 
 - `build/libs/waypointer-<mod-version>-mc26.1.2.jar`
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
+- `build/libs/waypointer-<mod-version>-mc26.3.jar`
+
+For Minecraft 26.3, shared renderer sources with relocated GPU imports are generated
+at build time. Version-specific APIs remain in the target's `*Compat` classes.
 
 CODEC Specification
 See [CODEC.md](CODEC.md) for the full specification.

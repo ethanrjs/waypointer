@@ -28,12 +28,20 @@ final class GpuMeshCompat {
         return RenderSystem.getDevice().createCommandEncoder();
     }
 
+    static void submit(CommandEncoder encoder) {
+        // Commands execute immediately on this Minecraft version.
+    }
+
     static void upload(CommandEncoder encoder, GpuBuffer buffer, ByteBuffer data) {
         encoder.writeToBuffer(buffer.slice(0, data.remaining()), data);
     }
 
     static void bindVertexBuffer(RenderPass pass, GpuBuffer buffer) {
         pass.setVertexBuffer(0, buffer.slice());
+    }
+
+    static void prepareSequentialIndexBuffer(MeshTopology topology, int indexCount) {
+        RenderSystem.getSequentialBuffer(topology(topology)).getBuffer(indexCount);
     }
 
     static void bindSequentialIndexBuffer(RenderPass pass, MeshTopology topology, int indexCount) {
