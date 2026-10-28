@@ -63,33 +63,51 @@ public final class UniversalShareCodec {
 
     public static String encodeWaypoints(List<WaypointGroup> groups,
                                          WaypointCodec.Options options) {
-        return V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty());
+        return withoutAngleBrackets(V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty()));
     }
 
     public static String encodeWaypoints(
             List<WaypointGroup> groups,
             WaypointCodec.Options options,
             RouteLibraryMetadata metadata) {
-        return V11Codec.encodeBest(groups, options, metadata);
+        return withoutAngleBrackets(V11Codec.encodeBest(groups, options, metadata));
     }
 
     public static String encodeConfig(WaypointerConfig config) {
         try {
-            return V10ConfigCodec.encode(config);
+            return withoutAngleBrackets(V10ConfigCodec.encode(config));
         } catch (IOException failure) {
             throw new IllegalStateException("v10 config encode failed", failure);
         }
     }
 
     public static String encodeDungeon(Collection<WaypointGroup> routes) {
-        return V11Codec.encodeBestDungeon(routes);
+        return withoutAngleBrackets(V11Codec.encodeBestDungeon(routes));
     }
 
     public static String encodeCatalogReference(String routeId) {
         try {
-            return WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId);
+            return withoutAngleBrackets(WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId));
         } catch (IOException failure) {
             throw new IllegalStateException("v10 catalog reference encode failed", failure);
+        }
+    }
+
+    /**
+     * Re-spells a verified V10/V11 share so it has no {@code <} or {@code >} (YouTube rejects them).
+     * Anything else, and codes that already have no angle bracket, come back unchanged.
+     */
+    public static String withoutAngleBrackets(String code) {
+        if (code == null || !code.startsWith(WaypointCodec.MAGIC)) return code;
+        String transport = code.substring(WaypointCodec.MAGIC.length());
+        if (!V10Transport.hasAngleBracket(transport)) return code;
+        int version = V10Transport.looksLikeWireVersion(transport, V11Codec.WIRE_VERSION)
+                ? V11Codec.WIRE_VERSION : WaypointCodec.V10_WIRE_VERSION;
+        try {
+            V10Transport.probe(transport, version);
+            return WaypointCodec.MAGIC + V10Transport.bracketFree(transport);
+        } catch (IOException | IllegalArgumentException notAFrame) {
+            return code;
         }
     }
 

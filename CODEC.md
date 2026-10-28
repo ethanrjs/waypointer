@@ -104,6 +104,27 @@ Unescape removes one `~` after `<` or `o` only when the character after that `~`
 
 A decoder MUST re-encode the decoded payload (base-91 plus escape) and require byte equality with the received transport text. This rejects non-canonical escapes and alternate base-91 tails. This rule applies to the text layer only; it does not re-run DEFLATE.
 
+### 3.4 Bracket-free spelling
+
+YouTube and some other sites refuse `<` and `>`. Shared codes therefore use a second spelling of the same payload whenever the standard text from sections 3.1-3.2 contains either character. When the standard text has neither, it is the shared code unchanged.
+
+The bracket-free alphabet is the base-91 alphabet without `<` and `>` (89 characters, ASCII order):
+
+```text
+!"#$%&'()*+-/0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_abcdefghijklmnopqrstuvwxyz{|}~
+```
+
+Base-91's pair scheme needs at least 91 symbols, so this spelling uses blocks instead:
+
+1. Split the payload into 21-byte blocks; the last block holds the remaining 1-21 bytes.
+2. Read each block as a big-endian unsigned integer.
+3. Write it as `d(r)` base-89 digits, most significant first, where `r` is the block's byte count and `d(r)` is the smallest count with `89^d(r) >= 256^r`. A full block is 26 digits.
+4. Apply the contextual escape of section 3.2 (only the `o/` cases can occur).
+
+The tail digit counts for 1-20 bytes are 2, 3, 4, 5, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20, 22, 23, 24, 25. A text whose length leaves any other remainder after removing full 26-digit blocks is invalid, and so is a block whose value needs more than `8r` bits. Full blocks cost 26 characters per 21 bytes, about 0.6% more than base-91.
+
+The bracket-free spelling is canonical only when re-encoding gives the same text and the standard spelling of the decoded payload contains `<` or `>`. A decoder tries the standard spelling first. If that probe (section 4) fails and the text has no angle bracket, it tries the bracket-free spelling with the same probe. The CRC-16 and both canonical checks separate the two. The community catalog stores and serves the standard spelling only.
+
 ## 4. Semantic header and commitment
 
 The first semantic byte is:
@@ -118,7 +139,7 @@ Implemented kinds are 0 (general route), 1 (compact single route), 2 (bare route
 
 Import order for a `WP:` string:
 
-1. Decode the first two base-91 digits. If the low nibble of the first payload byte is 11, run the same probe as step 3 with version 11. A verified frame of kind 0 or 1 is a V11 share (section 17); anything else continues with step 2.
+1. Decode the first two base-91 digits (for text without angle brackets, also the first bracket-free block; section 3.4). If the low nibble of the first payload byte is 11, run the same probe as step 3 with version 11. A verified frame of kind 0 or 1 is a V11 share (section 17); anything else continues with step 2.
 2. If the low nibble is not 10, the string is not V10; decode it through the immutable V1-V9 path. About one legacy code in sixteen passes this filter by chance.
 3. Otherwise run the V10 probe: canonical text, mode from header bit 7, mode-1 inflation, and the header-bound CRC-16.
 4. If the probe succeeds the envelope is verified. Dispatch by kind. A reserved kind, reserved subtype, or malformed body is a V10 error and is reported as one.
@@ -1272,6 +1293,7 @@ The digest input for `selectedWireSha256` is the fixture-order sequence of compl
 | `src/main/java/com/babbur/waypointer/dungeon/data/V10DungeonBodyCodec.java` | Kind-4 body |
 | `src/main/java/com/babbur/waypointer/codec/WaypointCodec.java` | Route-only entry point, kind-0 interior, V1-V9 legacy |
 | `src/main/java/com/babbur/waypointer/codec/AsciiStreamCodec.java` | Base-91 text codec |
+| `src/main/java/com/babbur/waypointer/codec/Base89BlockCodec.java` | Bracket-free text codec (section 3.4) |
 | `src/main/java/com/babbur/waypointer/codec/V11Codec.java` | V11 entry point, kind 0, projection, writer choice |
 | `src/main/java/com/babbur/waypointer/codec/V11CompactCodec.java` | V11 kind-1 grammar and frozen tables |
 | `src/main/java/com/babbur/waypointer/codec/V11Coder.java` | V11 binary arithmetic coder and logistic mixer |
@@ -1284,7 +1306,7 @@ Interoperability checks:
 1. CRC-16 check value is `0x29B1`.
 2. Base-91 pair threshold is 88.
 3. Contextual escape round-trips `<~3`, `o~/`, `<~~3`, and tilde runs.
-4. Canonical text rejects an unescaped raw `<3` pair.
+4. Canonical text rejects an unescaped raw `<3` pair, and a bracket-free spelling (section 3.4) of a payload whose standard spelling has no angle bracket.
 5. Flipping header bit 7 (the mode) is rejected by mode-specific decoding or the header-bound CRC.
 6. Quotient count and work-limit violations are rejected.
 7. The reserved Golomb marker is rejected.

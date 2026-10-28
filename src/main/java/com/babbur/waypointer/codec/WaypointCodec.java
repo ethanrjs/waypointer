@@ -778,7 +778,7 @@ public final class WaypointCodec {
     private static Optional<String> peekLabelV10(String payload) {
         try {
             if (!V10Transport.looksLikeV10(payload)) return Optional.empty();
-            byte[] framed = AsciiStreamCodec.decode(V10Transport.unescapeContextual(payload));
+            byte[] framed = V10Transport.peekPayload(payload, V10_WIRE_VERSION);
             if (framed.length == 0) return Optional.empty();
             int header = framed[0] & 0xFF;
             int mode = V10Transport.modeOf((byte) header);
@@ -992,7 +992,7 @@ public final class WaypointCodec {
     private static DecodeDebug debugDecodePayloadV10(String input, String payload, long startNanos,
                                                       V10Transport.CheckedFrame frame)
             throws IOException {
-        V10Transport.Frame transport = V10Transport.decode(payload);
+        V10Transport.Frame transport = V10Transport.decode(payload, V10_WIRE_VERSION);
         if (V10GeneralRouteCodec.isGeneralKind(frame.contentKind())) {
             byte[] semantic = frame.semantic();
             byte[] v9Shape = semantic.clone();
@@ -1052,7 +1052,7 @@ public final class WaypointCodec {
     private static DecodeDebug debugDecodePayloadV11(String input, String payload, long startNanos,
                                                       V10Transport.CheckedFrame frame)
             throws IOException {
-        V10Transport.Frame transport = V10Transport.decode(payload);
+        V10Transport.Frame transport = V10Transport.decode(payload, V11Codec.WIRE_VERSION);
         V11Codec.Decoded v11 = V11Codec.decode(input);
         Decoded decoded = new Decoded(v11.groups(), v11.label(), v11.metadata());
         String coordinateMode = (frame.contentKind() == V11Codec.KIND_COMPACT ? "V11_COMPACT" : "V11_JSON")

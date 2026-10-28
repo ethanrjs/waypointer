@@ -19,6 +19,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.zip.Deflater;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -63,10 +64,13 @@ class V10ConfigCodecTest {
         for (int index = 0; index < vectors.size(); index++) {
             NamedConfig fixture = fixtures().get(index);
             JsonObject vector = vectors.get(index).getAsJsonObject();
-            String wire = UniversalShareCodec.encodeConfig(fixture.config());
+            String wire = V10ConfigCodec.encode(fixture.config());
             V10Transport.CheckedFrame frame = V10Transport.probe(
                     wire.substring(WaypointCodec.MAGIC.length()));
             byte[] semantic = frame.semantic();
+            String shared = UniversalShareCodec.encodeConfig(fixture.config());
+            assertArrayEquals(semantic, V10Transport.probe(
+                    shared.substring(WaypointCodec.MAGIC.length())).semantic(), fixture.name());
             String direct = codeFor(V10Transport.MODE_DIRECT,
                     V10Transport.seal(V10Transport.MODE_DIRECT, semantic));
             DeflateCandidate defaultDeflate = deflateCandidate(semantic,
