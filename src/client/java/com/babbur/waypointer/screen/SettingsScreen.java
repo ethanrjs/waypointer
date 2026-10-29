@@ -985,9 +985,11 @@ public final class SettingsScreen extends Screen {
     }
 
     private void openWaypointPainter() {
-        if (WaypointerClient.manager() == null) return;
-        MinecraftCompat.setScreen(minecraft,
-                new WaypointPainterScreen(this, config, WaypointerClient.manager()));
+        ActiveGroupManager painterManager = WaypointerClient.manager();
+        if (painterManager == null) return;
+        rebuildPending = true;
+        MinecraftCompat.setScreen(minecraft, new WaypointPainterScreen(this, globalConfig,
+                painterManager, PaintScope.of(target, painterManager)));
     }
 
     private void buildConfigCodeControls(Row row, Setting setting, int controlRight, int rowTop) {

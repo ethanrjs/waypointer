@@ -90,6 +90,8 @@ public final class WaypointerConfig {
 
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
+    private boolean routesFollowDefaultReachRadius = true;
+    private transient DefaultReachRadiusListener defaultReachRadiusListener;
 
     private double editModePlacementReach = DEFAULT_EDIT_MODE_PLACEMENT_REACH;
     private boolean resetProgressOnWorldJoin = true;
@@ -670,6 +672,7 @@ public final class WaypointerConfig {
 
     public int configSchemaVersion()               { return configSchemaVersion; }
     public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
+    public boolean routesFollowDefaultReachRadius() { return routesFollowDefaultReachRadius; }
     public double editModePlacementReach()    { return normalizeEditModePlacementReach(editModePlacementReach); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
@@ -882,7 +885,25 @@ public final class WaypointerConfig {
                 : 0L;
     }
 
-    public void setDefaultReachRadius(double v)        { this.defaultReachRadius = Waypoint.normalizeDefaultRadius(v); save(); }
+    public void setDefaultReachRadius(double v)        { changeDefaultReachRadius(v); save(); }
+    public void setRoutesFollowDefaultReachRadius(boolean v) { this.routesFollowDefaultReachRadius = v; save(); }
+
+    public interface DefaultReachRadiusListener {
+        void changed(double previous, double current);
+    }
+
+    public void setDefaultReachRadiusListener(DefaultReachRadiusListener listener) {
+        this.defaultReachRadiusListener = listener;
+    }
+
+    private void changeDefaultReachRadius(double v) {
+        double previous = defaultReachRadius();
+        defaultReachRadius = Waypoint.normalizeDefaultRadius(v);
+        double current = defaultReachRadius();
+        if (defaultReachRadiusListener != null && Double.compare(previous, current) != 0) {
+            defaultReachRadiusListener.changed(previous, current);
+        }
+    }
     public void setEditModePlacementReach(double v)    { this.editModePlacementReach = normalizeEditModePlacementReach(v); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
@@ -902,6 +923,14 @@ public final class WaypointerConfig {
             waypointPainterPalette[i] &= 0xFFFFFF;
         }
         save();
+    }
+
+    public String waypointPaint() {
+        WaypointPaint paint = waypointPainterDefaultPaint();
+        return paint == null ? "" : paint.toCode();
+    }
+    public void setWaypointPaint(String code) {
+        setWaypointPainterDefaultPaint(code == null || code.isEmpty() ? null : WaypointPaint.fromCode(code));
     }
     public void setWaypointPainterDefaultPaint(WaypointPaint paint) {
         waypointPainterDefaultPalette = paint == null ? null : paint.paletteCopy();
@@ -1233,7 +1262,7 @@ public final class WaypointerConfig {
     public void replaceShareableSettingsWith(WaypointerConfig replacement) {
         if (replacement == null) return;
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
-        defaultReachRadius = replacement.defaultReachRadius;
+        changeDefaultReachRadius(replacement.defaultReachRadius);
         editModePlacementReach = replacement.editModePlacementReach;
         resetProgressOnWorldJoin = replacement.resetProgressOnWorldJoin;
         restartRouteWhenComplete = replacement.restartRouteWhenComplete;
@@ -1474,7 +1503,8 @@ public final class WaypointerConfig {
         sequenceContextOpacity = defaults.sequenceContextOpacity;
 
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
-        defaultReachRadius = defaults.defaultReachRadius;
+        changeDefaultReachRadius(defaults.defaultReachRadius);
+        routesFollowDefaultReachRadius = defaults.routesFollowDefaultReachRadius;
         editModePlacementReach = defaults.editModePlacementReach;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;

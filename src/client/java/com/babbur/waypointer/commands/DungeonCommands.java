@@ -15,6 +15,7 @@ import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.dungeon.DungeonRoutePacks;
 import com.babbur.waypointer.screen.CodecWorker;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -170,7 +171,9 @@ public final class DungeonCommands {
         }
 
         DungeonRouteImporter.Result result = loaded.result();
-        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, result.groups());
+        String fileName = file.getFileName().toString().replaceFirst("\\.[^.]+$", "");
+        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, result.groups(),
+                DungeonRoutePacks.importedPack(fileName));
         reportImportedRoutes(src, result, routes);
     }
 

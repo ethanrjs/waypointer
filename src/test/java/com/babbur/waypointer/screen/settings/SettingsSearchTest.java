@@ -26,7 +26,7 @@ class SettingsSearchTest {
             assertTrue(SettingsSearch.search(query, SettingsCatalog.categories()).stream()
                     .anyMatch(match -> match.setting().id().equals("tracerOpacity")), query);
         }
-        assertTrue(SettingsSearch.matchTier("painter", SettingsCatalog.byId("action.waypointPaint"),
+        assertTrue(SettingsSearch.matchTier("painter", SettingsCatalog.byId("waypointPaint"),
                 "Extras", "Painter", null) >= 0);
         assertEquals(-1, SettingsSearch.matchTier("zzzz", SettingsCatalog.byId("boxStyle"),
                 "Appearance", "Marker", null));

@@ -172,6 +172,17 @@ public final class ActiveGroupManager {
         return allGroupsView;
     }
 
+    public boolean followDefaultReachRadius(double previous, double current) {
+        List<WaypointGroup> changed = new ArrayList<>();
+        for (WaypointGroup group : allGroups()) {
+            if (group.temp() || group.runtimeOnly()) continue;
+            if (group.followDefaultRadius(previous, current)) changed.add(group);
+        }
+        if (changed.isEmpty()) return false;
+        fireDataChangedFor(changed);
+        return true;
+    }
+
     public List<WaypointGroup> allGroupsList() {
         return List.copyOf(byId.values());
     }

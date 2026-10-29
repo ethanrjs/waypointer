@@ -36,6 +36,12 @@ public final class WaypointGroup {
         DUNGEON
     }
 
+    public enum RadiusSource {
+        UNKNOWN,
+        DEFAULT,
+        CUSTOM
+    }
+
     private final String id;
     private String name;
     private String zoneId;
@@ -47,6 +53,7 @@ public final class WaypointGroup {
     private LoadMode loadMode;
     private RouteKind routeKind;
     private double defaultRadius;
+    private RadiusSource radiusSource = RadiusSource.UNKNOWN;
     private boolean skipAheadEnabled = true;
     private boolean temp = false;
     private boolean runtimeOnly = false;
@@ -59,6 +66,7 @@ public final class WaypointGroup {
     private WaypointPaint paint;
     private boolean paintEnabled = true;
     private CatalogRouteProvenance catalogProvenance;
+    private RoutePack routePack;
     private transient boolean[] staticReached;
     private transient boolean[] stepDone;
     private transient boolean showAllWaypoints;
@@ -110,6 +118,7 @@ public final class WaypointGroup {
         copy.gradientStartColor = gradientStartColor;
         copy.gradientEndColor = gradientEndColor;
         copy.defaultRadius = defaultRadius;
+        copy.radiusSource = radiusSource;
         copy.skipAheadEnabled = skipAheadEnabled;
         copy.enabled = enabled;
         copy.stylePresetId = stylePresetId;
@@ -138,6 +147,7 @@ public final class WaypointGroup {
     public LoadMode loadMode()    { return loadMode; }
     public RouteKind routeKind()  { return routeKind; }
     public double defaultRadius() { return defaultRadius; }
+    public RadiusSource radiusSource() { return radiusSource; }
         public int staticColor()      { return staticColor; }
     public int gradientStartColor() { return gradientStartColor; }
     public int gradientEndColor()   { return gradientEndColor; }
@@ -147,6 +157,7 @@ public final class WaypointGroup {
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
     public CatalogRouteProvenance catalogProvenance() { return catalogProvenance; }
+    public RoutePack routePack()    { return routePack; }
     public int visibleMainSteps()   { return visibleMainSteps; }
     public String runtimeSourceGroupId() { return runtimeSourceGroupId; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
@@ -157,6 +168,10 @@ public final class WaypointGroup {
 
     public void setCatalogProvenance(CatalogRouteProvenance provenance) {
         this.catalogProvenance = provenance;
+    }
+
+    public void setRoutePack(RoutePack pack) {
+        this.routePack = pack;
     }
 
     public boolean isSubwaypoint(int index) {
@@ -338,6 +353,21 @@ public final class WaypointGroup {
         this.enabled = on;
     }
     public void setDefaultRadius(double r)              { this.defaultRadius = Waypoint.normalizeDefaultRadius(r); invalidateProximityIndex(); }
+    public void setRadiusSource(RadiusSource source)    { this.radiusSource = Objects.requireNonNull(source); }
+    public void setCustomRadius(double r)               { setDefaultRadius(r); radiusSource = RadiusSource.CUSTOM; }
+
+    public boolean followDefaultRadius(double previousDefault, double newDefault) {
+        if (radiusSource == RadiusSource.CUSTOM) return false;
+        if (radiusSource == RadiusSource.UNKNOWN
+                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0) {
+            return false;
+        }
+        boolean adopted = radiusSource != RadiusSource.DEFAULT;
+        radiusSource = RadiusSource.DEFAULT;
+        if (Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(newDefault)) == 0) return adopted;
+        setDefaultRadius(newDefault);
+        return true;
+    }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }

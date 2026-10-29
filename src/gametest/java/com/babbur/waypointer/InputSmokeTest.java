@@ -7,7 +7,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.EditBox;
 
-/** Exercise normal keyboard/mouse callbacks, including 26.3 SDL scan codes. */
 final class InputSmokeTest {
     private InputSmokeTest() {}
 

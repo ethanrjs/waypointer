@@ -124,6 +124,37 @@ public final class WaypointPaint {
         return Base64.getEncoder().encodeToString(pixels);
     }
 
+    public String toCode() {
+        StringBuilder code = new StringBuilder(PALETTE_SIZE * 6 + PIXEL_COUNT / 3 * 2);
+        for (int color : palette) code.append(String.format("%06x", color));
+        byte[] packed = new byte[PIXEL_COUNT / 2];
+        for (int i = 0; i < packed.length; i++) {
+            packed[i] = (byte) (pixels[i * 2] << 4 | pixels[i * 2 + 1]);
+        }
+        return code.append(Base64.getEncoder().encodeToString(packed)).toString();
+    }
+
+    public static WaypointPaint fromCode(String code) {
+        int paletteChars = PALETTE_SIZE * 6;
+        if (code == null || code.length() != paletteChars + PIXEL_COUNT / 3 * 2) return null;
+        try {
+            int[] palette = new int[PALETTE_SIZE];
+            for (int i = 0; i < PALETTE_SIZE; i++) {
+                palette[i] = Integer.parseInt(code, i * 6, i * 6 + 6, 16);
+            }
+            byte[] packed = Base64.getDecoder().decode(code.substring(paletteChars));
+            if (packed.length != PIXEL_COUNT / 2) return null;
+            byte[] pixels = new byte[PIXEL_COUNT];
+            for (int i = 0; i < packed.length; i++) {
+                pixels[i * 2] = (byte) ((packed[i] >> 4) & 0x0F);
+                pixels[i * 2 + 1] = (byte) (packed[i] & 0x0F);
+            }
+            return new WaypointPaint(palette, pixels);
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
+    }
+
     public static byte[] decodePixels(String encoded) {
         if (encoded == null) throw new IllegalArgumentException("waypoint paint pixels are missing");
         if (encoded.length() != PIXEL_COUNT / 3 * 4) {

@@ -416,8 +416,8 @@ class SettingsCatalogTest {
         assertNull(SettingsCatalog.byId("action.routeStyles"));
         assertNull(SettingsCatalog.byId("action.structureStyles"));
         assertNull(SettingsCatalog.byId("waypointIcon"));
-        assertTrue(SettingsCatalog.byId("action.waypointPaint").isEnabled(new WaypointerConfig(), null));
-        assertEquals("appearance", categoryContaining("action.waypointPaint"));
+        assertTrue(SettingsCatalog.byId("waypointPaint").isEnabled(new WaypointerConfig(), null));
+        assertEquals("appearance", categoryContaining("waypointPaint"));
     }
 
     @Test

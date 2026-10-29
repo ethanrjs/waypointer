@@ -14,8 +14,7 @@ import static org.lwjgl.sdl.SDLProperties.*;
 
 public final class ImageFilePicker {
     private static final AtomicReference<Request> PENDING = new AtomicReference<>();
-    // One callback lives with the client. Freeing a callback while it is returning to
-    // SDL is unsafe; each dialog's filters and properties are released independently.
+
     private static final SDL_DialogFileCallback CALLBACK = SDL_DialogFileCallback.create((ignored, files, filter) -> {
         Request request = PENDING.getAndSet(null);
         if (request == null) return;
@@ -47,7 +46,7 @@ public final class ImageFilePicker {
             SDL_SetNumberProperty(request.properties, SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, 1);
             SDL_SetPointerProperty(request.properties, SDL_PROP_FILE_DIALOG_WINDOW_POINTER, Minecraft.getInstance().getWindow().handle());
             SDL_SetStringProperty(request.properties, SDL_PROP_FILE_DIALOG_TITLE_STRING, title);
-            // SDL retains filter pointers until its callback, so they must not be stack allocations.
+
             SDL_ShowFileDialogWithProperties(SDL_FILEDIALOG_OPENFILE, CALLBACK, 0, request.properties);
         } catch (RuntimeException | LinkageError failure) {
             if (PENDING.compareAndSet(request, null)) request.close();

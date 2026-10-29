@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -33,8 +34,8 @@ public final class AddNamedWaypointScreen extends Screen {
     private static final int PANEL_H = 98;
     private static final int OPTIONS_PANEL_H = 158;
     private static final int DUNGEON_OPTIONS_PANEL_H = 174;
-    private static final int KEY_ENTER = 257;
-    private static final int KEY_KP_ENTER = 335;
+    private static final int KEY_ENTER = InputCompat.KEY_ENTER;
+    private static final int KEY_KP_ENTER = InputCompat.KEY_KP_ENTER;
     private static final int MAX_NAME_LENGTH = 64;
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
     private static final int DUNGEON_TYPE_ROW_WIDTH = PANEL_W - PAD_OUTER * 2;

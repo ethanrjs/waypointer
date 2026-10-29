@@ -1,10 +1,12 @@
 package com.babbur.waypointer.render;
 
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,6 +26,28 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointRendererTest {
+
+    @Test
+    void waypointPaintOutranksTheRouteWhichOutranksItsStyle() {
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        Waypoint plain = Waypoint.at(0, 70, 0);
+        Waypoint own = Waypoint.at(1, 70, 1).withStyleOverride(new WaypointStyle(
+                Map.of(WaypointStyles.PAINT,
+                        WaypointPaint.solid(0x444444).toCode())));
+        route.add(plain);
+        route.add(own);
+        WaypointPaint styled = WaypointPaint.solid(0x222222);
+
+        assertEquals(styled, WaypointRenderer.effectivePaint(route, plain, styled, false));
+        route.setPaint(WaypointPaint.solid(0x333333));
+        assertEquals(route.paint(), WaypointRenderer.effectivePaint(route, plain, styled, false));
+        WaypointPaint ownResolved = WaypointPaint.solid(0x444444);
+        assertEquals(ownResolved, WaypointRenderer.effectivePaint(route, own, ownResolved, false));
+        route.setPaintEnabled(false);
+        assertNull(WaypointRenderer.effectivePaint(route, plain, styled, false));
+        assertEquals(ownResolved, WaypointRenderer.effectivePaint(route, own, ownResolved, false),
+                "a waypoint's own paint shows even when the route's is off");
+    }
 
     @Test
     void labelRowCheckAgreesWithTheRowsItSkipsBuilding() {

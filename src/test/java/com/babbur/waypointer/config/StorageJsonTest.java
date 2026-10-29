@@ -7,6 +7,7 @@ import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.RoutePack;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
@@ -35,6 +36,19 @@ class StorageJsonTest {
         assertEquals("minecraft:prismarine_shard*", Storage.groupFromJson(encoded).icon());
         encoded.addProperty("icon", "<script>");
         assertEquals("", Storage.groupFromJson(encoded).icon());
+    }
+
+    @Test
+    void radiusSourceIsSavedLocallyButNotShared() {
+        WaypointGroup group = WaypointGroup.create("Radius", "hub");
+        assertFalse(Storage.groupToJson(group).has("radiusSource"));
+        group.setCustomRadius(7.5);
+
+        JsonObject encoded = Storage.groupToJson(group);
+        assertEquals(WaypointGroup.RadiusSource.CUSTOM, Storage.groupFromJson(encoded).radiusSource());
+        assertFalse(Storage.routeToShareJson(group).has("radiusSource"));
+        assertEquals(WaypointGroup.RadiusSource.UNKNOWN,
+                Storage.groupFromJson(Storage.routeToShareJson(group)).radiusSource());
     }
 
     @Test
@@ -177,6 +191,22 @@ class StorageJsonTest {
         WaypointGroup recovered = assertDoesNotThrow(() -> Storage.groupFromJson(json));
         assertNull(recovered.catalogProvenance());
         assertEquals(group.id(), recovered.id());
+    }
+
+    @Test
+    void group_routePackIsSavedButNeverShared() {
+        WaypointGroup group = WaypointGroup.create("Altar", "altar");
+        group.add(Waypoint.at(1, 2, 3));
+        group.setRoutePack(new RoutePack("pack-1", "FlameOfWar"));
+
+        JsonObject json = Storage.groupToJson(group);
+        assertEquals(new RoutePack("pack-1", "FlameOfWar"), Storage.groupFromJson(json).routePack());
+        assertFalse(Storage.routeToShareJson(group).has("routePack"));
+        assertNull(Storage.routeFromShareJson(json).routePack());
+
+        json.getAsJsonObject("routePack").addProperty("id", "");
+        WaypointGroup recovered = assertDoesNotThrow(() -> Storage.groupFromJson(json));
+        assertNull(recovered.routePack());
     }
 
     @Test

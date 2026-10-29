@@ -19,6 +19,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.dungeon.DungeonRoutePacks;
 import com.babbur.waypointer.screen.CatalogRouteInstallScreen;
 import com.babbur.waypointer.screen.CodecWorker;
 import com.babbur.waypointer.screen.ConfigImportConfirmation;
@@ -538,7 +539,8 @@ final class WaypointerShareCommands {
     int importDungeonRoutes(FabricClientCommandSource src,
                                     DungeonRouteImporter.Result result,
                                     String origin) {
-        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, result.groups());
+        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, result.groups(),
+                DungeonRoutePacks.importedPack(result.format()));
         int imported = routes.size();
         int waypoints = DungeonRoomShareCodec
                 .waypointCount(routes);

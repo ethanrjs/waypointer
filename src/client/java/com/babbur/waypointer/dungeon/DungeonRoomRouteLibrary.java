@@ -1,6 +1,7 @@
 package com.babbur.waypointer.dungeon;
 
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RoutePack;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync;
@@ -124,6 +125,12 @@ public final class DungeonRoomRouteLibrary {
 
     public static List<WaypointGroup> installRoutes(ActiveGroupManager manager,
                                                     Collection<WaypointGroup> routes) {
+        return installRoutes(manager, routes, null);
+    }
+
+    public static List<WaypointGroup> installRoutes(ActiveGroupManager manager,
+                                                    Collection<WaypointGroup> routes,
+                                                    RoutePack pack) {
         if (manager == null || routes == null || routes.isEmpty()) return List.of();
         List<WaypointGroup> imported = new ArrayList<>();
         for (WaypointGroup route : routes) {
@@ -131,6 +138,7 @@ public final class DungeonRoomRouteLibrary {
             if (!Zone.isCatacombsFloor(route.zoneId())) {
                 route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             }
+            if (pack != null) route.setRoutePack(pack);
             imported.add(route);
         }
         if (imported.isEmpty()) return List.of();

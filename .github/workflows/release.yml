@@ -69,6 +69,9 @@ jobs:
             exit 1
           fi
 
+      - name: Test Modrinth dependency resolution
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+
       - name: Test and build Minecraft 26.x targets
         shell: bash
         run: |

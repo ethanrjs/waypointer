@@ -5,10 +5,15 @@ import java.util.Map;
 
 public record WaypointStyle(Map<String, String> values) {
     public static final WaypointStyle EMPTY = new WaypointStyle(Map.of());
+
+    public static final String PAINT_KEY = "waypointPaint";
+    private static final int MAX_VALUE_LENGTH = 128;
+    private static final int MAX_PAINT_LENGTH = 2048;
     public WaypointStyle {
         Map<String, String> clean = new LinkedHashMap<>();
         if (values != null) values.forEach((key, value) -> {
-            if (key != null && value != null && key.length() <= 80 && value.length() <= 128
+            int limit = PAINT_KEY.equals(key) ? MAX_PAINT_LENGTH : MAX_VALUE_LENGTH;
+            if (key != null && value != null && key.length() <= 80 && value.length() <= limit
                     && clean.size() < 128) clean.put(key, value);
         });
         values = Map.copyOf(clean);

@@ -18,6 +18,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.zip.Deflater;
@@ -31,6 +32,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerConfigTest {
+
+    @Test
+    void defaultReachRadiusListenerSeesSettingImportAndResetChanges() {
+        var config = new WaypointerConfig();
+        List<double[]> changes = new ArrayList<>();
+        config.setDefaultReachRadiusListener((previous, current) -> changes.add(new double[]{previous, current}));
+
+        config.setDefaultReachRadius(5.0);
+        config.setDefaultReachRadius(5.0);
+        var imported = new WaypointerConfig();
+        imported.setDefaultReachRadius(40.0);
+        config.replaceShareableSettingsWith(imported);
+        config.resetToDefaults();
+
+        assertEquals(3, changes.size());
+        assertArrayEquals(new double[]{3.0, 5.0}, changes.get(0));
+        assertArrayEquals(new double[]{5.0, 40.0}, changes.get(1));
+        assertArrayEquals(new double[]{40.0, 3.0}, changes.get(2));
+        assertTrue(config.routesFollowDefaultReachRadius());
+    }
 
     @Test
     void coordinateShareHelperDefaultsAndRoundTrips() throws Exception {

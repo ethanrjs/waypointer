@@ -8,6 +8,7 @@ import com.google.gson.JsonObject;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.RoutePack;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointStyle;
@@ -393,6 +394,8 @@ public final class Storage {
         o.remove("currentIndex");
         o.remove("enabled");
         o.remove("catalogSource");
+        o.remove("routePack");
+        o.remove("radiusSource");
         return o;
     }
 
@@ -402,6 +405,7 @@ public final class Storage {
         copy.remove("currentIndex");
         copy.remove("enabled");
         copy.remove("catalogSource");
+        copy.remove("routePack");
         return groupFromJson(copy);
     }
 
@@ -420,6 +424,9 @@ public final class Storage {
         o.addProperty("loadMode", g.loadMode().name());
         o.addProperty("routeKind", g.routeKind().name());
         o.addProperty("defaultRadius", g.defaultRadius());
+        if (g.radiusSource() != WaypointGroup.RadiusSource.UNKNOWN) {
+            o.addProperty("radiusSource", g.radiusSource().name());
+        }
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
         o.addProperty("staticColor", g.staticColor());
         o.addProperty("gradientStartColor", g.gradientStartColor());
@@ -430,6 +437,12 @@ public final class Storage {
         if (!g.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(g.styleOverride()));
         if (g.catalogProvenance() != null) {
             o.add("catalogSource", catalogProvenanceToJson(g.catalogProvenance()));
+        }
+        if (g.routePack() != null) {
+            JsonObject pack = new JsonObject();
+            pack.addProperty("id", g.routePack().id());
+            pack.addProperty("name", g.routePack().name());
+            o.add("routePack", pack);
         }
         if (g.paint() != null) o.add("paint", paintToJson(g.paint()));
         JsonArray wps = new JsonArray();
@@ -469,8 +482,19 @@ public final class Storage {
                         invalidProvenance);
             }
         }
+        if (o.has("routePack") && o.get("routePack").isJsonObject()) {
+            try {
+                JsonObject pack = o.getAsJsonObject("routePack");
+                g.setRoutePack(new RoutePack(pack.get("id").getAsString(),
+                        pack.has("name") ? pack.get("name").getAsString() : ""));
+            } catch (RuntimeException invalidPack) {
+                Waypointer.LOGGER.warn("Ignoring invalid route pack for group {}", id, invalidPack);
+            }
+        }
         if (o.has("enabled"))       g.setEnabled(o.get("enabled").getAsBoolean());
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
+        if (o.has("radiusSource") && o.get("radiusSource").isJsonPrimitive()) parseEnum(WaypointGroup.RadiusSource.class,
+                o.get("radiusSource").getAsString()).ifPresent(g::setRadiusSource);
         if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
         if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,
                 o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);

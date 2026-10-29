@@ -36,6 +36,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.IntPredicate;
@@ -198,8 +199,7 @@ class WaypointWorldRenderer {
             return false;
         }
 
-        WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
-        boolean drawPaint = anyPainted(groups, defaultPaint);
+        boolean drawPaint = anyPainted(groups);
         boolean drawLines = anyStyle(groups, c -> worldBoxOutlinesEnabled(c.effectiveBoxStyle(), irisHudFallbackActive)
                 && c.waypointOutlineOpacity() > 0);
         boolean drawFill = anyStyle(groups, c -> c.beaconOpacity() > 0
@@ -265,30 +265,30 @@ class WaypointWorldRenderer {
         boolean retainCameraIndependentGeometry = sink.retainsStaticGeometry();
         if ((emitStatic || emitFading) && drawPaint && hasThroughWallWaypoints) {
             for (WaypointGroup g : groups) {
-                WaypointPaint paint = paintFor(g, defaultPaint);
-                if (paint == null) continue;
-                WaypointPaintTextureCache.Entry paintTexture =
-                        WaypointPaintTextureCache.getRetained(paint);
-                if (paintTexture == null) continue;
-                sink.submit(paintTexture.throughWalls(),
-                        (quads, submittedPose) -> emitGroupGeometry(sink, g, () -> emitPaintedBoxes(
-                                submittedPose, quads, level, g, camPos, playerPos,
-                                maxStaticDistanceSq, nearHideDistanceSq,
-                                false, mc, retainCameraIndependentGeometry)));
+                for (WaypointPaint paint : paintsFor(g)) {
+                    WaypointPaintTextureCache.Entry paintTexture =
+                            WaypointPaintTextureCache.getRetained(paint);
+                    if (paintTexture == null) continue;
+                    sink.submit(paintTexture.throughWalls(),
+                            (quads, submittedPose) -> emitGroupGeometry(sink, g, () -> emitPaintedBoxes(
+                                    submittedPose, quads, level, g, paint, camPos, playerPos,
+                                    maxStaticDistanceSq, nearHideDistanceSq,
+                                    false, mc, retainCameraIndependentGeometry)));
+                }
             }
         }
         if ((emitStatic || emitFading) && drawPaint && hasDepthCheckedWaypoints) {
             for (WaypointGroup g : groups) {
-                WaypointPaint paint = paintFor(g, defaultPaint);
-                if (paint == null) continue;
-                WaypointPaintTextureCache.Entry paintTexture =
-                        WaypointPaintTextureCache.getRetained(paint);
-                if (paintTexture == null) continue;
-                sink.submit(paintTexture.depthTested(),
-                        (quads, submittedPose) -> emitGroupGeometry(sink, g, () -> emitPaintedBoxes(
-                                submittedPose, quads, level, g, camPos, playerPos,
-                                maxStaticDistanceSq, nearHideDistanceSq,
-                                true, mc, retainCameraIndependentGeometry)));
+                for (WaypointPaint paint : paintsFor(g)) {
+                    WaypointPaintTextureCache.Entry paintTexture =
+                            WaypointPaintTextureCache.getRetained(paint);
+                    if (paintTexture == null) continue;
+                    sink.submit(paintTexture.depthTested(),
+                            (quads, submittedPose) -> emitGroupGeometry(sink, g, () -> emitPaintedBoxes(
+                                    submittedPose, quads, level, g, paint, camPos, playerPos,
+                                    maxStaticDistanceSq, nearHideDistanceSq,
+                                    true, mc, retainCameraIndependentGeometry)));
+                }
             }
         }
         if ((emitStatic || emitFading) && (drawFlatBeams || drawFill) && hasThroughWallWaypoints) {
@@ -1021,16 +1021,13 @@ class WaypointWorldRenderer {
             WaypointPaintTextureCache.resetRetainedReservation();
             return 0;
         }
-        WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
         activePaintScratch.clear();
         for (WaypointGroup group : groups) {
             if (group == null || group.isEmpty()) continue;
             boolean needsTexture = anyWaypointStyle(group, style -> style.beaconOpacity() > 0
-                    && !usesSequenceRoleColorPaintFallback(group, defaultPaint,
-                            style.colorSequenceWaypointsByRole(), isPaintStyle(style)));
-            if (!needsTexture) continue;
-            WaypointPaint paint = paintFor(group, defaultPaint);
-            if (paint != null) activePaintScratch.add(paint);
+                    && !(style.colorSequenceWaypointsByRole()
+                            && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE));
+            if (needsTexture) activePaintScratch.addAll(paintsFor(group));
         }
         return WaypointPaintTextureCache.reserveForActivePaints(activePaintScratch);
     }
@@ -1077,7 +1074,7 @@ class WaypointWorldRenderer {
         if (groups == null) return false;
         boolean visibleOutlines = anyStyle(groups, c -> boxStyleDrawsOutline(c.effectiveBoxStyle())
                 && c.waypointOutlineOpacity() > 0.0);
-        boolean hasPaint = anyPainted(groups, config.waypointPainterDefaultPaint());
+        boolean hasPaint = anyPainted(groups);
         boolean hasFilledSub = hasFilledSubwaypoint(groups);
         boolean visibleBoxes = anyStyle(groups, c -> (boxStyleDrawsRgbFill(c.effectiveBoxStyle())
                 || c.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT || hasPaint || hasFilledSub)
@@ -1180,9 +1177,9 @@ class WaypointWorldRenderer {
         return false;
     }
 
-    private boolean anyPainted(Iterable<WaypointGroup> groups, WaypointPaint defaultPaint) {
+    private boolean anyPainted(Iterable<WaypointGroup> groups) {
         for (WaypointGroup group : groups) {
-            if (paintFor(group, defaultPaint) != null && !group.isEmpty()) return true;
+            if (!paintsFor(group).isEmpty()) return true;
         }
         return false;
     }
@@ -1191,8 +1188,23 @@ class WaypointWorldRenderer {
         return style.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT;
     }
 
-    private WaypointPaint paintFor(WaypointGroup group, WaypointPaint defaultPaint) {
-        return effectivePaint(group, defaultPaint, group != null && isPaintStyle(styleFor(group, null)));
+    private List<WaypointPaint> paintsFor(WaypointGroup group) {
+        if (group == null || group.isEmpty()) return List.of();
+        if (!group.hasWaypointStyleOverrides()) {
+            WaypointPaint paint = paintFor(group, null);
+            return paint == null ? List.of() : List.of(paint);
+        }
+        List<WaypointPaint> paints = new ArrayList<>(2);
+        for (Waypoint waypoint : group.waypoints()) {
+            WaypointPaint paint = paintFor(group, waypoint);
+            if (paint != null && !paints.contains(paint)) paints.add(paint);
+        }
+        return paints;
+    }
+
+    private WaypointPaint paintFor(WaypointGroup group, Waypoint waypoint) {
+        WaypointerConfig style = styleFor(group, waypoint);
+        return effectivePaint(group, waypoint, style.waypointPainterDefaultPaint(), isPaintStyle(style));
     }
 
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointPaint defaultPaint) {
@@ -1200,10 +1212,18 @@ class WaypointWorldRenderer {
     }
 
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointPaint defaultPaint, boolean paintStyle) {
+        return effectivePaint(group, null, defaultPaint, paintStyle);
+    }
+
+    static WaypointPaint effectivePaint(WaypointGroup group, Waypoint waypoint,
+                                        WaypointPaint styledPaint, boolean paintStyle) {
         WaypointPaint happySnowmanPaint = HappySnowmanSession.facePaint();
         if (happySnowmanPaint != null) return happySnowmanPaint;
-        if (group == null || !group.paintEnabled() && !paintStyle) return null;
-        WaypointPaint paint = group.paint() != null ? group.paint() : defaultPaint;
+        if (group == null) return null;
+        if (styledPaint != null && waypoint != null
+                && waypoint.styleOverride().values().containsKey(WaypointStyles.PAINT)) return styledPaint;
+        if (!group.paintEnabled() && !paintStyle) return null;
+        WaypointPaint paint = group.paint() != null ? group.paint() : styledPaint;
         return paint != null ? paint : paintStyle ? WaypointPaint.missing() : null;
     }
 
@@ -1428,11 +1448,10 @@ class WaypointWorldRenderer {
 
             Waypoint w = g.get(i);
             WaypointerConfig config = styleFor(g, w);
-            WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
-            boolean paintStyle = isPaintStyle(config);
-            boolean paintFallback = usesSequenceRoleColorPaintFallback(
-                    g, defaultPaint, config.colorSequenceWaypointsByRole(), paintStyle) || usesRgbPaintFallback(g, defaultPaint, paintStyle);
-            if (!paintFallback && !shouldEmitRgbFill(g, defaultPaint, paintStyle)) return;
+            WaypointPaint paint = paintFor(g, w);
+            boolean paintFallback = paint != null && (!WaypointPaintTextureCache.isRetained(paint)
+                    || config.colorSequenceWaypointsByRole() && g.loadMode() == WaypointGroup.LoadMode.SEQUENCE);
+            if (!paintFallback && paint != null) return;
             if (!paintFallback && !boxStyleDrawsRgbFill(config.effectiveBoxStyle())
                     && config.effectiveBoxStyle() != WaypointerConfig.BoxStyle.PAINT
                     && !isFilledSubwaypoint(w)) return;
@@ -1447,7 +1466,7 @@ class WaypointWorldRenderer {
     }
 
     private void emitPaintedBoxes(PoseStack ps, VertexConsumer quads,
-                                  ClientLevel level, WaypointGroup group,
+                                  ClientLevel level, WaypointGroup group, WaypointPaint only,
                                    Vec3 camPos, Vec3 playerPos,
                                     double maxStaticDistanceSq, double nearHideDistanceSq,
                                     boolean depthCheckedPass, Minecraft mc,
@@ -1464,8 +1483,9 @@ class WaypointWorldRenderer {
 
             Waypoint waypoint = group.get(i);
             WaypointerConfig config = styleFor(group, waypoint);
-            if (usesSequenceRoleColorPaintFallback(group, config.waypointPainterDefaultPaint(),
-                    config.colorSequenceWaypointsByRole(), isPaintStyle(config))) return;
+            if (config.colorSequenceWaypointsByRole()
+                    && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE) return;
+            if (group.hasWaypointStyleOverrides() && !only.equals(paintFor(group, waypoint))) return;
             State state = stateFor(group, i, currentIndex);
             float alpha = alphaFor(group, i, state) * (float) config.beaconOpacity() * PAINTED_ALPHA_SCALE;
             if (alpha <= 0) return;

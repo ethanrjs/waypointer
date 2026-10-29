@@ -420,7 +420,7 @@ final class WaypointerRouteCommands {
     int runSetRadius(FabricClientCommandSource src, double radius) {
         WaypointGroup route = targetOrError(src);
         if (route == null) return 0;
-        route.setDefaultRadius(radius);
+        route.setCustomRadius(radius);
         changed(route);
         routeSuccess(src, route, Component.translatable("waypointer.command.route.radius",
                 formatBlocks(route.defaultRadius())));

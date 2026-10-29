@@ -31,7 +31,7 @@ class WaypointPaintPreviewTextureTest {
             for (int y = 50; y < 210; y += 7) {
                 for (int x = 50; x < 210; x += 7) {
                     int actual = raster.pixels()[y * WaypointPaintPreviewTexture.SIZE + x];
-                    int expected = rayColor(paint, angle, x, y);
+                    int expected = pixelColor(paint, angle, x, y);
                     if (expected == Integer.MIN_VALUE) continue;
                     compared++;
                     if (expected != 0) painted++;
@@ -61,11 +61,61 @@ class WaypointPaintPreviewTextureTest {
                 "rotation must clear the previous silhouette and depth buffer");
     }
 
-    private static int rayColor(WaypointPaint paint, int angle, int x, int y) {
+    @Test
+    void fillOpacityShowsBackFacesThroughAndSoftensTheSilhouette() {
+        WaypointPaintPreviewTexture.Raster raster = new WaypointPaintPreviewTexture.Raster();
+        raster.update(WaypointPaint.solid(0x123456), 30,
+                new WaypointPaintPreviewTexture.Look(0.33f, false, 0, 0f, 0f));
+        int center = raster.pixels()[128 * WaypointPaintPreviewTexture.SIZE + 128] >>> 24;
+        assertTrue(center > 84 && center < 255,
+                "front and back faces blend at the fill opacity: alpha=" + center);
+
+        raster.update(WaypointPaint.solid(0x123456), 30);
+        boolean softEdge = false;
+        for (int pixel : raster.pixels()) {
+            int alpha = pixel >>> 24;
+            softEdge |= alpha > 0 && alpha < 255;
+        }
+        assertTrue(softEdge, "the box edge is antialiased");
+    }
+
+    @Test
+    void outlineFollowsTheStyleColorAndWidth() {
+        WaypointPaintPreviewTexture.Raster raster = new WaypointPaintPreviewTexture.Raster();
+        raster.update(WaypointPaint.solid(0x123456), 0,
+                new WaypointPaintPreviewTexture.Look(1f, true, 0xFF0000, 1f, 5f));
+        int outlined = 0;
+        for (int pixel : raster.pixels()) {
+            if (pixel == 0xFF0000FF) outlined++;
+        }
+        assertTrue(outlined > 500, "outline pixels drawn in the outline color: " + outlined);
+
+        raster.update(WaypointPaint.solid(0x123456), 0);
+        for (int pixel : raster.pixels()) {
+            assertTrue(pixel != 0xFF0000FF, "no outline when the style draws none");
+        }
+    }
+
+    private static int pixelColor(WaypointPaint paint, int angle, int x, int y) {
+        int first = Integer.MIN_VALUE;
+        int samples = WaypointPaintPreviewTexture.Raster.SUPERSAMPLE;
+        for (int sy = 0; sy < samples; sy++) {
+            for (int sx = 0; sx < samples; sx++) {
+                int color = rayColor(paint, angle,
+                        x + (sx + 0.5) / samples, y + (sy + 0.5) / samples);
+                if (color == Integer.MIN_VALUE) return Integer.MIN_VALUE;
+                if (sx == 0 && sy == 0) first = color;
+                else if (color != first) return Integer.MIN_VALUE;
+            }
+        }
+        return first;
+    }
+
+    private static int rayColor(WaypointPaint paint, int angle, double x, double y) {
         double yaw = Math.toRadians(angle), pitch = Math.toRadians(24);
         double cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-        double dx = (x + 0.5 - 128) / (256 * 0.67);
-        double dy = (128 - y - 0.5) / (256 * 0.67);
+        double dx = (x - 128) / (256 * 0.67);
+        double dy = (128 - y) / (256 * 0.67);
         double[] origin = {-4.2 * cp * sy, 4.2 * sp, 4.2 * cp * cy};
         double[] direction = {
                 dx * cy + (dy * sp + cp) * sy, dy * cp - sp,

@@ -29,6 +29,38 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void defaultReachRadiusChangeMovesOnlyRoutesStillOnTheDefault() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup created = WaypointGroup.create("Created", "hub");
+        created.setDefaultRadius(5.0);
+        created.setRadiusSource(WaypointGroup.RadiusSource.DEFAULT);
+        WaypointGroup edited = WaypointGroup.create("Edited", "hub");
+        edited.setCustomRadius(5.0);
+        WaypointGroup olderMatching = WaypointGroup.create("Older matching", "hub");
+        olderMatching.setDefaultRadius(5.0);
+        WaypointGroup olderDifferent = WaypointGroup.create("Older different", "hub");
+        olderDifferent.setDefaultRadius(12.0);
+        manager.addAll(List.of(created, edited, olderMatching, olderDifferent));
+        AtomicInteger dataChanges = new AtomicInteger();
+        manager.addDataListener(dataChanges::incrementAndGet);
+
+        assertTrue(manager.followDefaultReachRadius(5.0, 40.0));
+
+        assertEquals(40.0, created.defaultRadius());
+        assertEquals(5.0, edited.defaultRadius());
+        assertEquals(40.0, olderMatching.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.DEFAULT, olderMatching.radiusSource());
+        assertEquals(12.0, olderDifferent.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.UNKNOWN, olderDifferent.radiusSource());
+        assertEquals(1, dataChanges.get());
+
+        manager.followDefaultReachRadius(40.0, 8.0);
+        assertEquals(8.0, created.defaultRadius());
+        assertEquals(8.0, olderMatching.defaultRadius());
+        assertEquals(5.0, edited.defaultRadius());
+    }
+
+    @Test
     void retiredDwarvenSurfaceZoneGroupsActivateInThePacketBackedZone() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup route = new WaypointGroup(

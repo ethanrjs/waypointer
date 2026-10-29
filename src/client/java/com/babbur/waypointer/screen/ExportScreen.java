@@ -58,6 +58,7 @@ public final class ExportScreen extends Screen {
 
     private static final int FORMAT_LABEL_PAD = 16;
     private static final int FOOTER_LABEL_PAD = 16;
+    private static final int OPTIONS_BUTTON_H = LABEL_H - 2;
 
     private static final int ROUTE_PICKER_TOGGLE_W = 86;
     private static final int ROUTE_PICKER_SELECT_ALL_W = 76;
@@ -88,6 +89,7 @@ public final class ExportScreen extends Screen {
     private WaypointExportCodec.Target exportTarget = WaypointExportCodec.Target.WAYPOINTER;
 
     private final List<Button> formatButtons = new ArrayList<>();
+    private Button optionsButton;
     private Button routePickerToggleButton;
     private Button routeSelectAllButton;
     private Button copyButton;
@@ -194,6 +196,7 @@ public final class ExportScreen extends Screen {
     @Override
     protected void init() {
         formatButtons.clear();
+        optionsButton = null;
         routePickerToggleButton = null;
         routeSelectAllButton = null;
         routeListNavigation = null;
@@ -204,6 +207,7 @@ public final class ExportScreen extends Screen {
                 font.width(Component.translatable("gui.back")), copyLabelWidth());
 
         buildFormatButtons();
+        buildOptionsButton();
         buildRoutePicker();
         buildFooter();
         clampRouteScrollOffset();
@@ -225,6 +229,26 @@ public final class ExportScreen extends Screen {
             addRenderableWidget(button);
             formatButtons.add(button);
         }
+    }
+
+    private void buildOptionsButton() {
+        Component label = Component.translatable("waypointer.screen.export.options");
+        int w = font.width(label) + FORMAT_LABEL_PAD;
+        optionsButton = GuiTokens.styledButton(layout.contentX() + layout.contentWidth() - w,
+                layout.formY() - 3, w, OPTIONS_BUTTON_H, GuiTokens.colored(label, ACCENT),
+                this::openOptions, Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.options.tooltip")));
+        optionsButton.visible = optionsApply();
+        addRenderableWidget(optionsButton);
+    }
+
+    private boolean optionsApply() {
+        return !(exportTarget == WaypointExportCodec.Target.WAYPOINTER && allDungeonRooms(groups));
+    }
+
+    private void openOptions(Button button) {
+        MinecraftCompat.setScreen(minecraft, new ExportOptionsScreen(this, config, exportTarget,
+                ExportPolicy.containsSubwaypoints(selectedGroupsForExport()), this::reencode));
     }
 
     private void buildRoutePicker() {
@@ -415,6 +439,7 @@ public final class ExportScreen extends Screen {
         for (int i = 0; i < formatButtons.size(); i++) {
             formatButtons.get(i).setMessage(formatLabel(formats.get(i)));
         }
+        if (optionsButton != null) optionsButton.visible = optionsApply();
         reencode();
     }
 

@@ -29,7 +29,7 @@ final class GpuMeshCompat {
     }
 
     static void submit(CommandEncoder encoder) {
-        // Commands execute immediately on this Minecraft version.
+
     }
 
     static void upload(CommandEncoder encoder, GpuBuffer buffer, ByteBuffer data) {
