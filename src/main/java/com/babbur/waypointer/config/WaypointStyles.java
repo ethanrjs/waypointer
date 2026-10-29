@@ -2,6 +2,7 @@ package com.babbur.waypointer.config;
 
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
@@ -14,6 +15,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class WaypointStyles {
+
+    public static final String PAINT = WaypointStyle.PAINT_KEY;
     private WaypointStyles() {}
     private record Property(Method getter, Method setter) {}
     private static final Map<String, Property> PROPERTIES = properties();
@@ -86,7 +89,8 @@ public final class WaypointStyles {
                 "labelDetailOnDemand",
                 "preventLabelOverlap",
                 "showWaypointRoleBadge",
-                "waypointIcon")) {
+                "waypointIcon",
+                PAINT)) {
             try {
                 Method getter = WaypointerConfig.class.getMethod(name);
                 Method setter = WaypointerConfig.class.getMethod(
@@ -318,7 +322,11 @@ public final class WaypointStyles {
                 if (!Double.isFinite(number)) return false;
                 parsed = number;
             } else if (type == int.class) parsed = Integer.parseInt(value);
-            else if (type == String.class) parsed = value;
+            else if (type == String.class) {
+                if (PAINT.equals(name) && !value.isEmpty()
+                        && WaypointPaint.fromCode(value) == null) return false;
+                parsed = value;
+            }
             else if (type.isEnum()) parsed = enumValue(type, value);
             else return false;
             property.setter().invoke(config, parsed);

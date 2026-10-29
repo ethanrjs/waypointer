@@ -201,8 +201,6 @@ tasks.named('runClientGameTest') {
 	}
 }
 
-// RenderPearl relocated the public GPU types in 26.3. Keep the shared renderer
-// in one place; only import names change here, while API differences live in Compat classes.
 def renderPearlImports = [
 	'com.mojang.blaze3d.pipeline.': 'com.mojang.renderpearl.api.pipeline.',
 	'com.mojang.blaze3d.buffers.Gpu': 'com.mojang.renderpearl.api.buffers.Gpu',

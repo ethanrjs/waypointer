@@ -497,15 +497,19 @@ public final class WaypointImporter {
                     "Skyblocker payload decoded but didn't contain JSON");
         }
         ImportResult r = prefix.equals(SKYBLOCKER_V1_PREFIX)
-                ? importSkyblockerV1Json(json)
+                ? importSkyblockerV1Json(json, defaultImportedRouteName)
                 : importJson(json, defaultImportedRouteName);
         return checkedImport(new ImportResult(Source.SKYBLOCKER, r.groups(), ""));
     }
 
-    private static ImportResult importSkyblockerV1Json(String json) {
+    private static ImportResult importSkyblockerV1Json(String json, String defaultImportedRouteName) {
         JsonElement root = parseBoundedJson(json);
         if (!root.isJsonArray()) {
             throw new IllegalArgumentException("Skyblocker V1 payload must contain a group array");
+        }
+
+        if (!looksLikeGroupArray(root.getAsJsonArray())) {
+            return importJson(json, defaultImportedRouteName);
         }
 
         List<WaypointGroup> groups = new ArrayList<>();

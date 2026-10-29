@@ -20,6 +20,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -259,6 +260,7 @@ final class WaypointerRouteList {
                 }
             }
             if (searching && !roomMatches && displayGroups.isEmpty()) continue;
+            displayGroups.sort(Comparator.comparing(group -> !group.enabled()));
 
             boolean currentRoom = roomZoneId.equals(currentRoomZoneId);
             int secretCount = RouteListPresentation.displayedInstalledSecretCount(
@@ -830,15 +832,16 @@ final class WaypointerRouteList {
         if (isDungeonRoomZone(currentRoomZoneId) && !roomIds.contains(currentRoomZoneId)) {
             roomIds.add(0, currentRoomZoneId);
         }
-        Set<String> populated = new HashSet<>();
+
+        Set<String> active = new HashSet<>();
         for (String roomId : roomIds) {
-            if (dungeonRoomHasRoutes(roomId)) populated.add(roomId);
+            if (dungeonRoomHasActiveRoute(roomId)) active.add(roomId);
         }
-        return orderedDungeonRoomIds(roomIds, populated, currentRoomZoneId);
+        return orderedDungeonRoomIds(roomIds, active, currentRoomZoneId);
     }
 
-    private boolean dungeonRoomHasRoutes(String roomZoneId) {
-        return !dungeonRoomGroupsForZone(roomZoneId).isEmpty();
+    private boolean dungeonRoomHasActiveRoute(String roomZoneId) {
+        return dungeonRoomGroupsForZone(roomZoneId).stream().anyMatch(WaypointGroup::enabled);
     }
 
     private List<WaypointGroup> dungeonRoomGroupsForZone(String roomZoneId) {

@@ -114,8 +114,6 @@
   "waypointer.screen.painter.file_dialog.filter": "Skedarë imazhi",
   "waypointer.screen.painter.status.picker_failed": "Nuk mund të hapet pikeri i imazhit.",
   "waypointer.screen.painter.status.import_failed": "Nuk mund ta importojmë këtë imazh.",
-  "waypointer.screen.painter.status.applied.one": "U aplikua në rrugën %1$s.",
-  "waypointer.screen.painter.status.applied.many": "U aplikua në rrugët %1$s.",
   "waypointer.screen.painter.palette.tooltip": "Zgjidhni ngjyrën %1$s (#%2$s).",
   "waypointer.screen.debug.refresh": "Rifresko",
   "waypointer.screen.debug.copy_report": "Kopjo raportin",

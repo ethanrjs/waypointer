@@ -5,6 +5,7 @@ import com.babbur.waypointer.api.ImportSummary;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.RoutePack;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointStyle;
@@ -213,11 +214,14 @@ public final class CatalogRouteInstaller {
                 String apiRoot, Map<Integer, WaypointGroup> priorGroups) {
             List<WaypointGroup> detached = new ArrayList<>(importResult.groups().size());
             int groupCount = importResult.groups().size();
+            boolean dungeonPack = importResult.groups().stream()
+                    .anyMatch(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON);
             for (int index = 0; index < groupCount; index++) {
                 WaypointGroup group = importResult.groups().get(index).exportSnapshot();
                 group.setCatalogProvenance(new CatalogRouteProvenance(
                         apiRoot, summary.id(), summary.version(), summary.codecVersion(),
                         payloadSha256, index, groupCount));
+                if (dungeonPack) group.setRoutePack(RoutePack.catalog(summary.id(), summary.title()));
                 if (group.icon().isEmpty()) group.setIcon(summary.icon());
                 WaypointGroup previous = priorGroups.get(index);
                 if (previous != null) {

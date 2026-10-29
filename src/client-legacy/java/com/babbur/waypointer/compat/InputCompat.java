@@ -4,7 +4,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.Window;
 import org.lwjgl.glfw.GLFW;
 
-/** Platform key codes used by UI events; polling accepts physical InputConstants keys. */
 public final class InputCompat {
     private InputCompat() {}
 

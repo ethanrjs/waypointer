@@ -1,5 +1,6 @@
 import argparse
 import functools
+import io
 import json
 import os
 import re
@@ -15,7 +16,6 @@ USER_AGENT = "ethanrjs/waypointer release mirror (github.com/ethanrjs/waypointer
 PROJECT = "VsST7Yka"
 BUILT_IN = {"minecraft", "java", "fabricloader", "fabric"}
 
-
 def call(path, body=None, headers=None, method="GET"):
     request = urllib.request.Request(API + path, data=body, method=method,
                                      headers={"User-Agent": USER_AGENT, **(headers or {})})
@@ -26,11 +26,9 @@ def call(path, body=None, headers=None, method="GET"):
         raise SystemExit(f"Modrinth {method} {path} failed with {error.code}: "
                          f"{error.read().decode(errors='replace')}")
 
-
 def numbers(version):
     core = re.split(r"[-+]", version, maxsplit=1)[0]
     return [int(part) if part.isdigit() else part for part in core.split(".")]
-
 
 def compare(a, b):
     x, y = numbers(a), numbers(b)
@@ -45,12 +43,10 @@ def compare(a, b):
             return -1 if left < right else 1
     return 0
 
-
 def accepts(predicate, version):
     if isinstance(predicate, list):
         return any(accepts(item, version) for item in predicate)
     return all(term_accepts(term, version) for term in predicate.split())
-
 
 def term_accepts(term, version):
     if term == "*":
@@ -72,12 +68,10 @@ def term_accepts(term, version):
     upper = [parts[0] + 1] if operator == "^" or len(parts) < 2 else [parts[0], parts[1] + 1]
     return order >= 0 and compare(version, ".".join(map(str, upper))) < 0
 
-
 def game_versions(predicate):
     releases = [tag["version"] for tag in call("tag/game_version")
                 if tag["version_type"] == "release" and accepts(predicate, tag["version"])]
     return sorted(releases, key=functools.cmp_to_key(compare))
-
 
 def dependency(slug, predicate, games):
     project = call(f"project/{slug}")
@@ -86,11 +80,30 @@ def dependency(slug, predicate, games):
                       key=lambda v: v["date_published"], reverse=True)
     usable = [v for v in versions if accepts(predicate, v["version_number"])]
     chosen = next((v for v in usable if set(games) <= set(v["game_versions"])), None) \
-        or next((v for v in usable if games[-1] in v["game_versions"]), None)
+        or next((v for v in usable if games[-1] in v["game_versions"]), None) \
+        or declared_compatible(usable, games)
     pinned = {"version_id": chosen["id"]} if chosen else {}
     return {"project_id": project["id"], **pinned, "dependency_type": "required"}, \
         (chosen["version_number"] if chosen else "any version")
 
+def declared_compatible(versions, games, limit=5):
+
+    for version in versions[:limit]:
+        primary = next((f for f in version["files"] if f.get("primary")), None) \
+            or (version["files"][0] if version["files"] else None)
+        if primary is None or not primary["filename"].endswith(".jar"):
+            continue
+        request = urllib.request.Request(primary["url"], headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                data = response.read()
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                declared = json.loads(archive.read("fabric.mod.json")).get("depends", {}).get("minecraft")
+        except (urllib.error.URLError, zipfile.BadZipFile, KeyError, ValueError):
+            continue
+        if declared and declared != "*" and all(accepts(declared, game) for game in games):
+            return version
+    return None
 
 def channel(tag):
     lowered = tag.lower()
@@ -99,7 +112,6 @@ def channel(tag):
     if "beta" in lowered or "-rc" in lowered:
         return "beta"
     return "release"
-
 
 def multipart(data, jar):
     boundary = uuid.uuid4().hex
@@ -110,7 +122,6 @@ def multipart(data, jar):
     body = head.encode() + json.dumps(data).encode() + b"\r\n" \
         + file_head.encode() + jar.read_bytes() + b"\r\n" + f"--{boundary}--\r\n".encode()
     return body, f"multipart/form-data; boundary={boundary}"
-
 
 def main():
     parser = argparse.ArgumentParser(description="Mirror a Waypointer release's jars to Modrinth.")
@@ -174,7 +185,6 @@ def main():
         body, content_type = multipart(data, jar)
         created = call("version", body, {"Authorization": token, "Content-Type": content_type}, "POST")
         print(f"  published https://modrinth.com/mod/{project}/version/{created['id']}")
-
 
 if __name__ == "__main__":
     main()

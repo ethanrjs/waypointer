@@ -41,6 +41,21 @@ class V11CodecTest {
     }
 
     @Test
+    void aWaypointsOwnPaintTravelsInTheCode() {
+        WaypointPaint paint = WaypointPaint.solid(0x3366CC);
+        WaypointGroup route = WaypointGroup.create("Painted", "hub");
+        route.add(new Waypoint(1, 70, 1, "A", 0x123456, 0, 0.0));
+        route.add(new Waypoint(2, 70, 2, "B", 0x123456, 0, 0.0)
+                .withStyleOverride(WaypointStyle.EMPTY.with("waypointPaint", paint.toCode())));
+
+        List<WaypointGroup> decoded = WaypointCodec.decode(
+                UniversalShareCodec.encodeWaypoints(List.of(route), WaypointCodec.Options.FULL_FIDELITY));
+
+        assertEquals(paint, WaypointPaint.fromCode(
+                decoded.getFirst().get(1).styleOverride().values().get("waypointPaint")));
+    }
+
+    @Test
     void exportOptionsStripWhatTheyExclude() {
         WaypointCodec.Options noNames = WaypointCodec.Options.FULL_FIDELITY.toBuilder().includeNames(false).build();
 

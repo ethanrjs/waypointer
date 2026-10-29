@@ -357,6 +357,25 @@ class WaypointImporterTest {
     }
 
     @Test
+    void skyblockerPrefixAroundFlatColeweightListImportsTheRoute() throws Exception {
+        String json = "["
+                + "{\"x\":552,\"y\":47,\"z\":555,\"r\":0.0,\"g\":1.0,\"b\":0.0,\"options\":{\"name\":\"1\"}},"
+                + "{\"x\":546,\"y\":48,\"z\":553,\"r\":0.0,\"g\":1.0,\"b\":0.0,\"options\":{\"name\":\"2\"}},"
+                + "{\"x\":547,\"y\":45,\"z\":546,\"r\":0.0,\"g\":1.0,\"b\":0.0,\"options\":{\"name\":\"3\"}}"
+                + "]";
+        String packed = WaypointImporter.SKYBLOCKER_V1_PREFIX
+                + Base64.getEncoder().encodeToString(gzip(json));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(packed, "Topaz");
+
+        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        WaypointGroup group = result.groups().getFirst();
+        assertEquals("Topaz", group.name());
+        assertEquals(List.of(552, 546, 547), group.waypoints().stream().map(Waypoint::x).toList());
+        assertEquals(List.of("1", "2", "3"), group.waypoints().stream().map(Waypoint::name).toList());
+    }
+
+    @Test
     void legacySkyblockerPrefixUsesTheCallersLocalizedFallbackName() throws Exception {
         String json = "[{\"x\":1,\"y\":2,\"z\":3}]";
         String packed = WaypointImporter.SKYBLOCKER_LEGACY_ORDERED_PREFIX

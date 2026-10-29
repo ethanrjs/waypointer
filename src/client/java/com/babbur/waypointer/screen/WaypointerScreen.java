@@ -23,6 +23,7 @@ import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.dungeon.DungeonRoutePacks;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -100,6 +101,7 @@ public final class WaypointerScreen extends Screen {
     private Button moveDownBtn;
     private Button islandSelectorBtn;
     private Button restoreStructuresBtn;
+    private Button dungeonPacksBtn;
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
     private OverlayButton browseButton;
@@ -355,6 +357,17 @@ public final class WaypointerScreen extends Screen {
                 "waypointer.screen.main.restore_structures.tooltip")));
         restoreStructuresBtn.visible = restoreStructuresShown();
         addRenderableWidget(restoreStructuresBtn);
+
+        Component packsLabel = Component.translatable("waypointer.dungeon.packs.button");
+        int packsW = GuiTokens.iconButtonWidth(font, packsLabel, Icons.Icon.FOLDER);
+        dungeonPacksBtn = new GuiTokens.StyledButton(
+                islandSelectorBtn.getX() - GAP - packsW, HEADER_BTN_Y, packsW, BTN_H, packsLabel,
+                b -> MinecraftCompat.setScreen(minecraft, new DungeonRoutePacksScreen(this, manager)))
+                .icon(Icons.Icon.FOLDER);
+        dungeonPacksBtn.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.dungeon.packs.button.tooltip")));
+        dungeonPacksBtn.visible = dungeonPacksShown();
+        addRenderableWidget(dungeonPacksBtn);
 
         zoneSearchBox = new EditBox(font, 0, 0, ISLAND_SELECTOR_W - GAP - 18, 10,
                 Component.translatable("waypointer.screen.main.zone_search"));
@@ -614,6 +627,7 @@ public final class WaypointerScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         if (restoreStructuresBtn != null) restoreStructuresBtn.visible = restoreStructuresShown();
+        if (dungeonPacksBtn != null) dungeonPacksBtn.visible = dungeonPacksShown();
         focusCurrentDungeonRoomIfChanged();
         if (zoneSearchFocusPending) {
             zoneSearchFocusPending = false;
@@ -1053,6 +1067,11 @@ public final class WaypointerScreen extends Screen {
         return fits && config.crystalHollowsHideStructuresFolder() && selectedZoneId != null
                 && ("crystal_hollows".equals(selectedZoneId)
                     || CrystalHollowsStructureZones.isStructureZone(selectedZoneId));
+    }
+
+    private boolean dungeonPacksShown() {
+        boolean fits = dungeonPacksBtn == null || dungeonPacksBtn.getX() > width / 2 + 60;
+        return fits && isDungeonRoomsZone(selectedZoneId) && zoneMoveGroupId == null;
     }
 
     private void restoreStructuresFolder() {
@@ -1689,6 +1708,7 @@ public final class WaypointerScreen extends Screen {
             g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         }
         g.setDefaultRadius(config.defaultReachRadius());
+        g.setRadiusSource(WaypointGroup.RadiusSource.DEFAULT);
         manager.add(g);
         selectedZoneId = g.routeKind() == WaypointGroup.RouteKind.DUNGEON
                 ? DUNGEON_ROOMS_ZONE_ID : targetZoneId;
@@ -2268,7 +2288,8 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void installDecodedDungeonRooms(DungeonRouteImporter.Result decoded, String source) {
-        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, decoded.groups());
+        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, decoded.groups(),
+                DungeonRoutePacks.importedPack(decoded.format()));
         if (routes.isEmpty()) {
             ImportFeedback.failure(Component.translatable(
                     "waypointer.import.error.damaged").getString());

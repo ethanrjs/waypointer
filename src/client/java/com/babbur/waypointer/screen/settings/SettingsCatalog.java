@@ -51,7 +51,7 @@ public final class SettingsCatalog {
     public static final String ACTION_DISABLE_ALL = "action.disableAll";
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
     public static final String ACTION_MINIMAP_EDITOR = "action.minimapEditor";
-    public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
+    public static final String ACTION_WAYPOINT_PAINT = "waypointPaint";
     public static final String ACTION_FEEDBACK = "action.feedback";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) -> c.showLabels() && (
@@ -557,6 +557,11 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setDefaultReachRadius(dbl(v)))
                                 .range(0.5, 100.0)
                                 .aliases("trigger"),
+                        Setting.bool("routesFollowDefaultReachRadius", MAIN, "Routes follow the default reach radius",
+                                "Changing the default also changes routes whose radius you have not set by hand.",
+                                (c, d) -> c.routesFollowDefaultReachRadius(),
+                                (c, d, v) -> c.setRoutesFollowDefaultReachRadius((Boolean) v))
+                                .localOnly(),
                         Setting.bool("resetProgressOnWorldJoin", MAIN, "Reset progress when joining a world",
                                 null,
                                 (c, d) -> c.resetProgressOnWorldJoin(),

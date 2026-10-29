@@ -6,7 +6,6 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import java.util.List;
 import java.util.Map;
 
-/** Adapts the resource-list selector signature without duplicating locale overlays. */
 public abstract class ResourceManagerCompat implements ResourceManager {
     protected abstract ResourceManager delegate();
 

@@ -187,11 +187,11 @@ public final class GroupEditScreen extends Screen {
                 }
             };
 
-    private static final int KEY_ESCAPE   = 256;
-    private static final int KEY_ENTER    = 257;
-    private static final int KEY_TAB      = 258;
-    private static final int KEY_KP_ENTER = 335;
-    private static final int KEY_MENU     = 348;
+    private static final int KEY_ESCAPE   = InputCompat.KEY_ESCAPE;
+    private static final int KEY_ENTER    = InputCompat.KEY_ENTER;
+    private static final int KEY_TAB      = InputCompat.KEY_TAB;
+    private static final int KEY_KP_ENTER = InputCompat.KEY_KP_ENTER;
+    private static final int KEY_MENU     = InputCompat.KEY_MENU;
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
         super(Component.translatable("waypointer.screen.group_edit.title", group.name()));
@@ -761,7 +761,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void bumpRadius(double delta) {
-        group.setDefaultRadius(group.defaultRadius() + delta);
+        group.setCustomRadius(group.defaultRadius() + delta);
         recordEdit();
     }
 
@@ -2551,8 +2551,8 @@ public final class GroupEditScreen extends Screen {
         if (!(getFocused() instanceof EditBox)
                 && (InputCompat.isKeyDown(minecraft.getWindow(), InputConstants.KEY_LCONTROL)
                 || InputCompat.isKeyDown(minecraft.getWindow(), InputConstants.KEY_RCONTROL))
-                && (k == 90 || k == 89)) {
-            restoreEdit(k == 89 || hasShiftDown());
+                && (k == InputCompat.KEY_Z || k == InputCompat.KEY_Y)) {
+            restoreEdit(k == InputCompat.KEY_Y || hasShiftDown());
             return true;
         }
         if (contextMenu.keyPressed(k)) return true;
