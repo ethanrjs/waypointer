@@ -4,7 +4,6 @@ import java.net.URI;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
-/** Local-only provenance for one group installed from the public route catalog. */
 public record CatalogRouteProvenance(
         String apiRoot,
         String routeId,
@@ -16,7 +15,7 @@ public record CatalogRouteProvenance(
 
     private static final Pattern ROUTE_ID = Pattern.compile("[A-Za-z0-9_-]{22}");
     private static final Pattern PAYLOAD_HASH = Pattern.compile("[A-Za-z0-9_-]{43}");
-    private static final int MAX_GROUPS = 64;
+    private static final int MAX_GROUPS = 256;
 
     public CatalogRouteProvenance {
         apiRoot = normalizeApiRoot(apiRoot);

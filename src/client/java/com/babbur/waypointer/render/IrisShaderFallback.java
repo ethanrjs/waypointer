@@ -6,7 +6,6 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.lang.reflect.Method;
 
-/** Chooses the HUD fallback when Iris shaders cannot draw the world overlay. */
 final class IrisShaderFallback {
 
     private static final String IRIS_MOD_ID = "iris";

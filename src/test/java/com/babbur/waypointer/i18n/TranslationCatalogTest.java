@@ -1,6 +1,5 @@
 package com.babbur.waypointer.i18n;
 
-import com.babbur.waypointer.screen.settings.PerfScenarios;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import com.google.gson.stream.JsonReader;
@@ -17,11 +16,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,12 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-/**
- * Contract for Waypointer's language resources.
- *
- * <p>{@code en_us.json} is the canonical catalog. Each remote locale is a
- * sparse overlay with known keys and formatting-compatible translated values.
- */
 class TranslationCatalogTest {
 
     private static final Path ENGLISH_FILE = Path.of(
@@ -53,6 +48,14 @@ class TranslationCatalogTest {
                     + "\"((?:\\\\.|[^\"\\\\])*)\"(?=\\s*[,)])");
     private static final Pattern FORMAT_TOKEN = Pattern.compile(
             "%(?:(\\d+)\\$)?([A-Za-z%])");
+
+    @Test
+    void englishTextHasNoEncodingCorruption() throws IOException {
+        for (var entry : readCatalog(ENGLISH_FILE.resolve("en_us.json")).entrySet()) {
+            assertFalse(Pattern.compile("[\u00c3\u00c2\ufffd]").matcher(entry.getValue()).find(),
+                    () -> "Corrupted English text: " + entry.getKey());
+        }
+    }
 
     @Test
     void everyRemoteLocaleIsASparseCanonicalOverlay() throws IOException {
@@ -103,7 +106,7 @@ class TranslationCatalogTest {
         expected.add("en_us");
         Set<String> actual = localeFiles().stream()
                 .map(TranslationCatalogTest::localeName)
-                .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+                .collect(Collectors.toCollection(TreeSet::new));
         assertEquals(expected, actual,
                 "language directory must contain the 142 Mojang asset locales plus en_us");
     }
@@ -122,7 +125,7 @@ class TranslationCatalogTest {
         assertEquals("Too long for chat", englishValue);
         for (Path localeFile : localeFiles()) {
             String value = readCatalog(localeFile).getOrDefault(key, englishValue);
-            assertFalse(value.toLowerCase(java.util.Locale.ROOT).contains("discord"),
+            assertFalse(value.toLowerCase(Locale.ROOT).contains("discord"),
                     localeName(localeFile) + " still suggests Discord for " + key);
         }
     }
@@ -172,11 +175,6 @@ class TranslationCatalogTest {
             required.add(impact.wordTranslationKey());
             required.add(impact.chipTranslationKey());
         }
-        for (PerfScenarios.Scenario scenario : PerfScenarios.all()) {
-            required.add(PerfScenarios.labelTranslationKey(scenario));
-            required.add(PerfScenarios.descriptionTranslationKey(scenario));
-        }
-
         Set<String> missing = new TreeSet<>(required);
         missing.removeAll(englishKeys);
         assertTrue(missing.isEmpty(), () -> "visible settings translations missing from en_us.json: " + missing);
@@ -280,11 +278,6 @@ class TranslationCatalogTest {
                 || key.startsWith("key.category.waypointer.");
     }
 
-    /**
-     * Returns the argument indexes used by Minecraft's supported {@code %s}
-     * and {@code %1$s} placeholders. Sorting deliberately permits translators
-     * to reorder positional arguments while retaining the same signature.
-     */
     private static List<Integer> placeholderSignature(String value, String locale, String key) {
         List<Integer> arguments = new ArrayList<>();
         Matcher matcher = FORMAT_TOKEN.matcher(value);
@@ -318,8 +311,6 @@ class TranslationCatalogTest {
                     Matcher matcher = TRANSLATABLE_LITERAL.matcher(source);
                     while (matcher.find()) {
                         String key = matcher.group(1);
-                        // Vanilla keys such as gui.cancel are owned by Minecraft,
-                        // not Waypointer's catalog.
                         if (!isWaypointerKey(key)) continue;
                         references.computeIfAbsent(key, ignored -> new TreeSet<>())
                                 .add(path.toString());

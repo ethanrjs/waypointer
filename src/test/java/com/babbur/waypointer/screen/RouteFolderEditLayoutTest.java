@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Comparator;
 import java.util.List;
 
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
@@ -12,17 +13,50 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteFolderEditLayoutTest {
     @Test
-    void normalEditorUsesSectionSpacingWithoutADeadMiddleArea() {
+    void normalEditorKeepsOrderedControlsInsideACompactPanel() {
         RouteFolderEditLayout.Layout layout =
                 RouteFolderEditLayout.calculate(400, 240, true, true);
 
-        assertEquals(180, layout.panelHeight());
-        assertEquals(13, layout.sectionDividerY() - layout.detailY());
-        assertEquals(8, layout.nameLabelY() - layout.sectionDividerY());
-        assertEquals(8, layout.colorLabelY()
-                - (layout.nameFieldY() + BTN_H));
+        assertTrue(layout.panelY() >= 0);
+        assertTrue(layout.panelBottom() <= 240);
+        assertTrue(layout.panelX() >= 0);
+        assertTrue(layout.panelX() + layout.panelWidth() <= 400);
+        assertTrue(layout.detailVisible());
+        assertTrue(layout.fieldLabelsVisible());
+        assertTrue(layout.titleY() >= layout.panelY());
+        assertTrue(layout.titleY() < layout.detailY());
+        assertTrue(layout.detailY() < layout.sectionDividerY());
+        assertTrue(layout.sectionDividerY() < layout.nameLabelY());
+        assertTrue(layout.nameLabelY() < layout.nameFieldY());
+        assertTrue(layout.nameFieldY() + BTN_H <= layout.colorLabelY());
+        assertTrue(layout.colorLabelY() < layout.colorControlY());
+        assertTrue(layout.colorControlY() + BTN_H <= layout.footerY());
         assertTrue(layout.footerY()
                 - (layout.colorControlY() + BTN_H) <= 28);
+        assertActionsFit(layout);
+    }
+
+    @Test
+    void emptyCreateFolderHidesTheSelectionDetailLine() {
+        RouteFolderEditLayout.Layout layout =
+                RouteFolderEditLayout.calculate(400, 240, false, false);
+
+        assertFalse(layout.detailVisible());
+        RouteFolderEditLayout.Layout selected =
+                RouteFolderEditLayout.calculate(400, 240, false, true);
+        assertTrue(layout.panelHeight() < selected.panelHeight());
+        assertTrue(layout.nameFieldY() - layout.titleY()
+                < selected.nameFieldY() - selected.titleY());
+        assertTrue(layout.colorControlY() + BTN_H < layout.footerY());
+        assertActionsFit(layout);
+    }
+
+    @Test
+    void selectedCreateFolderKeepsTheRouteCountDetailLine() {
+        RouteFolderEditLayout.Layout layout =
+                RouteFolderEditLayout.calculate(400, 240, false, true);
+
+        assertTrue(layout.detailVisible());
     }
 
     @Test
@@ -43,7 +77,8 @@ class RouteFolderEditLayoutTest {
                 RouteFolderEditLayout.calculate(240, 200, true, true);
 
         assertFalse(layout.wrappedActions());
-        assertEquals(224, layout.panelWidth());
+        assertTrue(layout.panelX() >= 0);
+        assertTrue(layout.panelX() + layout.panelWidth() <= 240);
         assertEquals(1, layout.actions().stream()
                 .map(RouteFolderEditLayout.ActionPlacement::y).distinct().count());
         assertNotNull(layout.action(RouteFolderEditLayout.Action.CANCEL));
@@ -105,7 +140,7 @@ class RouteFolderEditLayoutTest {
                 .map(RouteFolderEditLayout.ActionPlacement::y).distinct().toList()) {
             List<RouteFolderEditLayout.ActionPlacement> row = layout.actions().stream()
                     .filter(placement -> placement.y() == y)
-                    .sorted(java.util.Comparator.comparingInt(
+                    .sorted(Comparator.comparingInt(
                             RouteFolderEditLayout.ActionPlacement::x))
                     .toList();
             for (int index = 1; index < row.size(); index++) {

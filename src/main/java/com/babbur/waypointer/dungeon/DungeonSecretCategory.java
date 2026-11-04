@@ -2,7 +2,6 @@ package com.babbur.waypointer.dungeon;
 
 import java.util.Locale;
 
-/** Secret type, wire ID, and fallback display color. */
 public enum DungeonSecretCategory {
     ENTRANCE     ("entrance",  0x2EFF2E),
     SUPERBOOM    ("superboom", 0xFFB300),
@@ -29,7 +28,6 @@ public enum DungeonSecretCategory {
         this.defaultColor = defaultColor;
     }
 
-    /** Unknown IDs use {@link #DEFAULT} so imported routes still render. */
     public static DungeonSecretCategory fromId(String id) {
         if (id == null || id.isBlank()) return DEFAULT;
         String norm = id.trim().toLowerCase(Locale.ROOT);

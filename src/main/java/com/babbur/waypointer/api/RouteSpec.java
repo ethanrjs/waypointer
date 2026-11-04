@@ -9,12 +9,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Immutable input for creating a persisted Waypointer route.
- *
- * <p>Routes created from this spec belong to the user after creation: they are
- * saved with the rest of Waypointer's data and can be edited from the UI.
- */
 public record RouteSpec(
         String name,
         String zoneId,
@@ -53,10 +47,6 @@ public record RouteSpec(
             return this;
         }
 
-        /**
-         * Waypointer zone id such as {@code "hub"}, {@code "dungeon_f7"}, or
-         * {@code "dwarven_mines"}.
-         */
         public Builder zoneId(String zoneId) {
             this.zoneId = zoneId;
             return this;
@@ -67,13 +57,11 @@ public record RouteSpec(
             return this;
         }
 
-        /** Whether the route is enabled when created. Defaults to {@code true}. */
         public Builder enabled(boolean enabled) {
             this.enabled = enabled;
             return this;
         }
 
-        /** Default reach radius in blocks for waypoints that do not override it. */
         public Builder defaultRadius(double defaultRadius) {
             this.defaultRadius = defaultRadius;
             return this;

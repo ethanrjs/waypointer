@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -16,77 +17,98 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.util.tinyfd.TinyFileDialogs;
+import com.babbur.waypointer.compat.ImageFilePicker;
 
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
-import static org.lwjgl.glfw.GLFW.*;
+import static com.babbur.waypointer.compat.InputCompat.*;
 
 public final class WaypointPainterScreen extends Screen {
 
     private enum FaceView { ONE, ALL }
+    private enum Tool { BRUSH, FILL }
 
     private static final int PALETTE_W = 84;
     private static final int PREVIEW_MAX = 176;
+    private static final float PREVIEW_MIN_FILL = 0.2f;
     private static final int SWATCH_H = 16;
     private static final int SWATCH_GAP = 2;
-    static final String IMPORT_FILE_LABEL = "Import from file";
 
     private final Screen parent;
     private final WaypointerConfig config;
     private final ActiveGroupManager manager;
-    private final WaypointGroup targetGroup;
+    private final PaintScope scope;
     private final int[] palette;
     private final byte[] pixels;
     private FaceView faceView;
+    private Tool tool = Tool.BRUSH;
     private int selectedPalette;
     private WaypointPaint.Face cursorFace = WaypointPaint.Face.NORTH;
     private int cursorX;
     private int cursorY;
     private boolean painting;
+    private final EditHistory<PaintState> history;
+    private HistoryButton undoButton, redoButton;
+    private record PaintState(WaypointPaint paint, FaceView faceView) {}
     private int lastPaintOffset = -1;
     private WaypointPaint snapshot;
+    private boolean importing;
     private WaypointPaintPreviewTexture preview;
+    private final long previewStartedNanos = System.nanoTime();
     private String status = "";
     private Button faceViewButton;
+    private Button toolButton;
+    private Button colorButton;
+    private Button importButton;
+    private Button applyButton;
+    private Button removeButton;
     private final PaletteButton[] paletteButtons = new PaletteButton[WaypointPaint.PALETTE_SIZE];
     private CanvasButton canvasButton;
 
     public WaypointPainterScreen(Screen parent, WaypointerConfig config,
                                  ActiveGroupManager manager) {
-        this(parent, config, manager, null);
+        this(parent, config, manager, PaintScope.GLOBAL);
     }
 
     public WaypointPainterScreen(Screen parent, WaypointerConfig config,
                                  ActiveGroupManager manager, WaypointGroup targetGroup) {
+        this(parent, config, manager, targetGroup == null ? PaintScope.GLOBAL : PaintScope.route(targetGroup));
+    }
+
+    WaypointPainterScreen(Screen parent, WaypointerConfig config,
+                          ActiveGroupManager manager, PaintScope scope) {
         super(Component.translatable("waypointer.screen.painter.title"));
         this.parent = parent;
         this.config = config;
         this.manager = manager;
-        this.targetGroup = targetGroup;
-        WaypointPaint initial = initialPaint(manager, config, targetGroup);
+        this.scope = scope;
+        WaypointPaint initial = initialPaint(config, scope);
         if (!config.hasWaypointPainterPalette()) {
             config.setWaypointPainterPalette(initial.paletteCopy());
         }
         this.palette = config.waypointPainterPalette();
         this.pixels = initial.pixelsCopy();
         this.faceView = initial.hasIdenticalFaces() ? FaceView.ONE : FaceView.ALL;
+        history = new EditHistory<>(capture());
     }
 
     @Override
     protected void init() {
         Layout layout = layout();
-        if (preview == null) preview = new WaypointPaintPreviewTexture();
+        int previewPixels = WaypointPaintPreviewTexture.clampSize(
+                layout.previewSize() * minecraft.getWindow().getGuiScale());
+        if (preview != null && preview.size() != previewPixels) {
+            preview.release();
+            preview = null;
+        }
+        if (preview == null) preview = new WaypointPaintPreviewTexture(previewPixels);
 
         int columns = layout.paletteColumns();
         int swatchW = (PALETTE_W - SWATCH_GAP * (columns - 1)) / columns;
@@ -101,11 +123,15 @@ public final class WaypointPainterScreen extends Screen {
             addRenderableWidget(button);
         }
 
-        addRenderableWidget(styledButton(layout.paletteX(), layout.editColorY(),
+        colorButton = addRenderableWidget(styledButton(layout.paletteX(), layout.editColorY(),
                 PALETTE_W, BTN_H, Component.translatable("waypointer.screen.painter.colors"),
                 b -> editSelectedColor(),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.painter.colors.tooltip"))));
+
+        toolButton = addRenderableWidget(styledButton(layout.paletteX(), layout.toolY(),
+                PALETTE_W, BTN_H, toolComponent(), b -> toggleTool(),
+                Tooltip.create(Component.translatable("waypointer.screen.painter.tool.tooltip"))));
 
         faceViewButton = styledButton(layout.paletteX(), layout.faceViewY(),
                 PALETTE_W, BTN_H, faceViewComponent(),
@@ -121,15 +147,20 @@ public final class WaypointPainterScreen extends Screen {
 
         addRenderableWidget(styledButton(PAD_OUTER, height - FOOTER_H,
                 64, BTN_H, Component.translatable("gui.back"), b -> onClose(), null));
-        addRenderableWidget(styledButton((width - 112) / 2, height - FOOTER_H,
+        importButton = addRenderableWidget(styledButton((width - 112) / 2, height - FOOTER_H,
                 112, BTN_H, Component.translatable("waypointer.screen.painter.import"),
                 b -> importFromFiles(), null));
-        addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
+        applyButton = addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
                 72, BTN_H, Component.translatable("waypointer.screen.painter.apply"),
-                b -> openApplyTargets(), Tooltip.create(Component.translatable(
-                        targetGroup == null
-                                ? "waypointer.screen.painter.apply.choose.tooltip"
-                                : "waypointer.screen.painter.apply.current.tooltip"))));
+                b -> apply(), Tooltip.create(Component.translatable(
+                        "waypointer.screen.painter.apply." + scopeKey() + ".tooltip"))));
+        removeButton = addRenderableWidget(styledButton(width - PAD_OUTER - 72 - GAP - 72, height - FOOTER_H,
+                72, BTN_H, Component.translatable("waypointer.screen.painter.remove"),
+                b -> removeOwnPaint(), Tooltip.create(Component.translatable(
+                        "waypointer.screen.painter.remove." + scopeKey() + ".tooltip"))));
+        undoButton = addRenderableWidget(new HistoryButton(width - PAD_OUTER - 48, 4, false, () -> moveHistory(false)));
+        redoButton = addRenderableWidget(new HistoryButton(width - PAD_OUTER - 22, 4, true, () -> moveHistory(true)));
+        refreshEditingState();
     }
 
     @Override
@@ -143,6 +174,8 @@ public final class WaypointPainterScreen extends Screen {
                 layout.paletteX() + PALETTE_W + 4, layout.contentBottom(), SURFACE_SUBTLE);
         g.text(font, Component.translatable("waypointer.screen.painter.swatches"),
                 layout.paletteX(), layout.contentTop() + 6, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.screen.painter.tool"),
+                layout.paletteX(), layout.toolY() - 11, TEXT_DIM, false);
         g.text(font, Component.translatable("waypointer.screen.painter.face_view"),
                 layout.paletteX(), layout.faceViewY() - 11, TEXT_DIM, false);
 
@@ -180,13 +213,20 @@ public final class WaypointPainterScreen extends Screen {
         int left = layout.gridLeft() + faceColumn * WaypointPaint.SIZE * layout.cell();
         int top = layout.gridTop() + faceRow * WaypointPaint.SIZE * layout.cell();
         int faceSize = WaypointPaint.SIZE * layout.cell();
+        g.nextStratum();
         g.fill(left - 1, top - 1, left + faceSize + 1, top + faceSize + 1, BORDER);
         for (int y = 0; y < WaypointPaint.SIZE; y++) {
-            for (int x = 0; x < WaypointPaint.SIZE; x++) {
+            int y1 = top + y * layout.cell();
+            for (int x = 0; x < WaypointPaint.SIZE; ) {
                 int color = palette[Byte.toUnsignedInt(pixels[WaypointPaint.pixelOffset(face, x, y)])];
-                int x1 = left + x * layout.cell();
-                int y1 = top + y * layout.cell();
-                g.fill(x1, y1, x1 + layout.cell(), y1 + layout.cell(), 0xFF000000 | color);
+                int end = x + 1;
+                while (end < WaypointPaint.SIZE
+                        && palette[Byte.toUnsignedInt(pixels[WaypointPaint.pixelOffset(face, end, y)])] == color) {
+                    end++;
+                }
+                g.fill(left + x * layout.cell(), y1, left + end * layout.cell(), y1 + layout.cell(),
+                        0xFF000000 | color);
+                x = end;
             }
         }
         if (layout.cell() >= 3) {
@@ -223,25 +263,41 @@ public final class WaypointPainterScreen extends Screen {
         g.fill(layout.previewX(), layout.previewY(),
                 layout.previewX() + layout.previewSize(),
                 layout.previewY() + layout.previewSize(), SURFACE_SUBTLE);
-        preview.update(snapshot(), (System.currentTimeMillis() % 12_000L) * 0.03f);
+        long elapsed = System.nanoTime() - previewStartedNanos;
+        preview.update(snapshot(), (elapsed % 12_000_000_000L) * 0.00000003f, previewLook());
+        int textureSize = preview.size();
         g.blit(RenderPipelines.GUI_TEXTURED, preview.id(),
                 layout.previewX(), layout.previewY(), 0f, 0f,
                 layout.previewSize(), layout.previewSize(),
-                WaypointPaintPreviewTexture.SIZE, WaypointPaintPreviewTexture.SIZE,
-                WaypointPaintPreviewTexture.SIZE, WaypointPaintPreviewTexture.SIZE);
+                textureSize, textureSize, textureSize, textureSize);
         String label = Component.translatable("waypointer.screen.painter.preview").getString();
         g.text(font, label,
                 layout.previewX() + (layout.previewSize() - font.width(label)) / 2,
                 layout.previewY() + layout.previewSize() + 5, TEXT_DIM, false);
     }
 
+    private WaypointPaintPreviewTexture.Look previewLook() {
+        WaypointerConfig style = scope.style(config);
+        WaypointerConfig.BoxStyle box = style.effectiveBoxStyle();
+        boolean outline = box == WaypointerConfig.BoxStyle.OUTLINED
+                || box == WaypointerConfig.BoxStyle.FILLED_OUTLINED;
+        int waypointColor = scope.previewColor();
+
+        float fill = Math.max(PREVIEW_MIN_FILL, (float) style.beaconOpacity());
+        return new WaypointPaintPreviewTexture.Look(fill, outline,
+                style.resolvedWaypointOutlineColor(waypointColor),
+                (float) style.waypointOutlineOpacity(), (float) style.waypointOutlineThickness());
+    }
+
     private void editSelectedColor() {
+        if (importing) return;
         ColorPickerScreen.open(this,
                 Component.translatable("waypointer.screen.painter.picker.swatch"),
                 palette[selectedPalette], picked -> {
             palette[selectedPalette] = picked & 0xFFFFFF;
             config.setWaypointPainterPalette(palette);
             refreshPaletteTooltip(selectedPalette);
+            remember();
             snapshot = null;
             status = "";
         });
@@ -257,77 +313,73 @@ public final class WaypointPainterScreen extends Screen {
         snapshot = null;
         status = "";
         if (faceViewButton != null) faceViewButton.setMessage(faceViewComponent());
+        remember();
     }
 
     private void importFromFiles() {
-        String path;
-        try {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                PointerBuffer filters = stack.mallocPointer(5);
-                filters.put(stack.UTF8("*.png"));
-                filters.put(stack.UTF8("*.jpg"));
-                filters.put(stack.UTF8("*.jpeg"));
-                filters.put(stack.UTF8("*.gif"));
-                filters.put(stack.UTF8("*.bmp"));
-                filters.flip();
-                path = TinyFileDialogs.tinyfd_openFileDialog(
-                        Component.translatable("waypointer.screen.painter.file_dialog.title")
-                                .getString(),
-                        null, filters,
-                        Component.translatable("waypointer.screen.painter.file_dialog.filter")
-                                .getString(),
-                        false);
-            }
-        } catch (RuntimeException | LinkageError e) {
-            status = Component.translatable(
-                    "waypointer.screen.painter.status.picker_failed").getString();
-            return;
-        }
-        if (path == null) return;
-
-        importImage(() -> readImage(new File(path)), Component.translatable(
-                "waypointer.screen.painter.status.import_failed").getString());
+        if (importing) return;
+        importing = true;
+        refreshEditingState();
+        ImageFilePicker.open(Component.translatable("waypointer.screen.painter.file_dialog.title").getString(),
+                List.of("png", "jpg", "jpeg", "bmp"),
+                Component.translatable("waypointer.screen.painter.file_dialog.filter").getString())
+                .whenComplete((path, failure) -> {
+                    importing = false;
+                    if (MinecraftCompat.screen(minecraft) != this) return;
+                    if (failure != null) {
+                        status = Component.translatable("waypointer.screen.painter.status.picker_failed").getString();
+                    } else if (path != null) importFromFile(path);
+                    refreshEditingState();
+                });
     }
 
-    private void importImage(WaypointPaintImageImporter.ImageSource source,
-                             String failureStatus) {
-        try {
-            WaypointPaint current = new WaypointPaint(palette, pixels);
-            WaypointPaint imported = WaypointPaintImageImporter.importFrom(
-                    source, current, faceView == FaceView.ALL);
+    private void importFromFile(String path) {
+
+        WaypointPaint current = new WaypointPaint(palette, pixels);
+        boolean atlas = faceView == FaceView.ALL;
+        importing = true;
+        status = Component.translatable("waypointer.screen.painter.status.importing").getString();
+        refreshEditingState();
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return WaypointPaintImageImporter.importFile(new File(path), current, atlas);
+            } catch (IOException failure) {
+                throw new CompletionException(failure);
+            }
+        }).whenComplete((imported, failure) -> minecraft.execute(() -> {
+            importing = false;
+            if (MinecraftCompat.screen(minecraft) != this) return;
+            if (failure != null) {
+                Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+                status = Component.translatable("waypointer.screen.painter.status.import_failed_reason",
+                        cause.getMessage()).getString();
+                refreshEditingState();
+                return;
+            }
             System.arraycopy(imported.paletteCopy(), 0, palette, 0, palette.length);
             System.arraycopy(imported.pixelsCopy(), 0, pixels, 0, pixels.length);
             config.setWaypointPainterPalette(palette);
+            remember();
             refreshPaletteTooltips();
             snapshot = null;
             status = Component.translatable(faceView == FaceView.ONE
                     ? "waypointer.screen.painter.status.imported_face"
                     : "waypointer.screen.painter.status.imported_uv").getString();
-        } catch (IOException | RuntimeException e) {
-            status = failureStatus;
-        }
+            refreshEditingState();
+        }));
     }
 
-    private static BufferedImage readImage(File file) throws IOException {
-        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
-            if (input == null) throw new IOException("image could not be opened");
-            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
-            if (!readers.hasNext()) throw new IOException("unsupported image format");
-            ImageReader reader = readers.next();
-            try {
-                reader.setInput(input, true, true);
-                int width = reader.getWidth(0);
-                int height = reader.getHeight(0);
-                if (!WaypointPaintImageImporter.acceptsImageDimensions(width, height)) {
-                    throw new IOException("image dimensions are outside the supported range");
-                }
-                BufferedImage image = reader.read(0);
-                if (image == null) throw new IOException("image could not be decoded");
-                return image;
-            } finally {
-                reader.dispose();
-            }
-        }
+    private void refreshEditingState() {
+        boolean editable = !importing;
+        if (colorButton != null) colorButton.active = editable;
+        if (canvasButton != null) canvasButton.active = editable;
+        if (faceViewButton != null) faceViewButton.active = editable;
+        if (toolButton != null) toolButton.active = editable;
+        if (importButton != null) importButton.active = !importing;
+        if (applyButton != null) applyButton.active = !importing;
+        if (removeButton != null) removeButton.visible = scope.ownPaint(config) != null;
+        if (undoButton != null) undoButton.active = editable && history.canUndo();
+        if (redoButton != null) redoButton.active = editable && history.canRedo();
     }
 
     static boolean acceptsImageDimensions(int width, int height) {
@@ -363,57 +415,24 @@ public final class WaypointPainterScreen extends Screen {
         }
     }
 
-    private String faceViewLabel() {
-        return faceView == FaceView.ONE ? "One" : "All";
-    }
-
     private Component faceViewComponent() {
         return Component.translatable(faceView == FaceView.ONE
                 ? "waypointer.screen.painter.face_view.one"
                 : "waypointer.screen.painter.face_view.all");
     }
 
-    private void openApplyTargets() {
-        if (targetGroup != null) {
-            applyToGroup(targetGroup);
-            onClose();
-            return;
-        }
-        MinecraftCompat.setScreen(minecraft, new WaypointPaintApplyScreen(this, manager));
+    private void apply() {
+        scope.apply(config, manager, snapshot());
+        onClose();
     }
 
-    void applyToAllGroups() {
-        int count = applyToAllGroups(manager, config, snapshot());
-        status = Component.translatable(count == 1
-                ? "waypointer.screen.painter.status.applied.one"
-                : "waypointer.screen.painter.status.applied.many", count).getString();
+    private void removeOwnPaint() {
+        scope.clear(config, manager);
+        onClose();
     }
 
-    static int applyToAllGroups(ActiveGroupManager manager, WaypointerConfig config,
-                                WaypointPaint paint) {
-        int count = 0;
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!isPaintTarget(group)) continue;
-            group.setPaint(paint);
-            group.setPaintEnabled(true);
-            count++;
-        }
-        config.setWaypointPainterDefaultPaint(paint);
-        if (count > 0) manager.fireDataChanged();
-        return count;
-    }
-
-    void applyToGroup(WaypointGroup group) {
-        if (!isPaintTarget(group) || manager.get(group.id()) != group) return;
-        group.setPaint(snapshot());
-        group.setPaintEnabled(true);
-        manager.fireDataChangedFor(group);
-        status = Component.translatable(
-                "waypointer.screen.painter.status.applied.group", group.name()).getString();
-    }
-
-    private static boolean isPaintTarget(WaypointGroup group) {
-        return group != null && !group.temp() && !group.runtimeOnly();
+    private String scopeKey() {
+        return scope.level().name().toLowerCase(Locale.ROOT);
     }
 
     private WaypointPaint snapshot() {
@@ -434,6 +453,7 @@ public final class WaypointPainterScreen extends Screen {
     }
 
     private void paint(PaintCell cell) {
+        if (importing) return;
         int offset = WaypointPaint.pixelOffset(cell.face(), cell.x(), cell.y());
         if (offset == lastPaintOffset) return;
         lastPaintOffset = offset;
@@ -451,12 +471,85 @@ public final class WaypointPainterScreen extends Screen {
         status = "";
     }
 
+    private void fill(PaintCell cell) {
+        if (importing) return;
+        cursorFace = cell.face();
+        cursorX = cell.x();
+        cursorY = cell.y();
+        boolean changed = faceView == FaceView.ONE
+                ? fillOnEveryFace(pixels, cell.x(), cell.y(), selectedPalette)
+                : floodFill(pixels, cell.face(), cell.x(), cell.y(), selectedPalette) > 0;
+        if (!changed) return;
+        snapshot = null;
+        status = "";
+        remember();
+    }
+
+    static int floodFill(byte[] pixels, WaypointPaint.Face face, int x, int y, int slot) {
+        int size = WaypointPaint.SIZE;
+        byte target = pixels[WaypointPaint.pixelOffset(face, x, y)];
+        if (target == (byte) slot) return 0;
+        int[] stack = new int[size * size];
+        int depth = 0;
+        int changed = 1;
+        int faceOffset = face.ordinal() * WaypointPaint.FACE_PIXELS;
+        stack[depth++] = y * size + x;
+
+        pixels[faceOffset + y * size + x] = (byte) slot;
+        while (depth > 0) {
+            int cell = stack[--depth];
+            int cx = cell % size, cy = cell / size;
+            for (int direction = 0; direction < 4; direction++) {
+                int neighbor;
+                if (direction == 0 && cx > 0) neighbor = cell - 1;
+                else if (direction == 1 && cx < size - 1) neighbor = cell + 1;
+                else if (direction == 2 && cy > 0) neighbor = cell - size;
+                else if (direction == 3 && cy < size - 1) neighbor = cell + size;
+                else continue;
+                if (pixels[faceOffset + neighbor] != target) continue;
+                pixels[faceOffset + neighbor] = (byte) slot;
+                stack[depth++] = neighbor;
+                changed++;
+            }
+        }
+        return changed;
+    }
+
+    static boolean fillOnEveryFace(byte[] pixels, int x, int y, int slot) {
+        int north = WaypointPaint.Face.NORTH.ordinal() * WaypointPaint.FACE_PIXELS;
+        byte[] filled = pixels.clone();
+        if (floodFill(filled, WaypointPaint.Face.NORTH, x, y, slot) == 0) return false;
+        for (int i = 0; i < WaypointPaint.FACE_PIXELS; i++) {
+            if (filled[north + i] == pixels[north + i]) continue;
+            for (WaypointPaint.Face face : WaypointPaint.Face.values()) {
+                pixels[face.ordinal() * WaypointPaint.FACE_PIXELS + i] = (byte) slot;
+            }
+        }
+        return true;
+    }
+
+    private void toggleTool() {
+        tool = tool == Tool.BRUSH ? Tool.FILL : Tool.BRUSH;
+        if (toolButton != null) toolButton.setMessage(toolComponent());
+    }
+
+    private Component toolComponent() {
+        return Component.translatable(tool == Tool.BRUSH
+                ? "waypointer.screen.painter.tool.brush"
+                : "waypointer.screen.painter.tool.fill");
+    }
+
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             PaintCell cell = cellAt(layout(), event.x(), event.y());
             if (cell != null) {
                 setFocused(null);
+                if (importing) return true;
+                if (tool == Tool.FILL) {
+                    fill(cell);
+                    return true;
+                }
                 painting = true;
                 lastPaintOffset = -1;
                 paint(cell);
@@ -474,7 +567,7 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (painting && event.button() == 0) {
+        if (painting && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             PaintCell cell = cellAt(layout(), event.x(), event.y());
             if (cell != null) paint(cell);
             return true;
@@ -484,28 +577,70 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        painting = false;
-        lastPaintOffset = -1;
+        finishStroke();
         return super.mouseReleased(event);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (getFocused() == canvasButton && event.key() != GLFW_KEY_TAB) {
+        if ((event.modifiers() & MOD_CONTROL) != 0) {
+            if (event.key() == KEY_Z || event.key() == KEY_Y) {
+                moveHistory(event.key() == KEY_Y || (event.modifiers() & MOD_SHIFT) != 0);
+                return true;
+            }
+        }
+        if (getFocused() == canvasButton && event.key() != KEY_TAB) {
             switch (event.key()) {
-                case GLFW_KEY_LEFT -> moveCursor(-1, 0);
-                case GLFW_KEY_RIGHT -> moveCursor(1, 0);
-                case GLFW_KEY_UP -> moveCursor(0, -1);
-                case GLFW_KEY_DOWN -> moveCursor(0, 1);
-                case GLFW_KEY_SPACE, GLFW_KEY_ENTER -> {
-                    lastPaintOffset = -1;
-                    paint(new PaintCell(cursorFace, cursorX, cursorY));
+                case KEY_LEFT -> moveCursor(-1, 0);
+                case KEY_RIGHT -> moveCursor(1, 0);
+                case KEY_UP -> moveCursor(0, -1);
+                case KEY_DOWN -> moveCursor(0, 1);
+                case KEY_SPACE, KEY_ENTER -> {
+                    PaintCell cell = new PaintCell(cursorFace, cursorX, cursorY);
+                    if (tool == Tool.FILL) {
+                        fill(cell);
+                    } else {
+                        lastPaintOffset = -1;
+                        paint(cell);
+                        remember();
+                    }
                 }
                 default -> { return super.keyPressed(event); }
             }
             return true;
         }
         return super.keyPressed(event);
+    }
+
+    private PaintState capture() {
+        return new PaintState(new WaypointPaint(palette, pixels), faceView);
+    }
+
+    private void remember() {
+        history.record(capture());
+        refreshEditingState();
+    }
+
+    private void finishStroke() {
+        if (painting) remember();
+        painting = false;
+        lastPaintOffset = -1;
+    }
+
+    private void moveHistory(boolean forward) {
+        if (importing) return;
+        finishStroke();
+        PaintState state = forward ? history.redo() : history.undo();
+        System.arraycopy(state.paint().paletteCopy(), 0, palette, 0, palette.length);
+        System.arraycopy(state.paint().pixelsCopy(), 0, pixels, 0, pixels.length);
+        faceView = state.faceView();
+        if (faceView == FaceView.ONE) cursorFace = WaypointPaint.Face.NORTH;
+        config.setWaypointPainterPalette(palette);
+        refreshPaletteTooltips();
+        if (faceViewButton != null) faceViewButton.setMessage(faceViewComponent());
+        snapshot = null;
+        status = "";
+        refreshEditingState();
     }
 
     private void moveCursor(int dx, int dy) {
@@ -541,6 +676,7 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public void removed() {
+        finishStroke();
         if (preview != null) {
             preview.release();
             preview = null;
@@ -583,8 +719,9 @@ public final class WaypointPainterScreen extends Screen {
         int paletteRows = (WaypointPaint.PALETTE_SIZE + paletteColumns - 1) / paletteColumns;
         int swatchesY = contentTop + 18;
         int editColorY = swatchesY + paletteRows * (SWATCH_H + SWATCH_GAP) + GAP_TIGHT;
-        int faceViewY = Math.min(contentBottom - BTN_H,
-                editColorY + BTN_H + font.lineHeight + GAP);
+        int rowStep = BTN_H + font.lineHeight + GAP;
+        int toolY = Math.min(contentBottom - BTN_H - rowStep, editColorY + rowStep);
+        int faceViewY = Math.min(contentBottom - BTN_H, toolY + rowStep);
 
         int previewSize = Math.min(PREVIEW_MAX,
                 Math.max(72, Math.min(contentBottom - contentTop - 18, width / 5)));
@@ -606,41 +743,20 @@ public final class WaypointPainterScreen extends Screen {
         int gridTop = contentTop + 22 + Math.max(0,
                 (contentBottom - contentTop - 22 - gridHeight) / 2);
         return new Layout(contentTop, contentBottom, paletteX, paletteColumns, swatchesY,
-                editColorY, faceViewY, canvasLeft, canvasRight,
+                editColorY, toolY, faceViewY, canvasLeft, canvasRight,
                 gridLeft, gridTop, cell, previewX, previewY, previewSize);
     }
 
-    private static WaypointPaint initialPaint(ActiveGroupManager manager, WaypointerConfig config,
-                                              WaypointGroup targetGroup) {
-        if (targetGroup != null) {
-            if (targetGroup.paint() != null) return targetGroup.paint();
-            WaypointPaint inherited = config.waypointPainterDefaultPaint();
-            if (targetGroup.paintEnabled() && inherited != null) return inherited;
-            return new WaypointPaint(config.waypointPainterPalette(),
-                    new byte[WaypointPaint.PIXEL_COUNT]);
-        }
-        if (manager != null) {
-            String activeZone = manager.currentZone() == null ? null : manager.currentZone().id();
-            for (WaypointGroup group : manager.allGroups()) {
-                if (isPaintTarget(group) && group.enabled()
-                        && activeZone != null && activeZone.equals(group.zoneId())
-                        && group.paint() != null) {
-                    return group.paint();
-                }
-            }
-            for (WaypointGroup group : manager.allGroups()) {
-                if (isPaintTarget(group) && group.paint() != null) return group.paint();
-            }
-        }
-        WaypointPaint inherited = config.waypointPainterDefaultPaint();
-        return inherited != null ? inherited : new WaypointPaint(
+    private static WaypointPaint initialPaint(WaypointerConfig config, PaintScope scope) {
+        WaypointPaint shown = scope.shownPaint(config);
+        return shown != null ? shown : new WaypointPaint(
                 config.waypointPainterPalette(), new byte[WaypointPaint.PIXEL_COUNT]);
     }
 
     private record PaintCell(WaypointPaint.Face face, int x, int y) {}
 
     private record Layout(int contentTop, int contentBottom, int paletteX,
-                          int paletteColumns, int swatchesY, int editColorY, int faceViewY,
+                          int paletteColumns, int swatchesY, int editColorY, int toolY, int faceViewY,
                           int canvasLeft, int canvasRight,
                           int gridLeft, int gridTop, int cell,
                           int previewX, int previewY, int previewSize) {}
@@ -683,12 +799,10 @@ public final class WaypointPainterScreen extends Screen {
 
         @Override
         public void onPress(InputWithModifiers input) {
-            // Focus is the action; painting is handled by the screen with pixel coordinates.
         }
 
         @Override
         protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-            // Focus is shown on the keyboard cursor cell, not around the pane.
         }
 
         @Override

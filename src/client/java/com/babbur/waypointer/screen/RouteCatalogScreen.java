@@ -1,5 +1,9 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
+import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.catalog.InstallTokenStore;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.api.ImportSummary;
@@ -10,13 +14,19 @@ import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogRouteDetails;
 import com.babbur.waypointer.catalog.CatalogRouteInstaller;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.catalog.CatalogRouteTooNewException;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
+import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.PublisherIdentityStore;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -25,14 +35,26 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.FormatStyle;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -48,34 +70,40 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ESCAPE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_F;
+import static com.babbur.waypointer.compat.InputCompat.KEY_F5;
+import static com.babbur.waypointer.compat.InputCompat.KEY_HOME;
+import static com.babbur.waypointer.compat.InputCompat.KEY_END;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_KP_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_LEFT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_RIGHT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
 public final class RouteCatalogScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
     private static final int LINE_H = 10;
-    private static final int DETAIL_LINE_H = 12;
-    private static final int ROW_H = 36;
+    private static final int DETAIL_LINE_H = 11;
+    private static final int ROW_H = CatalogRouteRowButton.HEIGHT;
+    private static final int DETAIL_ICON = 36;
     private static final int ROW_PITCH = ROW_H;
-    private static final int WIDE_BREAKPOINT = 640;
-    private static final int TOOLBAR_STACK_BREAKPOINT = 260;
-    private static final int REFRESH_W = 72;
+    private static final int WIDE_BREAKPOINT = 420;
     private static final int LOAD_MORE_W = 108;
     private static final int BACK_W = 64;
     private static final int PRIMARY_W = 84;
     private static final int SCROLLBAR_W = 3;
     private static final int SCROLLBAR_INSET = 2;
-    private static final int DETAIL_HEADER_H = 32;
-    // Client ticks run at 20/s, so six ticks of silence is roughly 300 ms.
-    private static final int SEARCH_DEBOUNCE_TICKS = 6;
+    private static final int ICON_BTN_W = 24;
+    private static final int SEARCH_DEBOUNCE_TICKS = 4;
     private static final int SEARCH_CACHE_LIMIT = 32;
+    private static final int PREVIEW_DELAY_TICKS = 1;
+    private static final int PREVIEW_PREFETCH = 16;
+    private static final int PREVIEW_PARALLEL = 3;
+    private static final int PREVIEW_CACHE_LIMIT = 24;
     private static final int ZONE_ROW_H = GuiTokens.ROW_H;
     private static final int ZONE_DROPDOWN_MIN_W = 150;
     private static final long MANUAL_REFRESH_COOLDOWN_NANOS = 10_000_000_000L;
@@ -92,12 +120,14 @@ public final class RouteCatalogScreen extends Screen {
     private boolean listRequested;
     private boolean listLoading;
     private boolean appending;
+    private boolean restartAppendOnReentry;
     private boolean detailLoading;
     private boolean initializing;
     private boolean lastLoadFailed;
     private Component statusText = Component.empty();
     private int statusColor = TEXT_DIM;
     private int searchDebounceTicks;
+    private boolean searchViewDirty;
     private boolean manualRefreshCooldownArmed;
     private long manualRefreshAllowedAtNanos;
     private int displayedRefreshCooldownSeconds = -1;
@@ -107,18 +137,39 @@ public final class RouteCatalogScreen extends Screen {
     private int pendingSearchCursor = -1;
     private int pendingSearchHighlight = -1;
     private boolean zoneDropdownOpen;
+    private boolean onlyNotInstalled;
     private int zoneDropdownScroll;
     private List<String> zoneDropdownIds = List.of();
+    private final ContextMenuOverlay sortMenu = new ContextMenuOverlay();
+    private boolean showingDetail;
+    private boolean wideLayout;
+
+    private final LinkedHashMap<String, CatalogRoutePreview> previews = boundedPageCache(PREVIEW_CACHE_LIMIT);
+    private final Set<String> previewFailures = new HashSet<>();
+    private String previewWantedId;
+    private final Set<String> previewLoading = new HashSet<>();
+    private final ArrayDeque<CatalogRouteSummary> previewQueue = new ArrayDeque<>();
+    private int previewDelayTicks;
+    private int previewTicket;
 
     private EditBox searchBox;
+    private static final int MIN_SEARCH_W = 110;
+    private static final int COMFORTABLE_SEARCH_W = 180;
     private Button zoneFilterButton;
+    private Button sortButton;
     private Button refreshButton;
     private Button loadMoreButton;
     private Button installButton;
+    private Button copyCodeButton;
+    private CatalogFilterChip hideInstalledChip;
+    private CatalogFilterChip miningCultChip;
+    private int headerTextWidth;
     private int panelX;
     private int panelY;
     private int panelW;
     private int panelH;
+    private int contentRight;
+    private int chipsY;
     private int listX;
     private int listY;
     private int listW;
@@ -130,6 +181,9 @@ public final class RouteCatalogScreen extends Screen {
     private int statusX;
     private int statusY;
     private int statusMaxW;
+    private int dropdownBottom;
+    private int descriptionScroll;
+    private int descriptionMaxScroll;
 
     public RouteCatalogScreen(Screen parent, RouteCatalogClient catalogClient) {
         this(parent, catalogClient, WaypointerClient.manager());
@@ -137,27 +191,29 @@ public final class RouteCatalogScreen extends Screen {
 
     RouteCatalogScreen(
             Screen parent, RouteCatalogClient catalogClient, ActiveGroupManager manager) {
-        super(Component.translatable("waypointer.screen.route_catalog.title"));
+        super(Component.translatable("waypointer.screen.route_catalog.title.community"));
         this.parent = parent;
         this.catalogClient = catalogClient;
         this.manager = manager;
         browser.setZoneFilter(initialZoneFilterId(
                 manager == null ? null : manager.currentZone()));
+        browser.setHere(playerPlace(manager));
     }
 
-    /** Open filtered to the player's zone; unknown, private, and dungeon zones start on All. */
+    private static List<String> playerPlace(ActiveGroupManager manager) {
+        Zone current = manager == null ? null : manager.currentZone();
+        String structure = null;
+        var tracker = WaypointerClient.crystalHollowsTracker();
+        if (current != null && "crystal_hollows".equals(current.id()) && tracker != null && tracker.active()
+                && tracker.sidebarStructure() != null
+                && CrystalHollowsStructureZones.supports(tracker.sidebarStructure())) {
+            structure = CrystalHollowsStructureZones.zoneId(tracker.sidebarStructure());
+        }
+        return CatalogRecommendation.here(current, structure);
+    }
+
     static String initialZoneFilterId(Zone zone) {
-        if (zone == null) return null;
-        String id = zone.id();
-        if (id == null
-                || Zone.UNKNOWN.id().equals(id)
-                || Zone.PRIVATE_WORLD.id().equals(id)) {
-            return null;
-        }
-        if (id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m")) {
-            return null;
-        }
-        return zoneFilterDropdownIds().contains(id) ? id : null;
+        return null;
     }
 
     public static void open(Screen parent) {
@@ -169,104 +225,214 @@ public final class RouteCatalogScreen extends Screen {
     protected void init() {
         requests.activate();
         initializing = true;
+        browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
 
-        panelX = width > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
-        panelY = height > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
+        boolean compact = height < 300;
+        int margin = compact ? GAP_TIGHT : PANEL_MARGIN;
+        panelX = width > margin * 2 ? margin : 0;
+        panelY = height > margin * 2 ? margin : 0;
         panelW = Math.max(1, width - panelX * 2);
         panelH = Math.max(1, height - panelY * 2);
-        int panelPad = panelW >= 320 ? PAD_OUTER : GAP;
+        int panelPad = panelPad();
         int contentX = panelX + panelPad;
         int contentW = Math.max(40, panelW - panelPad * 2);
-        int contentRight = contentX + contentW;
+        contentRight = contentX + contentW;
+        wideLayout = contentW >= WIDE_BREAKPOINT;
+        if (wideLayout || selectedRoute() == null) showingDetail = false;
 
         int titleY = panelY + panelPad;
-        int subtitleY = titleY + LINE_H;
-        int searchY = subtitleY + LINE_H + GAP;
-        boolean toolbarStacked = contentW < TOOLBAR_STACK_BREAKPOINT;
-        int bodyY = searchY + BTN_H + (toolbarStacked ? BTN_H + GAP_TIGHT : 0) + GAP;
-        int footerY = panelY + panelH - panelPad - BTN_H;
-        statusY = footerY - LINE_H - GAP_TIGHT;
-        statusX = contentX;
-        statusMaxW = contentW;
-        int bodyH = Math.max(60, statusY - GAP - bodyY);
-        boolean wide = contentW >= WIDE_BREAKPOINT;
+        Component refreshLabel = refreshButtonLabel(System.nanoTime());
+        GuiTokens.StyledButton refresh = (GuiTokens.StyledButton) styledButton(
+                contentRight - ICON_BTN_W, titleY, ICON_BTN_W, BTN_H, refreshLabel,
+                button -> requestManualRefresh(),
+                Tooltip.create(Component.translatable("waypointer.screen.route_catalog.refresh.tooltip")),
+                Icons.Icon.RESET);
+        refresh.setIconOnly(true);
+        refreshButton = refresh;
+        refreshButton.active = refreshCooldownSeconds(System.nanoTime()) == 0 && !listLoading;
+        addRenderableWidget(refreshButton);
+        Component mineLabel = Component.translatable("waypointer.screen.route_publish.action.manage");
+        int mineW = Math.min(contentW / 2, GuiTokens.iconButtonWidth(font, mineLabel, Icons.Icon.UPLOAD));
+        addRenderableWidget(styledButton(contentRight - ICON_BTN_W - GAP_TIGHT - mineW, titleY, mineW, BTN_H,
+                mineLabel, button -> PublishedRoutesScreen.open(this, catalogClient,
+                        PublisherIdentityStore.defaultLocation(), CatalogPublicationRegistry.defaultLocation()),
+                Tooltip.create(Component.translatable("waypointer.screen.route_publish.action.manage.tooltip")),
+                Icons.Icon.UPLOAD));
+        headerTextWidth = Math.max(1, contentW - mineW - ICON_BTN_W - GAP * 2);
 
-        if (wide) {
+        int toolbarY = titleY + BTN_H + GAP;
+        int zoneW = Math.max(96, Math.min(150, widestZoneOptionWidth() + 28));
+        int sortW = widestSortLabelWidth() + 28;
+        if (contentW - zoneW - sortW - GAP * 2 < COMFORTABLE_SEARCH_W) {
+            zoneW = 96;
+            sortW = Math.min(sortW, 96);
+        }
+        boolean stacked = contentW - zoneW - sortW - GAP * 2 < MIN_SEARCH_W;
+        int searchW = stacked ? contentW : contentW - zoneW - sortW - GAP * 2;
+        int clearW = BTN_H + 2;
+        int inputW = Math.max(20, searchW - clearW - GAP_TIGHT);
+        searchBox = new EditBox(font, contentX, toolbarY, inputW, BTN_H,
+                Component.translatable("waypointer.screen.route_catalog.search"));
+        searchBox.setMaxLength(80);
+        Component searchHint = Component.translatable("waypointer.screen.route_catalog.search.hint");
+        searchBox.setHint(font.width(searchHint) + 8 <= inputW ? searchHint
+                : Component.translatable("waypointer.screen.route_catalog.search"));
+        searchBox.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.route_catalog.search.tooltip")));
+        searchBox.setValue(browser.query());
+        searchBox.setResponder(this::handleSearchEdit);
+        addRenderableWidget(searchBox);
+        GuiTokens.StyledButton clearSearch = (GuiTokens.StyledButton) styledButton(
+                contentX + inputW + GAP_TIGHT, toolbarY, clearW, BTN_H,
+                Component.translatable("waypointer.common.clear"),
+                button -> {
+                    searchBox.setValue("");
+                    runPendingSearch();
+                    focusSearchBox();
+                }, Tooltip.create(Component.translatable("waypointer.screen.main.search.clear.tooltip")),
+                Icons.Icon.CLOSE);
+        clearSearch.setIconOnly(true);
+        clearSearch.active = !browser.query().isEmpty();
+        addRenderableWidget(clearSearch);
+
+        int filtersY = stacked ? toolbarY + BTN_H + GAP_TIGHT : toolbarY;
+        if (stacked) {
+            sortW = Math.min(sortW, contentW / 2);
+            zoneW = contentW - sortW - GAP;
+        }
+        int zoneX = stacked ? contentX : contentX + searchW + GAP;
+        zoneFilterButton = new ZoneFilterButton(zoneX, filtersY, zoneW, BTN_H, zoneFilterLabel());
+        zoneFilterButton.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.route_catalog.filter.tooltip")));
+        addRenderableWidget(zoneFilterButton);
+        sortButton = new SortButton(zoneX + zoneW + GAP, filtersY, sortW, BTN_H, sortLabel());
+        addRenderableWidget(sortButton);
+
+        chipsY = filtersY + BTN_H + GAP_TIGHT + 1;
+        hideInstalledChip = new CatalogFilterChip(contentX, chipsY,
+                Component.translatable("waypointer.screen.route_catalog.filter.hide_installed"),
+                onlyNotInstalled, ACCENT, null, () -> {
+                    onlyNotInstalled = !onlyNotInstalled;
+                    applyFilters();
+                });
+        hideInstalledChip.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.route_catalog.not_installed.tooltip")));
+        addRenderableWidget(hideInstalledChip);
+        miningCultChip = null;
+        if (browser.anyLoadedRouteHas(CatalogRouteSummary.TAG_MINING_CULT) || browser.tagFilter() != null) {
+            boolean on = CatalogRouteSummary.TAG_MINING_CULT.equals(browser.tagFilter());
+            miningCultChip = new CatalogFilterChip(contentX + hideInstalledChip.getWidth() + GAP_TIGHT, chipsY,
+                    Component.translatable("waypointer.screen.route_catalog.tag.mining_cult"),
+                    on, CatalogRouteRowButton.MINING_CULT, Icons.Icon.BADGE_GEM, () -> {
+                        browser.setTagFilter(on ? null : CatalogRouteSummary.TAG_MINING_CULT);
+                        refetchForServerFilters();
+                    });
+            miningCultChip.setTooltip(Tooltip.create(Component.translatable(
+                    "waypointer.screen.route_catalog.tag.mining_cult.tooltip")));
+            addRenderableWidget(miningCultChip);
+        }
+
+        int bodyY = chipsY + CatalogFilterChip.HEIGHT + GAP;
+        int footerY = panelY + panelH - panelPad - BTN_H;
+        dropdownBottom = footerY - GAP_TIGHT;
+        int bodyH = Math.max(40, footerY - GAP - bodyY);
+        if (wideLayout) {
             listX = contentX;
             listY = bodyY;
-            listW = Math.max(240, (contentW - GAP_SECTION) * 44 / 100);
+            listW = catalogListWidth(contentW);
             listH = bodyH;
-            detailX = listX + listW + GAP_SECTION;
+            detailX = listX + listW + GAP;
             detailY = bodyY;
             detailW = contentRight - detailX;
+            detailH = bodyH;
+        } else if (showingDetail) {
+            listX = contentX;
+            listY = bodyY;
+            listW = contentW;
+            listH = 0;
+            detailX = contentX;
+            detailY = bodyY;
+            detailW = contentW;
             detailH = bodyH;
         } else {
             listX = contentX;
             listY = bodyY;
             listW = contentW;
-            listH = Math.max(ROW_H, (bodyH - GAP_SECTION) * 62 / 100);
+            listH = bodyH;
             detailX = contentX;
-            detailY = listY + listH + GAP_SECTION;
+            detailY = bodyY;
             detailW = contentW;
-            detailH = Math.max(32, statusY - GAP - detailY);
+            detailH = 0;
         }
 
-        Component refreshLabel = refreshButtonLabel(System.nanoTime());
-        int refreshW = Math.min(contentW, Math.max(REFRESH_W, font.width(refreshLabel) + 16));
-        Component zoneLabel = zoneFilterLabel();
-        // Sized to the widest zone name, not the selected one, so the control
-        // keeps one width no matter which zone is picked.
-        int zoneW = toolbarStacked
-                ? Math.max(40, contentW - refreshW - GAP)
-                : Math.min(Math.max(84, widestZoneOptionWidth() + 28),
-                        Math.max(84, contentW / 3));
-        int searchW = toolbarStacked
-                ? contentW
-                : Math.max(40, contentW - refreshW - zoneW - GAP * 2);
-        searchBox = new EditBox(font, contentX, searchY, searchW, BTN_H,
-                Component.translatable("waypointer.screen.route_catalog.search"));
-        searchBox.setMaxLength(80);
-        searchBox.setHint(Component.translatable(
-                "waypointer.screen.route_catalog.search.hint"));
-        searchBox.setValue(browser.query());
-        searchBox.setResponder(this::handleSearchEdit);
-        addRenderableWidget(searchBox);
-
-        int refreshY = toolbarStacked ? searchY + BTN_H + GAP_TIGHT : searchY;
-        int zoneX = toolbarStacked ? contentX : contentX + searchW + GAP;
-        zoneFilterButton = new ZoneFilterButton(zoneX, refreshY, zoneW, BTN_H, zoneLabel);
-        zoneFilterButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.route_catalog.filter.tooltip")));
-        addRenderableWidget(zoneFilterButton);
-        refreshButton = styledButton(contentRight - refreshW, refreshY, refreshW, BTN_H,
-                refreshLabel,
-                button -> requestManualRefresh(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_catalog.refresh.tooltip")));
-        refreshButton.active = refreshCooldownSeconds(System.nanoTime()) == 0 && !listLoading;
-        addRenderableWidget(refreshButton);
-
         loadMoreButton = null;
-        addRouteRows();
+        if (listH > 0) addRouteRows();
 
+        Component copyLabel = Component.translatable("waypointer.screen.published_routes.action.copy_code");
+        int copyW = GuiTokens.iconButtonWidth(font, copyLabel, Icons.Icon.SHARE);
+        int installW = Math.max(PRIMARY_W, GuiTokens.iconButtonWidth(font, installButtonLabel(), Icons.Icon.DOWNLOAD));
         addRenderableWidget(styledButton(contentX, footerY, BACK_W, BTN_H,
-                Component.translatable("gui.back"), button -> onClose(), null));
-        int installW = Math.min(Math.max(PRIMARY_W, font.width(installButtonLabel()) + 16),
-                Math.max(PRIMARY_W, contentW - BACK_W - GAP_SECTION));
+                Component.translatable("gui.back"), button -> onBack(), null));
+        boolean actionsShown = wideLayout || showingDetail;
+        copyCodeButton = styledButton(contentRight - installW - GAP - copyW, footerY,
+                copyW, BTN_H, copyLabel, button -> copySelectedCode(),
+                Tooltip.create(Component.translatable("waypointer.screen.route_catalog.copy.tooltip")),
+                Icons.Icon.SHARE);
         installButton = styledButton(contentRight - installW, footerY, installW, BTN_H,
-                installButtonLabel(),
-                button -> installSelectedRoute(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_catalog.install.tooltip")));
-        refreshPrimaryButtons();
+                installButtonLabel(), button -> installSelectedRoute(), null, Icons.Icon.DOWNLOAD);
+        copyCodeButton.visible = actionsShown;
+        installButton.visible = actionsShown;
+        addRenderableWidget(copyCodeButton);
         addRenderableWidget(installButton);
+        statusX = contentX + BACK_W + GAP;
+        statusY = GuiTokens.opticalTextY(footerY, BTN_H);
+        statusMaxW = Math.max(0, (actionsShown ? copyCodeButton.getX() - GAP : contentRight) - statusX);
+        refreshPrimaryButtons();
 
         initializing = false;
-        if (!listRequested) refreshCatalog();
+        if (!listRequested) {
+            boolean restartAppend = restartAppendOnReentry
+                    && browser.nextCursor() != null;
+            restartAppendOnReentry = false;
+            if (restartAppend) {
+                requestPage(browser.nextCursor(), true);
+            } else {
+                refreshCatalog();
+            }
+        }
     }
 
-    // rebuildWidgets clears focus, so remember the search caret before it runs
-    // and let setInitialFocus() below restore it (see SettingsScreen).
+    private int panelPad() {
+        return height < 300 || panelW < 320 ? GAP : PAD_OUTER;
+    }
+
+    private void applyFilters() {
+        browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
+        requests.selectionChanged();
+        descriptionScroll = 0;
+        if (browser.selectedRoute() == null && !browser.routes().isEmpty()) {
+            browser.select(browser.routes().getFirst());
+            wantPreview(browser.selectedRoute());
+        }
+        prefetchPreviews(browser.routes());
+        updateListStatus();
+        rebuildWidgets();
+    }
+
+    private void onBack() {
+        if (showingDetail) {
+            showingDetail = false;
+            rebuildWidgets();
+            return;
+        }
+        onClose();
+    }
+
+    static int catalogListWidth(int contentWidth) {
+        return contentWidth < WIDE_BREAKPOINT ? contentWidth
+                : Math.max(224, (contentWidth - GAP_SECTION) * 54 / 100);
+    }
+
     @Override
     protected void rebuildWidgets() {
         rememberSearchFocus();
@@ -307,10 +473,6 @@ public final class RouteCatalogScreen extends Screen {
                 searchBox.getValue(), pendingSearchCursor, searchBox.getHighlighted());
     }
 
-    /**
-     * EditBox exposes the cursor but not the selection anchor; recover the
-     * anchor from the highlighted substring so a rebuilt box keeps both.
-     */
     static int searchHighlightAnchor(String value, int cursor, String highlighted) {
         if (highlighted == null || highlighted.isEmpty()) return cursor;
         if (value != null
@@ -320,7 +482,6 @@ public final class RouteCatalogScreen extends Screen {
         return Math.max(0, cursor - highlighted.length());
     }
 
-    /** Bounded per-query response cache; the least recently used entry falls out. */
     static <V> LinkedHashMap<String, V> boundedPageCache(int limit) {
         return new LinkedHashMap<>(16, 0.75f, true) {
             @Override
@@ -334,6 +495,12 @@ public final class RouteCatalogScreen extends Screen {
         return (zone == null ? "" : zone) + '\n' + (query == null ? "" : query);
     }
 
+    static String searchCacheKey(String zone, String query, String tag, CatalogBrowserModel.Sort sort) {
+        String key = searchCacheKey(zone, query);
+        boolean plain = tag == null && (sort == null || sort == CatalogBrowserModel.Sort.RECOMMENDED);
+        return plain ? key : key + '\n' + (tag == null ? "" : tag) + '\n' + sort.id;
+    }
+
     private void handleSearchEdit(String value) {
         if (initializing) return;
         applySearchEdit(browser, value, () -> {
@@ -343,19 +510,17 @@ public final class RouteCatalogScreen extends Screen {
             detailLoading = false;
             lastLoadFailed = false;
             searchDebounceTicks = SEARCH_DEBOUNCE_TICKS;
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.search_wait");
+            statusText = Component.empty();
             statusColor = TEXT_DIM;
-        }, this::rebuildWidgets, this::focusSearchBox);
+        }, () -> searchViewDirty = true);
     }
 
     static boolean applySearchEdit(
             CatalogBrowserModel browser, String value,
-            Runnable updateState, Runnable rebuild, Runnable restoreFocus) {
+            Runnable updateState, Runnable scheduleRebuild) {
         if (!browser.editSearch(value)) return false;
         updateState.run();
-        rebuild.run();
-        restoreFocus.run();
+        scheduleRebuild.run();
         return true;
     }
 
@@ -376,14 +541,13 @@ public final class RouteCatalogScreen extends Screen {
             if (index >= filtered.size()) break;
             CatalogRouteSummary route = filtered.get(index);
             int y = listY + row * ROW_PITCH;
+            boolean selected = route.id().equals(browser.selectedRouteId());
+            boolean nextSelected = index + 1 < filtered.size()
+                    && filtered.get(index + 1).id().equals(browser.selectedRouteId());
             CatalogRouteRowButton button = new CatalogRouteRowButton(
-                    listX, y, rowW, ROW_H, route,
-                    route.id().equals(browser.selectedRouteId()),
-                    installedState(route),
-                    () -> selectRoute(route));
-            if (!route.description().isBlank()) {
-                button.setTooltip(Tooltip.create(Component.literal(route.description())));
-            }
+                    listX, y, rowW, ROW_H, route, selected, !selected && !nextSelected,
+                    installState(route).action(),
+                    () -> openRoute(route));
             addRenderableWidget(button);
         }
         if (browser.nextCursor() != null || appending) {
@@ -404,27 +568,51 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
-    /** Unconditional network reload of the first page (initial load, refresh). */
+    private void openRoute(CatalogRouteSummary route) {
+        boolean already = route.id().equals(browser.selectedRouteId());
+        if (!wideLayout) showingDetail = true;
+        if (already) {
+            rebuildWidgets();
+            return;
+        }
+        selectRoute(route);
+    }
+
     private void refreshCatalog() {
         searchDebounceTicks = 0;
         browser.submitPendingSearch();
         requestPage(null, false);
     }
 
-    /**
-     * Runs the debounced search: a query whose first page was already fetched
-     * this session renders straight from the cache with zero network traffic.
-     */
     private void runPendingSearch() {
         searchDebounceTicks = 0;
         browser.submitPendingSearch();
-        CatalogPage cached = searchCache.get(
-                searchCacheKey(browser.zoneFilter(), browser.normalizedQuery()));
+        CatalogPage cached = cachedSearchPage(searchCache, browser.zoneFilter(),
+                browser.normalizedQuery(), browser.tagFilter(), browser.sort());
         if (cached != null) {
             showCachedPage(cached);
             return;
         }
         requestPage(null, false);
+    }
+
+    static CatalogPage cachedSearchPage(Map<String, CatalogPage> cache, String zone, String query) {
+        return cachedSearchPage(cache, zone, query, null, CatalogBrowserModel.Sort.RECOMMENDED);
+    }
+
+    static CatalogPage cachedSearchPage(Map<String, CatalogPage> cache, String zone, String query,
+                                        String tag, CatalogBrowserModel.Sort sort) {
+        CatalogPage exact = cache.get(searchCacheKey(zone, query, tag, sort));
+        if (exact != null) return exact;
+        CatalogPage complete = cache.get(searchCacheKey(zone, ""));
+        if (complete == null || complete.hasMore()) {
+            complete = cache.get(searchCacheKey(null, ""));
+        }
+        if (complete == null || complete.hasMore()) return null;
+        return new CatalogPage(complete.routes().stream()
+                .filter(route -> zone == null || zone.equals(route.zoneId()))
+                .filter(route -> tag == null || route.hasTag(tag))
+                .filter(route -> route.matches(query)).toList(), false, null);
     }
 
     private void showCachedPage(CatalogPage page) {
@@ -438,6 +626,7 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     private String emptyListKey() {
+        if (onlyNotInstalled) return "waypointer.screen.route_catalog.empty.not_installed";
         return emptyListKey(browser.query().isBlank(), browser.zoneFilter() != null);
     }
 
@@ -454,16 +643,10 @@ public final class RouteCatalogScreen extends Screen {
                 : Component.literal(Zone.fromId(browser.zoneFilter()).displayName());
     }
 
-    /**
-     * Select-control geometry for the zone filter: {labelX, labelMaxW, caretCenterX,
-     * caretCenterY}. The label shares the dropdown rows' {@code x + GAP} column and the
-     * caret's right edge mirrors that inset.
-     */
     static int[] filterSelectGeometry(int x, int y, int w, int h) {
         return new int[] {x + GAP, Math.max(12, w - 27), x + w - 13, y + h / 2 - 1};
     }
 
-    /** The zone filter renders as a select control: left-aligned value, right caret. */
     private final class ZoneFilterButton extends GuiTokens.StyledButton {
         ZoneFilterButton(int x, int y, int width, int height, Component label) {
             super(x, y, width, height, label, button -> toggleZoneDropdown());
@@ -485,6 +668,73 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
+    private final class SortButton extends GuiTokens.StyledButton {
+        SortButton(int x, int y, int width, int height, Component label) {
+            super(x, y, width, height, label, button -> toggleSortMenu());
+        }
+
+        @Override
+        protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+            boolean highlighted = active && isHoveredOrFocused();
+            GuiTokens.drawControlFrame(g, getX(), getY(), getWidth(), getHeight(),
+                    active, highlighted, isFocused());
+            int[] geo = filterSelectGeometry(getX(), getY(), getWidth(), getHeight());
+            g.text(font, font.plainSubstrByWidth(getMessage().getString(), geo[1]),
+                    geo[0], GuiTokens.opticalTextY(getY(), getHeight()), active ? TEXT : TEXT_MUTED, false);
+            GuiTokens.drawDirectionGlyph(g,
+                    sortMenu.isOpen() ? GuiTokens.Direction.UP : GuiTokens.Direction.DOWN,
+                    geo[2], geo[3], sortMenu.isOpen() ? ACCENT : highlighted ? TEXT : TEXT_DIM);
+        }
+    }
+
+    private static String sortKey(CatalogBrowserModel.Sort sort) {
+        return "waypointer.screen.route_catalog.sort." + sort.id;
+    }
+
+    private Component sortLabel() {
+        return Component.translatable(sortKey(browser.sort()));
+    }
+
+    private int widestSortLabelWidth() {
+        int widest = 0;
+        for (CatalogBrowserModel.Sort sort : CatalogBrowserModel.Sort.values()) {
+            widest = Math.max(widest, font.width(Component.translatable(sortKey(sort))));
+        }
+        return widest;
+    }
+
+    private void toggleSortMenu() {
+        if (sortMenu.isOpen()) {
+            sortMenu.close();
+            return;
+        }
+        closeZoneDropdown();
+        List<ContextMenuOverlay.Item> items = new ArrayList<>();
+        for (CatalogBrowserModel.Sort sort : CatalogBrowserModel.Sort.values()) {
+            ContextMenuOverlay.Item item = ContextMenuOverlay.Item.of(
+                    Component.translatable(sortKey(sort)), () -> chooseSort(sort));
+            items.add(sort == browser.sort() ? item.withIcon(Icons.Icon.CHECK) : item);
+        }
+        sortMenu.openAt(font, items, sortButton.getX(), sortButton.getY() + BTN_H + GAP_TIGHT,
+                panelX + GAP, panelY, panelX + panelW - GAP, dropdownBottom);
+    }
+
+    private void chooseSort(CatalogBrowserModel.Sort sort) {
+        sortMenu.close();
+        if (!browser.setSort(sort)) return;
+        refetchForServerFilters();
+    }
+
+    private void refetchForServerFilters() {
+        requests.invalidateForSearch();
+        listLoading = false;
+        appending = false;
+        detailLoading = false;
+        lastLoadFailed = false;
+        descriptionScroll = 0;
+        runPendingSearch();
+    }
+
     private int widestZoneOptionWidth() {
         int widest = 0;
         for (String id : zoneFilterDropdownIds()) {
@@ -500,7 +750,6 @@ public final class RouteCatalogScreen extends Screen {
                 : Zone.fromId(id).displayName();
     }
 
-    /** Every canonical zone by display name, behind an all-zones sentinel ({@code ""}). */
     static List<String> zoneFilterDropdownIds() {
         List<String> ids = new ArrayList<>();
         for (Zone zone : Zone.knownZones()) ids.add(zone.id());
@@ -519,6 +768,7 @@ public final class RouteCatalogScreen extends Screen {
             closeZoneDropdown();
             return;
         }
+        sortMenu.close();
         if (searchBox != null && searchBox.isFocused()) markSearchRefocus();
         zoneDropdownIds = zoneFilterDropdownIds();
         zoneDropdownOpen = true;
@@ -554,7 +804,6 @@ public final class RouteCatalogScreen extends Screen {
                 zoneDropdownIds.size(), geo.rowsBottom() - geo.rowsTop());
     }
 
-    /** Scroll offset that centers the selected row inside the dropdown viewport. */
     static int centeredDropdownScroll(int index, int rowCount, int viewport) {
         if (index <= 0) return 0;
         int target = index * ZONE_ROW_H - Math.max(0, viewport / 2 - ZONE_ROW_H / 2);
@@ -572,10 +821,9 @@ public final class RouteCatalogScreen extends Screen {
                 ? panelY + PAD_OUTER : zoneFilterButton.getY() + BTN_H;
         int buttonW = zoneFilterButton == null ? 0 : zoneFilterButton.getWidth();
         return zoneDropdownGeometry(
-                anchorX, anchorBottom, buttonW, panelX, panelW, statusY, rowCount);
+                anchorX, anchorBottom, buttonW, panelX, panelW, dropdownBottom, rowCount);
     }
 
-    /** Pure dropdown layout: anchored under its button, clipped to the panel. */
     static ZoneDropdownGeometry zoneDropdownGeometry(
             int anchorX, int anchorBottom, int buttonW,
             int panelX, int panelW, int statusY, int rowCount) {
@@ -592,7 +840,6 @@ public final class RouteCatalogScreen extends Screen {
         return new ZoneDropdownGeometry(x1, y1, x2, y2, rowsTop, y2 - 1);
     }
 
-    /** Scrollbar thumb as {top offset, height}, or {@code null} when everything fits. */
     static int[] dropdownThumb(int viewport, int contentHeight, int scroll, int maxScroll) {
         if (contentHeight <= viewport) return null;
         int thumbH = Math.max(8, viewport * viewport / contentHeight);
@@ -647,7 +894,6 @@ public final class RouteCatalogScreen extends Screen {
         boolean inside = mx >= geo.x1() && mx < geo.x2()
                 && my >= geo.y1() && my < geo.y2();
         if (!inside) {
-            // Consume outside clicks so the filter button cannot reopen at once.
             closeZoneDropdown();
             return true;
         }
@@ -660,6 +906,11 @@ public final class RouteCatalogScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (sortMenu.isOpen()) {
+            if (sortMenu.mouseClicked(event.x(), event.y())) return true;
+            sortMenu.close();
+            if (sortButton != null && sortButton.isMouseOver(event.x(), event.y())) return true;
+        }
         if (zoneDropdownOpen && handleZoneDropdownClick(event.x(), event.y())) return true;
         return super.mouseClicked(event, doubleClick);
     }
@@ -703,7 +954,9 @@ public final class RouteCatalogScreen extends Screen {
 
         String query = browser.normalizedQuery();
         String zone = browser.zoneFilter();
-        catalogClient.listRoutes(query, zone, cursor)
+        String tag = browser.tagFilter();
+        CatalogBrowserModel.Sort sort = browser.sort();
+        catalogClient.listRoutes(query, zone, tag, sort.id, cursor)
                 .whenComplete((page, failure) -> runOnClient(() -> {
             if (!requests.acceptsList(ticket)) return;
             listLoading = false;
@@ -715,7 +968,7 @@ public final class RouteCatalogScreen extends Screen {
                 browser.markLoadFailed(append);
             } else {
                 lastLoadFailed = false;
-                if (!append) searchCache.put(searchCacheKey(zone, query), page);
+                if (!append) searchCache.put(searchCacheKey(zone, query, tag, sort), page);
                 applyPage(page, append);
             }
             rebuildWidgets();
@@ -724,27 +977,90 @@ public final class RouteCatalogScreen extends Screen {
 
     private void applyPage(CatalogPage page, boolean append) {
         browser.applyPage(page, append);
-        if (browser.routes().isEmpty()) {
-            statusText = Component.translatable(emptyListKey());
+        browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
+        if (browser.selectedRoute() == null && !browser.routes().isEmpty()) {
+            browser.select(browser.routes().getFirst());
+            descriptionScroll = 0;
+        }
+        wantPreview(browser.selectedRoute());
+        prefetchPreviews(browser.routes());
+        updateListStatus();
+    }
+
+    private void updateListStatus() {
+        if (!lastLoadFailed && !detailLoading) {
+            statusText = Component.empty();
             statusColor = TEXT_DIM;
-        } else if (browser.nextCursor() != null) {
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.count_more",
-                    formatCount(browser.routes().size()));
-            statusColor = TEXT_MUTED;
-        } else {
-            statusText = routeCount(browser.routes().size());
-            statusColor = TEXT_MUTED;
         }
     }
 
     private void selectRoute(CatalogRouteSummary route) {
         if (!browser.select(route)) return;
+        descriptionScroll = 0;
         requests.selectionChanged();
-        statusText = Component.translatable(
-                "waypointer.screen.route_catalog.status.selection_help");
+        statusText = Component.empty();
         statusColor = TEXT_DIM;
+        wantPreview(route);
         rebuildWidgets();
+    }
+
+    private void wantPreview(CatalogRouteSummary route) {
+        previewWantedId = route == null ? null : route.id();
+        previewDelayTicks = PREVIEW_DELAY_TICKS;
+    }
+
+    private void prefetchPreviews(List<CatalogRouteSummary> routes) {
+        previewQueue.clear();
+        for (CatalogRouteSummary route : routes) {
+            if (previewQueue.size() >= PREVIEW_PREFETCH) break;
+            if (!previews.containsKey(route.id()) && !previewFailures.contains(route.id())) previewQueue.add(route);
+        }
+    }
+
+    private void tickPreview() {
+        CatalogRouteSummary route = selectedRoute();
+        if (route != null && route.id().equals(previewWantedId) && needsPreview(route)
+                && previewDelayTicks-- <= 0) {
+            loadPreview(route);
+        }
+        while (previewLoading.size() < PREVIEW_PARALLEL && !previewQueue.isEmpty()) {
+            CatalogRouteSummary next = previewQueue.poll();
+            if (needsPreview(next)) loadPreview(next);
+        }
+    }
+
+    private boolean needsPreview(CatalogRouteSummary route) {
+        return !previews.containsKey(route.id()) && !previewFailures.contains(route.id())
+                && !previewLoading.contains(route.id());
+    }
+
+    private void loadPreview(CatalogRouteSummary route) {
+        String id = route.id();
+        int ticket = previewTicket;
+        previewLoading.add(id);
+        catalogClient.getRoutePreview(id)
+                .thenApply(CatalogRoutePreview::of)
+                .exceptionallyCompose(missing -> catalogClient.getRoute(id)
+                        .thenApply(details -> validateDetails(route, details))
+                        .thenApplyAsync(details -> CatalogRoutePreview.of(
+                                CatalogRouteInstaller.decodeForPreview(details))))
+                .whenComplete((preview, failure) -> runOnClient(() -> {
+                    if (ticket != previewTicket) return;
+                    previewLoading.remove(id);
+                    if (failure != null || preview == null) {
+                        previewFailures.add(id);
+                    } else {
+                        previews.put(id, preview);
+                    }
+                }));
+    }
+
+    private void copySelectedCode() {
+        CatalogRouteSummary selected = selectedRoute();
+        if (selected == null || minecraft == null) return;
+        minecraft.keyboardHandler.setClipboard(UniversalShareCodec.encodeCatalogReference(selected.id()));
+        statusText = Component.translatable("waypointer.screen.published_routes.status.copied_code");
+        statusColor = STATUS_OK;
     }
 
     private void installSelectedRoute() {
@@ -752,8 +1068,9 @@ public final class RouteCatalogScreen extends Screen {
         if (route == null || detailLoading) return;
         CatalogInstallState installState = installState(route);
         if (!installState.canInstall()) {
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.already_installed");
+            statusText = installState.action() == CatalogInstallState.Action.UNSUPPORTED_CODEC
+                    ? requiresLine(route.requiredModVersion())
+                    : Component.translatable("waypointer.screen.route_catalog.status.already_installed");
             statusColor = TEXT_DIM;
             refreshPrimaryButtons();
             return;
@@ -802,12 +1119,13 @@ public final class RouteCatalogScreen extends Screen {
         }
 
         if (failure != null) {
+            Waypointer.LOGGER.warn("Could not install community route {}", requestedRouteId, failure);
             statusText = friendlyFailure(failure);
             statusColor = STATUS_ERROR;
         } else {
             showInstalled(summary);
             catalogClient.recordInstall(requestedRouteId, null,
-                    com.babbur.waypointer.catalog.InstallTokenStore.shared()
+                    InstallTokenStore.shared()
                             .tokenFor(requestedRouteId));
             WaypointGroup focus = installedFocus(manager, summary);
             if (focus != null) {
@@ -870,6 +1188,7 @@ public final class RouteCatalogScreen extends Screen {
                 appending,
                 browser.nextCursor() != null,
                 seconds);
+        if (copyCodeButton != null) copyCodeButton.active = selected != null;
         if (installButton != null) {
             installButton.active = controls.installEnabled();
             installButton.setMessage(installButtonLabel());
@@ -895,41 +1214,64 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
-        // Only the open dropdown may react to the pointer; everything beneath
-        // renders with a dead mouse so hover and tooltips do not bleed through.
-        int backgroundMouseX = zoneDropdownOpen ? -1 : mouseX;
-        int backgroundMouseY = zoneDropdownOpen ? -1 : mouseY;
+        boolean overlay = zoneDropdownOpen || sortMenu.isOpen();
+        int backgroundMouseX = overlay ? -1 : mouseX;
+        int backgroundMouseY = overlay ? -1 : mouseY;
         graphics.fill(0, 0, width, height, 0x80000000);
         graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
 
-        int panelPad = panelW >= 320 ? PAD_OUTER : GAP;
+        int panelPad = panelPad();
         int contentX = panelX + panelPad;
-        int contentW = Math.max(40, panelW - panelPad * 2);
         int titleY = panelY + panelPad;
-        graphics.text(font, getTitle(), contentX, titleY, TEXT, false);
-        graphics.text(font, font.plainSubstrByWidth(
-                        Component.translatable(
-                                "waypointer.screen.route_catalog.subtitle").getString(), contentW),
-                contentX, titleY + LINE_H, TEXT_MUTED, false);
+        graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), headerTextWidth),
+                contentX, GuiTokens.opticalTextY(titleY, BTN_H), TEXT, false);
 
-        graphics.fill(listX, listY, listX + listW, listY + listH, SURFACE_SUBTLE);
-        renderListState(graphics);
-        renderListScrollbar(graphics);
+        Component count = countLabel();
+        if (count != null) {
+            String text = count.getString();
+            int chipsRight = (miningCultChip != null ? miningCultChip.getX() + miningCultChip.getWidth()
+                    : hideInstalledChip == null ? contentX : hideInstalledChip.getX() + hideInstalledChip.getWidth());
+            String clipped = font.plainSubstrByWidth(text, Math.max(0, contentRight - chipsRight - GAP));
+            graphics.text(font, clipped, contentRight - font.width(clipped), chipsY + 3, TEXT_MUTED, false);
+        }
 
-        graphics.fill(detailX, detailY, detailX + detailW, detailY + detailH,
-                SURFACE_SUBTLE);
-        renderDetails(graphics, selectedRoute());
+        if (listH > 0) {
+            graphics.fill(listX, listY, listX + listW, listY + listH, SURFACE_SUBTLE);
+            renderListState(graphics);
+            renderListScrollbar(graphics);
+        }
 
-        if (!statusText.getString().isBlank()) {
-            String clipped = font.plainSubstrByWidth(statusText.getString(), statusMaxW);
+        CatalogRoutePreview.Point hovered = null;
+        if (detailH > 0) {
+            CatalogRouteSummary selected = selectedRoute();
+            graphics.fill(detailX, detailY, detailX + detailW, detailY + detailH, SURFACE_SUBTLE);
+            hovered = renderDetails(graphics, selected, backgroundMouseX, backgroundMouseY);
+        }
+
+        if (!statusText.getString().isBlank() && statusMaxW > 0) {
+            String clipped = GuiTokens.ellipsize(font, statusText.getString(), statusMaxW);
             graphics.text(font, clipped, statusX, statusY, statusColor, false);
         }
         super.extractRenderState(graphics, backgroundMouseX, backgroundMouseY, partial);
         if (zoneDropdownOpen) renderZoneDropdown(graphics, mouseX, mouseY);
+        if (sortMenu.isOpen()) sortMenu.render(graphics, font, mouseX, mouseY);
+        if (hovered != null) {
+            graphics.setTooltipForNextFrame(font, CatalogRoutePreview.tooltip(hovered).stream()
+                    .map(Component::getVisualOrderText).toList(), mouseX, mouseY);
+        }
+    }
+
+    private Component countLabel() {
+        if (listLoading && !appending) return null;
+        if (browser.routes().isEmpty()) return null;
+        return browser.nextCursor() != null
+                ? Component.translatable("waypointer.screen.route_catalog.count_more",
+                        formatCount(browser.routes().size()))
+                : routeCount(browser.routes().size());
     }
 
     private void renderListState(GuiGraphicsExtractor graphics) {
-        if (listLoading) {
+        if (listLoading && !appending) {
             drawCentered(graphics,
                     Component.translatable("waypointer.screen.route_catalog.status.loading"),
                     listX, listY, listW, routeRowsHeight(), TEXT_DIM);
@@ -970,7 +1312,7 @@ public final class RouteCatalogScreen extends Screen {
         if (total <= visible) return;
         int trackX = listX + listW - SCROLLBAR_W - SCROLLBAR_INSET;
         int trackY = listY + SCROLLBAR_INSET;
-        int trackH = Math.max(1, listH - SCROLLBAR_INSET * 2);
+        int trackH = Math.max(1, routeRowsHeight() - SCROLLBAR_INSET * 2);
         int thumbH = Math.max(10, trackH * visible / total);
         int travel = Math.max(0, trackH - thumbH);
         int max = Math.max(1, total - visible);
@@ -979,102 +1321,220 @@ public final class RouteCatalogScreen extends Screen {
         graphics.fill(trackX, thumbY, trackX + SCROLLBAR_W, thumbY + thumbH, TEXT_MUTED);
     }
 
-    private void renderDetails(GuiGraphicsExtractor graphics, CatalogRouteSummary route) {
-        int x = detailX + GAP;
-        int y = detailY + GAP;
-        int available = Math.max(20, detailW - GAP * 2);
+    private CatalogRoutePreview.Point renderDetails(GuiGraphicsExtractor graphics, CatalogRouteSummary route,
+                                                    int mouseX, int mouseY) {
+        descriptionMaxScroll = 0;
+        if (detailH <= 0) return null;
+        int pad = GAP + 2;
+        int x = detailX + pad;
+        int right = detailX + detailW - pad;
+        int available = Math.max(20, right - x);
+        int bottom = detailY + detailH - pad;
         if (route == null) {
             drawCentered(graphics,
                     Component.translatable(listLoading
                             ? "waypointer.screen.route_catalog.details.loading"
                             : "waypointer.screen.route_catalog.details.select"),
                     detailX, detailY, detailW, detailH, TEXT_DIM);
-            return;
+            return null;
         }
 
-        int headerBottom = Math.min(detailY + detailH, detailY + DETAIL_HEADER_H);
-        graphics.fill(detailX, detailY, detailX + detailW, headerBottom, SELECTED);
-        graphics.fill(detailX, detailY, detailX + detailW, detailY + 1, ACCENT);
+        int y = detailY + pad;
+        int iconTop = y - 1;
+        RouteIcons.slotted(graphics, route.displayIcon(), x, iconTop, DETAIL_ICON, 32);
+        int iconBottom = iconTop + DETAIL_ICON;
+        x += DETAIL_ICON + GAP;
+        available = Math.max(20, right - x);
+        boolean miningCult = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT);
+        int badgeW = miningCult ? CatalogRouteRowButton.miningCultWidth(font) + GAP : 0;
+        Component title = Component.literal(GuiTokens.ellipsize(font, route.title(), available - badgeW))
+                .withStyle(ChatFormatting.BOLD);
+        graphics.text(font, title, x, y, TEXT, false);
+        if (miningCult) {
+            int pillX = right - badgeW + GAP;
+            CatalogRouteRowButton.drawMiningCult(graphics, font, pillX, y);
+            CatalogRouteRowButton.miningCultTooltip(graphics, font, pillX, y, mouseX, mouseY);
+        }
+        y += DETAIL_LINE_H + 3;
+        CatalogRouteRowButton.drawZoneAndPublisher(graphics, font, route, x, y, available);
+        y += DETAIL_LINE_H + 1;
+        String facts = detailFacts(route);
+        String shownFacts = GuiTokens.ellipsize(font, facts, available);
+        graphics.text(font, shownFacts, x, y, TEXT_MUTED, false);
+        dateTooltip(graphics, route, facts.equals(shownFacts) ? x + font.width(facts) : -1, y, mouseX, mouseY);
+        y = Math.max(y + DETAIL_LINE_H, iconBottom) + GAP_TIGHT + 2;
+        x = detailX + pad;
+        available = Math.max(20, right - x);
 
-        graphics.text(font, font.plainSubstrByWidth(route.title(), available),
-                x, y, TEXT, false);
+        CatalogInstallState state = installState(route);
+        Component stateLine = installStateLine(state, route);
+        int stateH = stateLine == null ? 0 : DETAIL_LINE_H + GAP_TIGHT;
 
-        Component author = route.authorName().isBlank()
-                ? Component.translatable("waypointer.screen.route_catalog.publisher.unknown")
-                : Component.literal(route.authorName());
-        String publisher = Component.translatable(
-                "waypointer.screen.route_catalog.publisher.by", author).getString();
-        int publisherX = x;
-        int publisherY = y + LINE_H + 2;
-        String verified = route.publisherVerified()
-                ? Component.translatable(
-                        "waypointer.screen.route_catalog.publisher.verified").getString().trim()
-                : "";
-        int verifiedW = verified.isEmpty() ? 0 : font.width(verified) + GAP_TIGHT;
-        graphics.text(font, font.plainSubstrByWidth(
-                        publisher, Math.max(20, available - verifiedW)),
-                publisherX, publisherY, TEXT_DIM, false);
-        if (!verified.isEmpty()) {
-            graphics.text(font, verified, detailX + detailW - GAP - font.width(verified),
-                    publisherY, ACCENT, false);
+        int descriptionMin = DETAIL_LINE_H * 3;
+        int mapH = Math.max(0, Math.min(220, Math.max(56, (bottom - y - stateH) * 55 / 100)));
+        if (bottom - y - stateH - mapH - GAP < descriptionMin) mapH = Math.max(0, bottom - y - stateH - GAP - descriptionMin);
+        CatalogRoutePreview.Point hovered = null;
+        if (mapH >= 40) {
+            hovered = renderPreview(graphics, route, x, y, right, y + mapH, mouseX, mouseY);
+            y += mapH + GAP;
+        }
+        if (stateLine != null) {
+            graphics.text(font, GuiTokens.ellipsize(font, stateLine.getString(), available), x, y,
+                    needsAttention(state.action()) ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
+            y += stateH;
         }
 
-        int statsY = detailY + detailH - GAP - LINE_H;
-        int statsDividerY = statsY - GAP;
-        boolean showStats = statsDividerY >= detailY + DETAIL_HEADER_H + LINE_H;
-        if (showStats) {
-            graphics.fill(x, statsDividerY, x + available, statsDividerY + 1, BORDER);
-            int columnW = Math.max(1, available / 3);
-            renderDetailStat(graphics, route.zoneLabel(), x, statsY, columnW, ACCENT);
-            renderDetailStat(graphics, waypointCount(route.waypointCount()).getString(),
-                    x + columnW, statsY, columnW, TEXT_DIM);
-            renderDetailStat(graphics, installCount(route.downloads()).getString(),
-                    x + columnW * 2, statsY, available - columnW * 2, TEXT_DIM);
-        }
-
-        int bodyY = detailY + DETAIL_HEADER_H + GAP;
-        int bodyBottom = showStats ? statsDividerY - GAP : detailY + detailH - GAP;
-        int bodyMaxH = Math.max(0, bodyBottom - bodyY);
+        int bodyMaxH = Math.max(0, bottom - y);
         if (bodyMaxH >= DETAIL_LINE_H) {
             Component body = route.description().isBlank()
-                    ? Component.translatable(
-                            "waypointer.screen.route_catalog.description.empty")
+                    ? Component.translatable("waypointer.screen.route_catalog.description.empty")
                     : Component.literal(route.description());
-            drawWrapped(graphics, body, x, bodyY, available, bodyMaxH,
+            drawWrapped(graphics, body, x, y, available, bodyMaxH,
                     route.description().isBlank() ? TEXT_MUTED : TEXT_DIM);
+        }
+        return hovered;
+    }
+
+    private CatalogRoutePreview.Point renderPreview(GuiGraphicsExtractor graphics, CatalogRouteSummary route,
+                                                    int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
+        CatalogRoutePreview preview = previews.get(route.id());
+        if (preview != null) return preview.render(graphics, font, x1, y1, x2, y2, mouseX, mouseY);
+        graphics.fill(x1, y1, x2, y2, 0x40000000);
+        graphics.fill(x1, y1, x2, y1 + 1, BORDER);
+        graphics.fill(x1, y2 - 1, x2, y2, BORDER);
+        graphics.fill(x1, y1, x1 + 1, y2, BORDER);
+        graphics.fill(x2 - 1, y1, x2, y2, BORDER);
+        Component message = Component.translatable(previewFailures.contains(route.id())
+                ? "waypointer.screen.route_catalog.preview.unavailable"
+                : "waypointer.screen.route_catalog.preview.loading");
+        drawCentered(graphics, message, x1, y1, x2 - x1, y2 - y1, TEXT_MUTED);
+        return null;
+    }
+
+    static String detailFacts(CatalogRouteSummary route) {
+        List<String> parts = new ArrayList<>();
+        parts.add(waypointCount(route.waypointCount()).getString());
+        if (route.groupCount() > 1) parts.add(groupCount(route.groupCount()).getString());
+        parts.add(installCount(route.downloads()).getString());
+        Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
+        if (age != null) parts.add(age.getString());
+        return String.join("  \u00B7  ", parts);
+    }
+
+    private void dateTooltip(GuiGraphicsExtractor graphics, CatalogRouteSummary route, int factsRight,
+                             int y, int mouseX, int mouseY) {
+        dateTooltip(graphics, font, route, factsRight, y, mouseX, mouseY);
+    }
+
+    static void dateTooltip(GuiGraphicsExtractor graphics, Font font,
+                            CatalogRouteSummary route, int factsRight, int y, int mouseX, int mouseY) {
+        if (factsRight < 0) return;
+        Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
+        if (age == null) return;
+        int ageLeft = factsRight - font.width(age);
+        if (mouseX < ageLeft || mouseX >= factsRight || mouseY < y - 1 || mouseY >= y + 9) return;
+        List<FormattedCharSequence> lines = new ArrayList<>();
+        String updated = exactTime(route.updatedAt());
+        String published = exactTime(route.createdAt());
+        if (updated != null && !updated.equals(published)) {
+            lines.add(Component.translatable("waypointer.screen.route_catalog.updated_at", updated).getVisualOrderText());
+        }
+        if (published != null) {
+            lines.add(Component.translatable("waypointer.screen.route_catalog.published_at", published).getVisualOrderText());
+        }
+        if (!lines.isEmpty()) graphics.setTooltipForNextFrame(font, lines, mouseX, mouseY);
+    }
+
+    static String exactTime(String timestamp) {
+        if (timestamp == null || timestamp.isBlank()) return null;
+        try {
+            Instant instant = Instant.parse(timestamp);
+            Locale locale = LocalizedNumberFormatter.active().locale();
+            return DateTimeFormatter.ofLocalizedDateTime(
+                            FormatStyle.LONG, FormatStyle.SHORT)
+                    .withLocale(locale).withZone(ZoneId.systemDefault()).format(instant);
+        } catch (RuntimeException invalid) {
+            return null;
         }
     }
 
-    private void renderDetailStat(
-            GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
-        int innerW = Math.max(1, width - GAP_TIGHT);
-        graphics.text(font, font.plainSubstrByWidth(value, innerW), x, y, color, false);
+    static Component installStateLine(CatalogInstallState state, CatalogRouteSummary route) {
+        return switch (state.action()) {
+            case INSTALLED -> Component.translatable("waypointer.screen.route_catalog.state.installed_line");
+            case LOCAL_NEWER -> Component.translatable("waypointer.screen.route_catalog.state.local_newer_line");
+            case UPDATE -> Component.translatable("waypointer.screen.route_catalog.state.update_line",
+                    state.localVersion(), route.version());
+            case REPAIR -> Component.translatable("waypointer.screen.route_catalog.state.repair_line");
+            case UNSUPPORTED_CODEC -> requiresLine(route.requiredModVersion());
+            default -> null;
+        };
+    }
+
+    static Component requiresLine(String requiredModVersion) {
+        return requiredModVersion.isEmpty()
+                ? Component.translatable("waypointer.screen.route_catalog.state.unsupported_line")
+                : Component.translatable("waypointer.screen.route_catalog.state.requires_line",
+                        requiredModVersion);
+    }
+
+    static boolean needsAttention(CatalogInstallState.Action action) {
+        return action == CatalogInstallState.Action.UPDATE
+                || action == CatalogInstallState.Action.REPAIR
+                || action == CatalogInstallState.Action.UNSUPPORTED_CODEC;
+    }
+
+    static Component ageLabel(String timestamp) {
+        if (timestamp == null || timestamp.isBlank()) return null;
+        Instant then;
+        try {
+            then = OffsetDateTime.parse(timestamp).toInstant();
+        } catch (DateTimeParseException e) {
+            try {
+                then = Instant.parse(timestamp);
+            } catch (DateTimeParseException ignored) {
+                return null;
+            }
+        }
+        long days = Math.max(0, Duration.between(then, Instant.now()).toDays());
+        String base = "waypointer.screen.route_catalog.age.";
+        if (days == 0) return Component.translatable(base + "today");
+        if (days == 1) return Component.translatable(base + "yesterday");
+        if (days < 30) return Component.translatable(base + "days", days);
+        if (days < 365) {
+            long months = Math.max(1, days / 30);
+            return months == 1 ? Component.translatable(base + "month")
+                    : Component.translatable(base + "months", months);
+        }
+        long years = days / 365;
+        return years == 1 ? Component.translatable(base + "year")
+                : Component.translatable(base + "years", years);
     }
 
     private void drawWrapped(GuiGraphicsExtractor graphics, Component text,
                              int x, int y, int width, int maxHeight, int color) {
-        int lines = Math.max(1, maxHeight / DETAIL_LINE_H);
-        List<net.minecraft.util.FormattedCharSequence> split = font.split(
-                text, width);
-        int shown = split.size() <= lines ? split.size() : Math.max(0, lines - 1);
-        int cursor = y;
-        for (int i = 0; i < shown; i++) {
-            graphics.text(font, split.get(i), x, cursor, color, false);
-            cursor += DETAIL_LINE_H;
+        maxHeight = Math.max(DETAIL_LINE_H, maxHeight / DETAIL_LINE_H * DETAIL_LINE_H);
+        List<FormattedCharSequence> split = font.split(
+                text, Math.max(1, width - GAP));
+        int contentHeight = split.size() * DETAIL_LINE_H;
+        descriptionMaxScroll = Math.max(0, contentHeight - maxHeight);
+        descriptionScroll = Math.min(descriptionScroll, descriptionMaxScroll);
+        graphics.enableScissor(x, y, x + width, y + maxHeight);
+        for (int i = descriptionScroll / DETAIL_LINE_H; i < split.size(); i++) {
+            int lineY = y + i * DETAIL_LINE_H - descriptionScroll;
+            if (lineY >= y + maxHeight) break;
+            graphics.text(font, split.get(i), x, lineY, color, false);
         }
-        if (shown < split.size()) {
-            String more = pluralCount(
-                    "waypointer.screen.route_catalog.more_lines.one",
-                    "waypointer.screen.route_catalog.more_lines.many",
-                    split.size() - shown).getString();
-            graphics.text(font, font.plainSubstrByWidth(more, width),
-                    x, cursor, TEXT_MUTED, false);
-        }
+        graphics.disableScissor();
+        int[] thumb = dropdownThumb(maxHeight, contentHeight,
+                descriptionScroll, descriptionMaxScroll);
+        if (thumb != null) graphics.fill(x + width - 2, y + thumb[0],
+                x + width, y + thumb[0] + thumb[1], TEXT_MUTED);
     }
 
     @Override
     public boolean mouseScrolled(
             double mouseX, double mouseY, double horizontal, double vertical) {
+        if (sortMenu.isOpen()) return true;
         if (zoneDropdownOpen) {
             ZoneDropdownGeometry geo = zoneDropdownGeometry(zoneDropdownIds.size());
             if (mouseX >= geo.x1() && mouseX < geo.x2()
@@ -1084,6 +1544,13 @@ public final class RouteCatalogScreen extends Screen {
                         geo.rowsBottom() - geo.rowsTop());
                 return true;
             }
+            return true;
+        }
+        if (detailH > 0 && mouseX >= detailX && mouseX < detailX + detailW
+                && mouseY >= detailY && mouseY < detailY + detailH) {
+            descriptionScroll = Math.max(0, Math.min(descriptionMaxScroll,
+                    descriptionScroll - (int) Math.signum(vertical) * DETAIL_LINE_H * 2));
+            return true;
         }
         if (mouseX < listX || mouseX > listX + listW
                 || mouseY < listY || mouseY > listY + listH) {
@@ -1096,29 +1563,50 @@ public final class RouteCatalogScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (zoneDropdownOpen && event.key() == GLFW_KEY_ESCAPE) {
+        if (sortMenu.isOpen()) {
+            if (event.key() == KEY_ESCAPE) sortMenu.close();
+            else sortMenu.keyPressed(event.key());
+            return true;
+        }
+        if (zoneDropdownOpen && event.key() == KEY_ESCAPE) {
             closeZoneDropdown();
             return true;
         }
-        if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
+        if (showingDetail && event.key() == KEY_ESCAPE) {
+            onBack();
+            return true;
+        }
+        if (event.key() == KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
             return true;
         }
-        if (event.key() == GLFW_KEY_F5) {
+        if (event.key() == KEY_F5) {
             requestManualRefresh();
             return true;
         }
-        if (event.key() == GLFW_KEY_DOWN) return moveSelection(1);
-        if (event.key() == GLFW_KEY_UP) return moveSelection(-1);
-        boolean enter = event.key() == GLFW_KEY_ENTER || event.key() == GLFW_KEY_KP_ENTER;
+        if (zoneDropdownOpen) return super.keyPressed(event);
+        if (event.key() == KEY_DOWN) return moveSelection(1);
+        if (event.key() == KEY_UP) return moveSelection(-1);
+        if (event.key() == KEY_PAGE_DOWN) return moveSelection(visibleRowCount());
+        if (event.key() == KEY_PAGE_UP) return moveSelection(-visibleRowCount());
+        if (searchBox == null || !searchBox.isFocused()) {
+            if (event.key() == KEY_HOME) return moveSelection(-browser.routes().size());
+            if (event.key() == KEY_END) return moveSelection(browser.routes().size());
+        }
+        boolean enter = event.key() == KEY_ENTER || event.key() == KEY_KP_ENTER;
         if (enter && searchBox != null && searchBox.isFocused()) {
-            // Displayed results are never refetched; only a pending edit runs.
             if (browser.searchPending()) runPendingSearch();
             return true;
         }
-        if (enter && selectedRoute() != null && !detailLoading && !unselectedRowFocused()) {
-            installSelectedRoute();
+        if (enter && selectedRoute() != null && !detailLoading
+                && (getFocused() == null || getFocused() instanceof CatalogRouteRowButton row
+                        && row.route.id().equals(browser.selectedRouteId()))) {
+            if (!wideLayout && !showingDetail) {
+                openRoute(selectedRoute());
+            } else {
+                installSelectedRoute();
+            }
             return true;
         }
         return super.keyPressed(event);
@@ -1133,9 +1621,9 @@ public final class RouteCatalogScreen extends Screen {
                 break;
             }
         }
-        int next = current < 0
-                ? (delta > 0 ? 0 : browser.routes().size() - 1)
-                : Math.max(0, Math.min(browser.routes().size() - 1, current + delta));
+        int next = selectionIndex(current, delta, browser.routes().size());
+        refocusSearchAfterRebuild = false;
+        if (searchBox != null) searchBox.setFocused(false);
         int priorScroll = browser.scrollOffset();
         browser.scrollIntoView(next, visibleRowCount());
         if (next != current) {
@@ -1143,12 +1631,20 @@ public final class RouteCatalogScreen extends Screen {
         } else if (browser.scrollOffset() != priorScroll) {
             rebuildWidgets();
         }
+        for (var child : children()) {
+            if (child instanceof CatalogRouteRowButton row
+                    && row.route.id().equals(browser.selectedRouteId())) {
+                setFocused(row);
+                break;
+            }
+        }
         return true;
     }
 
-    private boolean unselectedRowFocused() {
-        return getFocused() instanceof CatalogRouteRowButton row
-                && !row.route.id().equals(browser.selectedRouteId());
+    static int selectionIndex(int current, int delta, int count) {
+        if (count <= 0) return -1;
+        return current < 0 ? (delta > 0 ? 0 : count - 1)
+                : Math.max(0, Math.min(count - 1, current + delta));
     }
 
     @Override
@@ -1159,6 +1655,20 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void removed() {
         requests.deactivate();
+        previewTicket++;
+        previewLoading.clear();
+        previewQueue.clear();
+        if (listLoading || appending) {
+            restartAppendOnReentry = appending && browser.nextCursor() != null;
+            listRequested = false;
+            listLoading = false;
+            appending = false;
+        }
+        if (detailLoading) {
+            detailLoading = false;
+            statusText = Component.empty();
+            statusColor = TEXT_DIM;
+        }
         super.removed();
     }
 
@@ -1175,6 +1685,16 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        if (searchViewDirty) {
+            searchViewDirty = false;
+            if (cachedSearchPage(searchCache, browser.zoneFilter(), browser.normalizedQuery(),
+                    browser.tagFilter(), browser.sort()) != null) {
+                runPendingSearch();
+            } else {
+                rebuildWidgets();
+            }
+        }
+        tickPreview();
         int before = searchDebounceTicks;
         searchDebounceTicks = advanceSearchDebounce(before);
         if (searchDebounceFired(before, searchDebounceTicks)) runPendingSearch();
@@ -1204,9 +1724,15 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     private Component installButtonLabel() {
-        return Component.translatable(installedState(selectedRoute())
-                ? "waypointer.screen.route_catalog.installed"
-                : "waypointer.screen.route_catalog.install");
+        CatalogRouteSummary selected = selectedRoute();
+        CatalogInstallState.Action action = selected == null ? CatalogInstallState.Action.INSTALL
+                : installState(selected).action();
+        return Component.translatable(switch (action) {
+            case INSTALLED, LOCAL_NEWER -> "waypointer.screen.route_catalog.installed";
+            case UPDATE -> "waypointer.screen.route_catalog.update";
+            case REPAIR -> "waypointer.screen.route_catalog.repair";
+            default -> "waypointer.screen.route_catalog.install";
+        });
     }
 
     private CatalogInstallState installState(CatalogRouteSummary route) {
@@ -1215,12 +1741,6 @@ public final class RouteCatalogScreen extends Screen {
                     CatalogInstallState.Action.INSTALL, 0, List.of());
         }
         return browser.installState(catalogClient.apiRoot(), manager, route);
-    }
-
-    private boolean installedState(CatalogRouteSummary route) {
-        CatalogInstallState.Action action = installState(route).action();
-        return action == CatalogInstallState.Action.INSTALLED
-                || action == CatalogInstallState.Action.LOCAL_NEWER;
     }
 
     private Component refreshButtonLabel(long nowNanos) {
@@ -1236,12 +1756,10 @@ public final class RouteCatalogScreen extends Screen {
                 manualRefreshCooldownArmed, nowNanos, manualRefreshAllowedAtNanos);
     }
 
-    /** One debounce tick: counts the remaining keystroke-silence ticks down to zero. */
     static int advanceSearchDebounce(int ticksRemaining) {
         return Math.max(0, ticksRemaining - 1);
     }
 
-    /** The debounced search fires exactly on the transition to zero. */
     static boolean searchDebounceFired(int before, int after) {
         return before > 0 && after == 0;
     }
@@ -1254,12 +1772,10 @@ public final class RouteCatalogScreen extends Screen {
                 (remaining + 999_999_999L) / 1_000_000_000L);
     }
 
-    private static Component friendlyFailure(Throwable failure) {
-        Throwable cause = failure;
-        while ((cause instanceof CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
-                && cause.getCause() != null) {
-            cause = cause.getCause();
+    static Component friendlyFailure(Throwable failure) {
+        Throwable cause = rootCause(failure);
+        if (cause instanceof CatalogRouteTooNewException tooNew) {
+            return requiresLine(tooNew.requiredModVersion());
         }
         if (cause instanceof CatalogApiException api) {
             String key = switch (api.code()) {
@@ -1275,7 +1791,20 @@ public final class RouteCatalogScreen extends Screen {
             };
             return Component.translatable(key);
         }
+        if (cause instanceof IllegalArgumentException || cause instanceof IllegalStateException) {
+            return Component.translatable("waypointer.screen.route_catalog.error.unreadable");
+        }
         return Component.translatable("waypointer.screen.route_catalog.error.request_failed");
+    }
+
+    static Throwable rootCause(Throwable failure) {
+        Throwable cause = failure;
+        while ((cause instanceof CompletionException
+                || cause instanceof ExecutionException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     private static String formatCount(long value) {
@@ -1296,11 +1825,11 @@ public final class RouteCatalogScreen extends Screen {
 
     private static Component routeCount(long value) {
         return pluralCount(
-                "waypointer.screen.route_catalog.status.count.one",
-                "waypointer.screen.route_catalog.status.count.many", value);
+                "waypointer.screen.route_catalog.count.one",
+                "waypointer.screen.route_catalog.count.many", value);
     }
 
-    private static Component groupCount(long value) {
+    static Component groupCount(long value) {
         return pluralCount(
                 "waypointer.screen.route_catalog.group_count.one",
                 "waypointer.screen.route_catalog.group_count.many", value);
@@ -1319,8 +1848,8 @@ public final class RouteCatalogScreen extends Screen {
 
     private static boolean controlDown() {
         var window = Minecraft.getInstance().getWindow();
-        return InputConstants.isKeyDown(window, GLFW_KEY_LEFT_CONTROL)
-                || InputConstants.isKeyDown(window, GLFW_KEY_RIGHT_CONTROL);
+        return InputCompat.isKeyDown(window, InputConstants.KEY_LCONTROL)
+                || InputCompat.isKeyDown(window, InputConstants.KEY_RCONTROL);
     }
 
 }

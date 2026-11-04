@@ -38,7 +38,20 @@ final class ExportPolicy {
             WaypointerConfig config, List<WaypointGroup> selectedGroups) {
         boolean includeWaypointFlags = config.exportIncludeWaypointFlags()
                 || containsSubwaypoints(selectedGroups);
-        return WaypointCodec.Options.builder()
+        boolean allOff = !config.exportIncludeNames()
+                && !config.exportIncludeColors()
+                && !config.exportIncludeRadii()
+                && !includeWaypointFlags
+                && !config.exportIncludeGroupMeta()
+                && !config.exportIncludeZone()
+                && selectedGroups != null
+                && !selectedGroups.isEmpty()
+                && selectedGroups.stream().allMatch(group -> group != null
+                        && group.routeKind() == WaypointGroup.RouteKind.REGULAR);
+        WaypointCodec.Options.Builder builder = allOff
+                ? WaypointCodec.Options.BARE_COORDINATES.toBuilder()
+                : WaypointCodec.Options.builder();
+        return builder
                 .includeNames(config.exportIncludeNames())
                 .includeColors(config.exportIncludeColors())
                 .includeRadii(config.exportIncludeRadii())
@@ -59,24 +72,6 @@ final class ExportPolicy {
             if (group.hasSubwaypoints()) return true;
         }
         return false;
-    }
-
-    static String labelTooltipText(WaypointExportCodec.Target target) {
-        return target.supportsLabel()
-                ? Component.translatableWithFallback(
-                        "waypointer.screen.export.label_tooltip.supported",
-                        "Optional title shown by Waypointer imports").getString()
-                : Component.translatableWithFallback(
-                        "waypointer.screen.export.label_tooltip.unsupported",
-                        "%1$s exports do not support Waypointer labels",
-                        target.displayName()).getString();
-    }
-
-    static String previewRouteName(
-            String sourceName, String label, WaypointExportCodec.Target target, int selectedRouteCount) {
-        String sanitized = WaypointCodec.Options.sanitizeLabel(label);
-        return target.supportsLabel() && selectedRouteCount == 1 && !sanitized.isBlank()
-                ? sanitized : sourceName;
     }
 
     static String previewOverflowText(int hiddenLines) {

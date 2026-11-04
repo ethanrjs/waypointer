@@ -14,6 +14,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ final class TranslationCatalogValidator {
     void validate(byte[] bytes, RemoteLocaleManifest.Entry entry, String locale) throws IOException {
         if (bytes.length != entry.bytes()) throw new IOException("Locale byte count does not match the manifest");
         byte[] actual = sha256(bytes);
-        byte[] expected = java.util.HexFormat.of().parseHex(entry.sha256());
+        byte[] expected = HexFormat.of().parseHex(entry.sha256());
         if (!MessageDigest.isEqual(actual, expected)) throw new IOException("Locale digest does not match the manifest");
 
         Map<String, String> translated = parse(bytes, locale);

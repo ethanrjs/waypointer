@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-final class RouteFolderListModel {
+public final class RouteFolderListModel {
 
     record FolderSection(RouteFolder folder, List<WaypointGroup> groups,
                          boolean searchReveal) {}
@@ -19,11 +19,23 @@ final class RouteFolderListModel {
 
     private RouteFolderListModel() {}
 
+    public static List<WaypointGroup> orderedRoutes(ActiveGroupManager manager, String zoneId) {
+        Snapshot snapshot = build(manager, zoneId, "");
+        List<WaypointGroup> ordered = new ArrayList<>();
+        for (FolderSection section : snapshot.folders()) ordered.addAll(section.groups());
+        ordered.addAll(snapshot.unfiled());
+        return List.copyOf(ordered);
+    }
+
     static Snapshot build(ActiveGroupManager manager, String zoneId, String searchQuery) {
         String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
         List<WaypointGroup> zoneGroups = new ArrayList<>();
         for (WaypointGroup group : manager.groupsForZone(zoneId)) {
-            if (!group.temp() && !group.runtimeOnly()
+            RouteFolder memberFolder = manager.folderForGroup(group.id());
+            boolean listedRuntime = group.runtimeOnly()
+                    && memberFolder != null
+                    && memberFolder.runtimeOnly();
+            if (!group.temp() && (!group.runtimeOnly() || listedRuntime)
                     && group.routeKind() == WaypointGroup.RouteKind.REGULAR) {
                 zoneGroups.add(group);
             }

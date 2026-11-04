@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** Per-session trail of settings changes that may explain a new/recent problem. */
 public final class ConfigChangeHistory {
 
     private static final int MAX_ENTRIES = 24;
@@ -29,7 +28,6 @@ public final class ConfigChangeHistory {
                 "(multiple settings)", "(current values shown below)"));
     }
 
-    /** Entries ordered newest first for fast troubleshooting. */
     public static synchronized List<Entry> snapshot() {
         List<Entry> entries = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {

@@ -31,6 +31,8 @@ public final class DungeonRoomRouteProjection {
         group.setSkipAheadEnabled(source.skipAheadEnabled());
         group.setPaint(source.paint());
         group.setPaintEnabled(source.paintEnabled());
+        group.setStylePresetId(source.stylePresetId());
+        group.setStyleOverride(source.styleOverride());
         List<Waypoint> waypoints = new ArrayList<>(source.size());
         for (Waypoint stored : source.waypoints()) {
             waypoints.add(DungeonRoomWaypointPlacement.toActualWaypoint(room, stored));

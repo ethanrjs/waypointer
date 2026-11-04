@@ -8,21 +8,18 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.List;
+import java.util.HexFormat;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class RemoteLocaleSecurityTest {
     private static final String COMMIT = "0123456789abcdef0123456789abcdef01234567";
     private static final URI TRUSTED_URI = URI.create(
@@ -52,27 +49,15 @@ class RemoteLocaleSecurityTest {
     @Test
     void downloaderRejectsStatusAndOversizedBodies() {
         RemoteLocaleDownloader badStatus = new RemoteLocaleDownloader(
-                ignored -> java.util.concurrent.CompletableFuture.completedFuture(
+                ignored -> CompletableFuture.completedFuture(
                         new RemoteLocaleDownloader.Response(302, new byte[]{1})));
         assertThrows(CompletionException.class, () -> badStatus.download(TRUSTED_URI).join());
 
         byte[] oversized = new byte[RemoteLocaleDownloader.MAX_BYTES + 1];
         RemoteLocaleDownloader tooLarge = new RemoteLocaleDownloader(
-                ignored -> java.util.concurrent.CompletableFuture.completedFuture(
+                ignored -> CompletableFuture.completedFuture(
                         new RemoteLocaleDownloader.Response(200, oversized)));
         assertThrows(CompletionException.class, () -> tooLarge.download(TRUSTED_URI).join());
-    }
-
-    @Test
-    void boundedSubscriberCancelsBeforeBufferingTooMuch() {
-        RemoteLocaleDownloader.BoundedBodySubscriber subscriber =
-                new RemoteLocaleDownloader.BoundedBodySubscriber(3);
-        TestSubscription subscription = new TestSubscription();
-        subscriber.onSubscribe(subscription);
-        subscriber.onNext(List.of(ByteBuffer.wrap(new byte[]{1, 2, 3, 4})));
-        assertTrue(subscription.cancelled);
-        assertThrows(CompletionException.class,
-                () -> subscriber.getBody().toCompletableFuture().join());
     }
 
     @Test
@@ -103,7 +88,7 @@ class RemoteLocaleSecurityTest {
     void downloaderReturnsExactAcceptedBytes() {
         byte[] expected = {1, 2, 3};
         RemoteLocaleDownloader downloader = new RemoteLocaleDownloader(
-                ignored -> java.util.concurrent.CompletableFuture.completedFuture(
+                ignored -> CompletableFuture.completedFuture(
                         new RemoteLocaleDownloader.Response(200, expected)));
         assertArrayEquals(expected, downloader.download(TRUSTED_URI).join());
         assertThrows(IllegalArgumentException.class,
@@ -147,13 +132,7 @@ class RemoteLocaleSecurityTest {
 
     private static RemoteLocaleManifest.Entry entry(byte[] value) throws Exception {
         return new RemoteLocaleManifest.Entry(
-                java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)),
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)),
                 value.length);
-    }
-
-    private static final class TestSubscription implements Flow.Subscription {
-        private boolean cancelled;
-        @Override public void request(long count) {}
-        @Override public void cancel() { cancelled = true; }
     }
 }

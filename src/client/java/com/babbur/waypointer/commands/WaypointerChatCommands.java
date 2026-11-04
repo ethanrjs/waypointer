@@ -1,5 +1,8 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.compat.InputCompat;
+import com.babbur.waypointer.crystal.CrystalHollowsShare;
+import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -9,6 +12,7 @@ import com.babbur.waypointer.core.Zone;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -25,6 +29,17 @@ final class WaypointerChatCommands {
     WaypointerChatCommands(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
         this.config = config;
+    }
+
+    int runAddTempHere(FabricClientCommandSource src) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            error(src, Component.translatable("waypointer.command.error.not_in_world"));
+            return 0;
+        }
+        var pos = PlayerWaypointPlacement.fromPlayer(
+                player.getX(), player.getY(), player.getZ(), config);
+        return runAddTempAt(src, pos.x(), pos.y(), pos.z(), "");
     }
 
     int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
@@ -78,7 +93,8 @@ final class WaypointerChatCommands {
         if (config.focusTempWaypoints()) {
             manager.focusTempWaypoint(selection.group(), selection.index());
             success(src, Component.translatable(
-                    "waypointer.command.temp.focused", x, y, z));
+                    "waypointer.command.temp.focused", x, y, z)
+                    .append(CrystalHollowsShare.defocus()));
             return 1;
         }
 
@@ -168,8 +184,8 @@ final class WaypointerChatCommands {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var win = mc.getWindow();
-        return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+        return InputCompat.isKeyDown(win, InputConstants.KEY_LSHIFT)
+                || InputCompat.isKeyDown(win, InputConstants.KEY_RSHIFT);
     }
 
     String zoneSuffix() {

@@ -66,6 +66,10 @@ public final class PublisherIdentity {
         return new PublisherIdentity(publicKey, privateKey, createdAt, name);
     }
 
+    public PublisherIdentity forNameClaim() {
+        return withPublisherName(null);
+    }
+
     public byte[] sign(byte[] message) {
         try {
             Signature signer = Signature.getInstance(ALGORITHM);

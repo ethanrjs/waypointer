@@ -3,8 +3,6 @@ package com.babbur.waypointer.dungeon;
 import com.babbur.waypointer.core.Waypoint;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
-import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,30 +13,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DungeonWaypointTypeTest {
 
     @Test
-    void exposesStableEightTypeAndWaypointTypeButtonIconContract() {
+    void exposesStableEightTypes() {
         assertEquals(List.of(
                         "Secret", "Etherwarp", "Dungeonbreaker", "Superboom",
                         "Pearl", "Pearl target", "Item", "Bat"),
                 List.of(DungeonWaypointType.values()).stream()
                         .map(DungeonWaypointType::label)
                         .toList());
-        for (int i = 0; i < DungeonWaypointType.values().length; i++) {
-            assertEquals(i, DungeonWaypointType.values()[i].iconIndex());
-        }
-        assertEquals(12, DungeonWaypointType.ICON_SIZE);
-        assertEquals(8, DungeonWaypointType.WAYPOINT_TYPE_ICON_INDEX);
-        assertEquals(108, DungeonWaypointType.ICON_ATLAS_WIDTH);
-    }
-
-    @Test
-    void iconAtlasMatchesTheNineCellContract() throws Exception {
-        var image = ImageIO.read(Path.of(
-                "src/main/resources/assets/waypointer/textures/gui/dungeon_waypoint_types.png")
-                .toFile());
-
-        assertEquals(DungeonWaypointType.ICON_ATLAS_WIDTH, image.getWidth());
-        assertEquals(DungeonWaypointType.ICON_SIZE, image.getHeight());
-        assertTrue(image.getColorModel().hasAlpha());
     }
 
     @Test

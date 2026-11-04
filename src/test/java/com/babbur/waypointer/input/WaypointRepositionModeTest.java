@@ -4,13 +4,13 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.Direction;
-import com.babbur.waypointer.dungeon.DungeonRoom;
-import com.babbur.waypointer.dungeon.DungeonRoomShape;
-import com.babbur.waypointer.dungeon.DungeonRoomType;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.block.Blocks;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +23,22 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointRepositionModeTest {
+
+    @Test
+    void placementAcceptsAirAndKeepsTheHitBlockAtBoundaryFaces() {
+        Vec3 air = new Vec3(-0.25, 72.375, -3.0625);
+        BlockHitResult miss = BlockHitResult.miss(air, net.minecraft.core.Direction.UP, BlockPos.ZERO);
+        assertEquals(new BlockPos(-1, 72, -4), WaypointRepositionMode.placementBlock(miss));
+        assertEquals(new WaypointRepositionMode.PreciseTarget(-4, 1158, -49),
+                WaypointRepositionMode.placementPrecise(miss));
+
+        BlockHitResult topFace = new BlockHitResult(new Vec3(2.5, 71, 3.5),
+                net.minecraft.core.Direction.UP, new BlockPos(2, 70, 3), false);
+        assertEquals(new BlockPos(2, 70, 3), WaypointRepositionMode.placementBlock(topFace));
+        assertEquals(new WaypointRepositionMode.PreciseTarget(40, 1136, 56),
+                WaypointRepositionMode.placementPrecise(topFace));
+        assertFalse(WaypointRepositionMode.handleRightClick(null));
+    }
 
     private static void bootstrapMinecraftRegistriesForBlocks() {
         SharedConstants.tryDetectVersion();
@@ -119,7 +135,7 @@ class WaypointRepositionModeTest {
         WaypointGroup editedRoute = WaypointGroup.create("Citrine 2", "hub");
         manager.add(firstRoute);
         manager.add(editedRoute);
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+        manager.onZoneChanged(Zone.fromId("hub"));
 
         assertEquals(firstRoute, manager.getOrCreateActiveGroup());
 
@@ -139,7 +155,7 @@ class WaypointRepositionModeTest {
         manager.add(shownBefore);
         manager.add(editedRoute);
         manager.add(hiddenBefore);
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+        manager.onZoneChanged(Zone.fromId("hub"));
 
         assertEquals(List.of(shownBefore, editedRoute), manager.activeGroups());
 
@@ -167,7 +183,7 @@ class WaypointRepositionModeTest {
         editedRoute.setEnabled(false);
         manager.add(shownBefore);
         manager.add(editedRoute);
-        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+        manager.onZoneChanged(Zone.fromId("hub"));
 
         WaypointRepositionMode.setEditModeEnabled(manager, config, editedRoute, true);
 

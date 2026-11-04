@@ -1,19 +1,27 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.compat.InputCompat;
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import com.babbur.waypointer.codec.UniversalShareCodec;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.config.AppearanceScope;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.screen.settings.PerfStressTestController;
 import com.babbur.waypointer.screen.settings.RecentSettings;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import com.babbur.waypointer.screen.settings.SettingsPresets;
 import com.babbur.waypointer.screen.settings.SettingsSearch;
+import com.babbur.waypointer.update.WaypointerUpdates;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -22,11 +30,13 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
@@ -35,18 +45,20 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_END;
+import static com.babbur.waypointer.compat.InputCompat.KEY_F;
+import static com.babbur.waypointer.compat.InputCompat.KEY_HOME;
+import static com.babbur.waypointer.compat.InputCompat.KEY_LEFT_CONTROL;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_PAGE_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_RIGHT_CONTROL;
 
 public final class SettingsScreen extends Screen {
 
@@ -58,7 +70,7 @@ public final class SettingsScreen extends Screen {
     private static final int SETTING_ROW_PITCH = 24;
     static final int CHECKBOX_SIZE = 20;
     private static final int GROUP_CAPTION_H = 18;
-    private static final int CHILD_INDENT = 12;
+    private static final int CHILD_INDENT = 28;
     private static final int CONTROL_RIGHT_INSET = 10;
     private static final int MIN_CONTROL_W = 140;
     private static final int MIN_SETTING_LABEL_W = 40;
@@ -70,13 +82,30 @@ public final class SettingsScreen extends Screen {
     private static final long HIGHLIGHT_MS = 1_500L;
 
     static final String RECENT_ID = "recent";
+    static final String CHANGED_ID = "changed";
+    static final String UPDATE_ID = "update";
+    static final int UPDATE_GOLD = 0xFFF2C14E;
+    static final String SCOPED_SECTION_PREFIX = "appearance.";
+    static final String SCOPED_VISIBILITY_ID = "scope.visibility";
+
+    private static final int SCOPED_BACKDROP = 0x20000000;
+    private static final int SCOPED_PANEL = 0x800E1014;
 
     private static final Set<String> STRUCTURAL_IDS = computeStructuralIds();
 
     private static String lastCategoryId;
 
     private final Screen parent;
+
     private final WaypointerConfig config;
+    private final WaypointerConfig globalConfig;
+    private final AppearanceTarget target;
+    private final List<SettingsCatalog.Category> categories;
+    private WaypointerConfig inheritedSnapshot;
+    private Map<String, Component> zoneOverrideTags = Map.of();
+    private Button resetLookButton;
+    private Button scopeSwitcher;
+    private final ContextMenuOverlay contextMenu = new ContextMenuOverlay();
     private final DungeonConfig dungeonConfig;
     private final WaypointerConfig defaultsMain = new WaypointerConfig();
     private final DungeonConfig defaultsDungeon = new DungeonConfig();
@@ -93,7 +122,6 @@ public final class SettingsScreen extends Screen {
     private EditBox searchBox;
     private Button searchClearButton;
     private ListNavigationWidget sidebarNavigation;
-    private Button perfCancelButton;
     private String searchQuery = "";
     private boolean refocusSearchAfterRebuild;
     private boolean refocusSidebarAfterRebuild;
@@ -101,33 +129,159 @@ public final class SettingsScreen extends Screen {
     private String highlightSettingId;
     private long highlightUntilMillis;
     private Map<String, Integer> searchCategoryCounts = Map.of();
+    private Component railTooltip;
 
     private static final int CONFIRM_NONE = 0;
-    private static final int CONFIRM_DISABLE_ALL = 1;
     private static final int CONFIRM_RESET_DEFAULTS = 2;
+    private static final int CONFIRM_RESET_LOOK = 3;
     private static final long CONFIRMATION_WINDOW_MS = 3_000L;
     private int pendingConfirmationAction = CONFIRM_NONE;
     private long pendingConfirmationUntilMillis;
 
     private Component configCodeStatus;
 
+    private Button updateButton;
+    private Button updateCancelButton;
+    private boolean peeking;
+
     public SettingsScreen(Screen parent, WaypointerConfig config, DungeonConfig dungeonConfig) {
-        super(Component.translatable("waypointer.screen.settings.title"));
+        this(parent, config, dungeonConfig, null);
+    }
+
+    private SettingsScreen(Screen parent, WaypointerConfig config, DungeonConfig dungeonConfig,
+                           AppearanceTarget target) {
+        super(target == null
+                ? Component.translatable("waypointer.screen.settings.title")
+                : Component.translatable("waypointer.screen.appearance.title", target.coloredName()));
         this.parent = parent;
-        this.config = config;
+        this.target = target;
+        this.globalConfig = config;
+        this.config = target == null ? config : target.scope().effective();
         this.dungeonConfig = dungeonConfig;
+        this.categories = target == null
+                ? SettingsCatalog.categories()
+                : appearanceCategories(target::includes);
+        if (target != null) {
+            this.activeCategoryId = target.scope().count() > 0 ? CHANGED_ID : categories.getFirst().id();
+            return;
+        }
         boolean lastStillValid = categoryById(lastCategoryId) != null
                 || (RECENT_ID.equals(lastCategoryId) && !RecentSettings.isEmpty());
         this.activeCategoryId = lastStillValid
                 ? lastCategoryId
-                : SettingsCatalog.categories().get(0).id();
-        PerfStressTestController.recoverInterruptedTest(config);
+                : categories.getFirst().id();
+    }
+
+    static SettingsScreen forAppearance(Screen parent, WaypointerConfig config,
+                                        DungeonConfig dungeonConfig, AppearanceTarget target) {
+        return new SettingsScreen(parent, config, dungeonConfig, Objects.requireNonNull(target));
+    }
+
+    public static boolean openRouteAppearance(ActiveGroupManager manager,
+                                              WaypointerConfig config, WaypointGroup route) {
+        AppearanceTarget target = AppearanceTarget.route(manager, config, route, manager::fireDataChanged);
+        if (target == null) return false;
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client,
+                forAppearance(null, config, WaypointerClient.dungeonConfig(), target)));
+        return true;
+    }
+
+    public static boolean openWaypointAppearance(ActiveGroupManager manager,
+                                                 WaypointerConfig config, WaypointGroup route, int index) {
+        AppearanceTarget target = AppearanceTarget.waypoint(manager, config, route, index, manager::fireDataChanged);
+        if (target == null) return false;
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client,
+                forAppearance(null, config, WaypointerClient.dungeonConfig(), target)));
+        return true;
+    }
+
+    public static void openZoneAppearance(WaypointerConfig config, String zoneKey) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client, forAppearance(null, config,
+                WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, zoneKey))));
+    }
+
+    public static void openGlobalAppearance(WaypointerConfig config) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            SettingsScreen screen = new SettingsScreen(null, config, WaypointerClient.dungeonConfig());
+            screen.activeCategoryId = "appearance";
+            lastCategoryId = "appearance";
+            MinecraftCompat.setScreen(client, screen);
+        });
+    }
+
+    public static List<String> appearanceZoneKeys(ActiveGroupManager manager,
+                                                  WaypointerConfig config) {
+        List<String> routeZones = manager.allGroups().stream()
+                .filter(group -> !group.temp() && !group.runtimeOnly())
+                .map(WaypointGroup::zoneId).distinct().toList();
+        return AppearanceTarget.switcherZoneKeys(manager.currentZone(), routeZones, config.zoneStyles().keySet());
+    }
+
+    public static Component appearanceZoneLabel(String zoneKey) {
+        return AppearanceTarget.zoneLabel(zoneKey);
+    }
+
+    public static void open(WaypointerConfig config) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client,
+                new SettingsScreen(null, config, WaypointerClient.dungeonConfig())));
+    }
+
+    static List<SettingsCatalog.Category> appearanceCategories(Predicate<String> include) {
+        Set<String> supported = WaypointStyles.supportedProperties();
+        Predicate<Setting> keep = setting -> supported.contains(setting.id())
+                && include.test(setting.id())
+                && setting.store() == Setting.Store.MAIN
+                && setting.kind() != Setting.Kind.HIDDEN && setting.kind() != Setting.Kind.ACTION;
+        List<SettingsCatalog.Category> out = new ArrayList<>();
+        List<SettingsCatalog.Group> elsewhere = new ArrayList<>();
+        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+            if ("appearance".equals(category.id())) {
+                for (Section section : sections(category)) {
+                    List<SettingsCatalog.Group> groups = new ArrayList<>();
+                    for (SettingsCatalog.Group group : section.groups()) {
+                        SettingsCatalog.Group kept = keptGroup(group, keep);
+                        if (kept != null) groups.add(kept);
+                    }
+                    if (groups.isEmpty()) continue;
+                    String label = section.heading().label() == null
+                            ? category.label() : section.heading().label();
+                    out.add(new SettingsCatalog.Category(SCOPED_SECTION_PREFIX + section.id(),
+                            label, null, null, List.copyOf(groups)));
+                }
+            } else {
+                for (SettingsCatalog.Group group : category.groups()) {
+                    SettingsCatalog.Group kept = keptGroup(group, keep);
+                    if (kept != null) elsewhere.add(kept);
+                }
+            }
+        }
+        if (!elsewhere.isEmpty()) {
+            out.add(new SettingsCatalog.Category(SCOPED_VISIBILITY_ID, "Visibility", null, null,
+                    List.copyOf(elsewhere)));
+        }
+        return List.copyOf(out);
+    }
+
+    private static SettingsCatalog.Group keptGroup(SettingsCatalog.Group group, Predicate<Setting> keep) {
+        List<Setting> settings = group.settings().stream().filter(keep).toList();
+        if (settings.isEmpty()) return null;
+        boolean parentKept = group.parentSettingId() != null
+                && settings.getFirst().id().equals(group.parentSettingId());
+        return parentKept
+                ? new SettingsCatalog.Group(null, null, group.parentSettingId(),
+                        group.childrenVisibleWhen(), settings)
+                : new SettingsCatalog.Group(null, null, null, null, settings);
     }
 
     public static SettingsScreen atSetting(Screen parent, WaypointerConfig config,
                                            DungeonConfig dungeonConfig, String settingId) {
         SettingsScreen screen = new SettingsScreen(parent, config, dungeonConfig);
-        SettingsCatalog.Category home = categoryOf(settingId);
+        SettingsCatalog.Category home = screen.categoryOf(settingId);
         if (home != null) {
             screen.activeCategoryId = home.id();
             lastCategoryId = home.id();
@@ -138,33 +292,134 @@ public final class SettingsScreen extends Screen {
         return screen;
     }
 
-
     @Override
     protected void init() {
         rows.clear();
         searchBox = null;
         searchClearButton = null;
         sidebarNavigation = null;
-        perfCancelButton = null;
+        resetLookButton = null;
+        updateButton = null;
+        updateCancelButton = null;
+        scopeSwitcher = null;
+        contextMenu.close();
+        inheritedSnapshot = target == null ? null : target.scope().inherited();
+        zoneOverrideTags = target == null ? zoneOverrideTags(globalConfig) : Map.of();
         Layout layout = layout();
         controlWidth = measuredControlWidth(layout);
         actionClusterWidth = measuredActionClusterWidth(layout);
-        buildRows(layout);
-        addSearchBox(layout);
-        addSidebarNavigation(layout);
+        peeking &= peekAvailable();
+        if (!peeking) {
+            buildRows(layout);
+            addScopeSwitcher(layout);
+            addSearchBox(layout);
+            addSidebarNavigation(layout);
+        }
 
         GuiTokens.ButtonSpec done = doneSpec();
-        GuiTokens.layoutFooter(width, height - FOOTER_H, List.of(), done,
-                this::addRenderableWidget, font);
-        perfCancelButton = styledButton((width - 88) / 2,
-                PAD_OUTER + font.lineHeight * 2 + GAP, 88, BTN_H,
-                Component.translatable("waypointer.screen.settings.perf.cancel"), button -> {
-                    PerfStressTestController.cancelIfRunning();
-                    rebuildPending = true;
-                }, Tooltip.create(Component.translatable(
-                        "waypointer.screen.settings.perf.cancel.tooltip")));
-        perfCancelButton.visible = false;
-        addRenderableWidget(perfCancelButton);
+        List<Button> footer = new ArrayList<>();
+        GuiTokens.layoutFooter(width, height - FOOTER_H, footerActions(), done,
+                button -> {
+                    footer.add(button);
+                    addRenderableWidget(button);
+                }, font);
+        if (target != null && !peeking && footer.size() > 1) resetLookButton = footer.getFirst();
+    }
+
+    private List<GuiTokens.ButtonSpec> footerActions() {
+        List<GuiTokens.ButtonSpec> out = new ArrayList<>();
+        if (target != null && !peeking) {
+            out.add(new GuiTokens.ButtonSpec(
+                    Component.translatable(confirmationActive(CONFIRM_RESET_LOOK)
+                            ? "waypointer.screen.appearance.reset.confirm"
+                            : "waypointer.screen.appearance.reset", target.name()).getString(),
+                    -1, this::resetLook,
+                    Tooltip.create(Component.translatable("waypointer.screen.appearance.reset.tooltip"))));
+        }
+        if (peekAvailable()) {
+            out.add(new GuiTokens.ButtonSpec(Component.translatable(peeking
+                    ? "waypointer.screen.settings.peek.off"
+                    : "waypointer.screen.group_edit.peek").getString(), -1, () -> {
+                peeking = !peeking;
+                contextMenu.close();
+                rebuildWidgets();
+            }).withIcon(peeking ? Icons.Icon.EYE_OFF : Icons.Icon.EYE));
+        }
+        return out;
+    }
+
+    boolean peekAvailable() {
+        return minecraft != null && minecraft.level != null
+                && (target != null || "appearance".equals(activeCategoryId) && !searchActive());
+    }
+
+    private void resetLook() {
+        if (target.scope().count() == 0) return;
+        if (!consumeOrArmConfirmation(CONFIRM_RESET_LOOK)) return;
+        clearPendingConfirmation();
+        target.scope().clear();
+        afterScopedWrite();
+        rebuildPending = true;
+    }
+
+    private static Map<String, Component> zoneOverrideTags(WaypointerConfig config) {
+        Map<String, List<String>> zonesByProperty = new HashMap<>();
+        config.zoneStyles().forEach((zone, style) -> style.values().keySet().forEach(
+                property -> zonesByProperty.computeIfAbsent(property, k -> new ArrayList<>()).add(zone)));
+        Map<String, Component> tags = new HashMap<>();
+        zonesByProperty.forEach((property, zones) -> tags.put(property, zones.size() == 1
+                ? Component.translatable("waypointer.screen.appearance.zone_overrides",
+                        AppearanceTarget.zoneLabel(zones.getFirst()))
+                : Component.translatable("waypointer.screen.appearance.zones_override", zones.size())));
+        return tags;
+    }
+
+    private void addScopeSwitcher(Layout layout) {
+        boolean zoneScope = target != null && target.scope().level() == AppearanceScope.Level.ZONE;
+        boolean globalAppearance = target == null && "appearance".equals(activeCategoryId);
+        if (!zoneScope && !globalAppearance) return;
+        Component label = Component.translatable("waypointer.screen.appearance.editing",
+                zoneScope ? target.name()
+                        : Component.translatable("waypointer.screen.appearance.everywhere"));
+        int w = Math.max(font.width(label) + BUTTON_TEXT_PADDING + 8,
+                ContextMenuOverlay.naturalWidth(font, scopeMenuItems()));
+        w = Math.min(w, (layout.mainRight() - layout.mainLeft()) / 2);
+        scopeSwitcher = styledButton(layout.mainRight() - GAP - w, layout.top() + 4, w, BTN_H,
+                Component.literal(font.plainSubstrByWidth(label.getString(), w - BUTTON_TEXT_PADDING) + " \u25be"),
+                b -> openScopeMenu(b), null);
+        addRenderableWidget(scopeSwitcher);
+    }
+
+    private List<ContextMenuOverlay.Item> scopeMenuItems() {
+        List<ContextMenuOverlay.Item> items = new ArrayList<>();
+        boolean zoneScope = target != null;
+        items.add(ContextMenuOverlay.Item.of(
+                Component.translatable("waypointer.screen.appearance.everywhere"),
+                zoneScope ? null : "\u2713", zoneScope ? this::onClose : () -> { }));
+        var manager = WaypointerClient.manager();
+        List<String> routeZones = manager == null ? List.of() : manager.allGroups().stream()
+                .filter(group -> !group.temp() && !group.runtimeOnly())
+                .map(WaypointGroup::zoneId).distinct().toList();
+        for (String key : AppearanceTarget.switcherZoneKeys(manager == null ? null : manager.currentZone(),
+                routeZones, globalConfig.zoneStyles().keySet())) {
+            boolean current = zoneScope && key.equals(target.scope().key());
+            int count = WaypointStyles.setCount(globalConfig.zoneStyle(key));
+            String hint = current ? "\u2713" : count > 0
+                    ? Component.translatable("waypointer.screen.appearance.set_count", count).getString() : null;
+            items.add(ContextMenuOverlay.Item.of(AppearanceTarget.zoneLabel(key), hint, () -> {
+                if (current) return;
+                Screen back = zoneScope ? parent : this;
+                MinecraftCompat.setScreen(minecraft, forAppearance(back, globalConfig, dungeonConfig,
+                        AppearanceTarget.zone(globalConfig, key)));
+            }));
+        }
+        return items;
+    }
+
+    private void openScopeMenu(Button anchor) {
+        Layout layout = layout();
+        contextMenu.openUnder(font, scopeMenuItems(), anchor.getX(), anchor.getY() + anchor.getHeight(),
+                anchor.getWidth(), layout.mainLeft(), layout.top(), layout.mainRight(), height - FOOTER_H);
     }
 
     @Override
@@ -182,10 +437,9 @@ public final class SettingsScreen extends Screen {
         super.setInitialFocus();
     }
 
-
     private void addSearchBox(Layout layout) {
         int x = layout.mainLeft() + GAP;
-        int available = layout.mainRight() - GAP - x;
+        int available = (scopeSwitcher == null ? layout.mainRight() : scopeSwitcher.getX()) - GAP - x;
         int searchW = Math.min(SEARCH_W_MAX, available - SEARCH_CLEAR_W - GAP_TIGHT);
         if (searchW < 60) {
             refocusSearchAfterRebuild = false;
@@ -256,23 +510,33 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public void onClose() {
-        PerfStressTestController.cancelIfRunning();
         MinecraftCompat.setScreen(minecraft, parent);
     }
 
     @Override
+    public boolean isPauseScreen() {
+        return target == null && super.isPauseScreen();
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+
+        if ((target != null || peeking) && minecraft != null && minecraft.level != null) return;
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
+    }
+
+    @Override
     public void removed() {
-        PerfStressTestController.cancelIfRunning();
         super.removed();
     }
 
-
     private Layout layout() {
-        int footerSpace = GuiTokens.footerHeight(width, List.of(), doneSpec(), font);
+        int footerSpace = GuiTokens.footerHeight(width, footerActions(), doneSpec(), font);
         int top = PAD_OUTER + font.lineHeight + GAP;
         int bottom = height - footerSpace - GAP_SECTION;
         int sidebarLeft = PAD_OUTER;
-        int sidebarRight = sidebarLeft + SIDEBAR_W;
+        int sidebarRight = sidebarLeft + sidebarWidth(width);
         int mainLeft = sidebarRight + GAP;
         int mainRight = width - PAD_OUTER;
         int rowsTop = top + 4 + BTN_H + GAP;
@@ -280,7 +544,19 @@ public final class SettingsScreen extends Screen {
     }
 
     private record Layout(int top, int bottom, int sidebarLeft, int sidebarRight,
-                          int mainLeft, int mainRight, int rowsTop) {}
+                          int mainLeft, int mainRight, int rowsTop) {
+        boolean rail() {
+            return sidebarRight - sidebarLeft < SIDEBAR_W;
+        }
+    }
+
+    static final int RAIL_W = Icons.SIZE + GAP * 2 + 4;
+    static final int MIN_MAIN_WITH_FULL_SIDEBAR = 340;
+
+    static int sidebarWidth(int screenWidth) {
+        int mainWithFull = screenWidth - PAD_OUTER * 2 - SIDEBAR_W - GAP;
+        return mainWithFull >= MIN_MAIN_WITH_FULL_SIDEBAR ? SIDEBAR_W : RAIL_W;
+    }
 
     static int maxScrollFor(int contentHeight, int viewportHeight) {
         return Math.max(0, contentHeight - Math.max(0, viewportHeight) + SCROLL_BOTTOM_SLACK);
@@ -293,13 +569,13 @@ public final class SettingsScreen extends Screen {
         return my > bottom && my < footerTop;
     }
 
-
     private static final class Row {
         final Setting setting;
         final String caption;
         final boolean header;
         final boolean expanded;
         final boolean child;
+        boolean lastChild;
         final int y;
         final int height;
         final List<WidgetSlot> widgets = new ArrayList<>();
@@ -330,14 +606,20 @@ public final class SettingsScreen extends Screen {
 
     private void buildRows(Layout layout) {
         searchCategoryCounts = Map.of();
-        if (RECENT_ID.equals(activeCategoryId) && RecentSettings.isEmpty()) {
-            activeCategoryId = SettingsCatalog.categories().get(0).id();
+        if (RECENT_ID.equals(activeCategoryId) && RecentSettings.isEmpty()
+                || CHANGED_ID.equals(activeCategoryId) && (target == null || target.scope().count() == 0)
+                || UPDATE_ID.equals(activeCategoryId) && !updatePageAvailable()) {
+            activeCategoryId = categories.getFirst().id();
         }
 
         if (searchActive()) {
             buildSearchRows(layout);
         } else if (RECENT_ID.equals(activeCategoryId)) {
             buildRecentRows(layout);
+        } else if (CHANGED_ID.equals(activeCategoryId)) {
+            buildChangedRows(layout);
+        } else if (UPDATE_ID.equals(activeCategoryId)) {
+            buildUpdatePage(layout);
         } else {
             buildCategoryRows(layout);
         }
@@ -362,7 +644,7 @@ public final class SettingsScreen extends Screen {
             if (!first) y += GAP_SECTION;
             first = false;
 
-            if (group.label() != null && bodyVisible) {
+            if (group.label() != null) {
                 rows.add(new Row(null,
                         Component.translatableWithFallback(
                                 SettingsCatalog.groupTranslationKey(category, group),
@@ -379,6 +661,7 @@ public final class SettingsScreen extends Screen {
                 boolean expanded = isHeader && headerExpanded(category, group, setting, bodyVisible, groupExpanded);
                 boolean isChild = !isHeader && group.parentSettingId() != null;
                 Row row = new Row(setting, null, isHeader, expanded, isChild, y, SETTING_ROW_PITCH);
+                row.lastChild = isChild && i == settings.size() - 1;
                 buildRowWidgets(row, layout);
                 buildResetDot(row, layout);
                 rows.add(row);
@@ -387,6 +670,31 @@ public final class SettingsScreen extends Screen {
             }
         }
         contentHeight = y;
+    }
+
+    record Section(String id, SettingsCatalog.Group heading, List<SettingsCatalog.Group> groups) {}
+
+    static List<Section> sections(SettingsCatalog.Category category) {
+        List<Section> sections = new ArrayList<>();
+        for (SettingsCatalog.Group group : category.groups()) {
+            if (group.id() != null || sections.isEmpty()) {
+                sections.add(new Section(group.id() == null ? "general" : group.id(),
+                        group, new ArrayList<>()));
+            }
+            sections.getLast().groups().add(group);
+        }
+        return sections;
+    }
+
+    static String sectionForSetting(SettingsCatalog.Category category, String settingId) {
+        for (Section section : sections(category)) {
+            for (SettingsCatalog.Group group : section.groups()) {
+                if (group.settings().stream().anyMatch(setting -> setting.id().equals(settingId))) {
+                    return section.id();
+                }
+            }
+        }
+        return null;
     }
 
     private int addStatusRowFor(Setting setting, int y) {
@@ -405,7 +713,7 @@ public final class SettingsScreen extends Screen {
 
     private void buildSearchRows(Layout layout) {
         List<SettingsSearch.Match> matches =
-                SettingsSearch.search(searchQuery, SettingsCatalog.categories(),
+                SettingsSearch.search(searchQuery, categories,
                         (key, fallback) -> Component.translatableWithFallback(
                                 key, fallback).getString());
         Map<String, Integer> counts = new HashMap<>();
@@ -414,10 +722,24 @@ public final class SettingsScreen extends Screen {
             counts.merge(match.categoryId(), 1, Integer::sum);
             SettingsCatalog.Category category = categoryById(match.categoryId());
             y = addChippedRow(match.setting(),
-                    category == null ? "" : SettingsText.categoryLabel(category), y, layout);
+                    category == null ? "" : categoryLabel(category), y, layout);
         }
         contentHeight = y;
         searchCategoryCounts = counts;
+    }
+
+    private void buildChangedRows(Layout layout) {
+        int y = 0;
+        for (SettingsCatalog.Category category : categories) {
+            for (SettingsCatalog.Group group : category.groups()) {
+                for (Setting setting : group.settings()) {
+                    if (target.scope().isSetHere(setting.id())) {
+                        y = addChippedRow(setting, categoryLabel(category), y, layout);
+                    }
+                }
+            }
+        }
+        contentHeight = y;
     }
 
     private void buildRecentRows(Layout layout) {
@@ -428,7 +750,7 @@ public final class SettingsScreen extends Screen {
             if (setting.kind() == Setting.Kind.ACTION || setting.kind() == Setting.Kind.HIDDEN) continue;
             if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) continue;
             SettingsCatalog.Category home = categoryOf(id);
-            y = addChippedRow(setting, home == null ? "" : SettingsText.categoryLabel(home), y, layout);
+            y = addChippedRow(setting, home == null ? "" : categoryLabel(home), y, layout);
         }
         contentHeight = y;
     }
@@ -466,8 +788,8 @@ public final class SettingsScreen extends Screen {
         return null;
     }
 
-    private static String parentIdOf(String settingId) {
-        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+    private String parentIdOf(String settingId) {
+        for (SettingsCatalog.Category category : categories) {
             for (SettingsCatalog.Group group : category.groups()) {
                 for (Setting setting : group.settings()) {
                     if (!setting.id().equals(settingId)) continue;
@@ -482,8 +804,8 @@ public final class SettingsScreen extends Screen {
         return null;
     }
 
-    private static SettingsCatalog.Category categoryOf(String settingId) {
-        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+    private SettingsCatalog.Category categoryOf(String settingId) {
+        for (SettingsCatalog.Category category : categories) {
             for (SettingsCatalog.Group group : category.groups()) {
                 for (Setting setting : group.settings()) {
                     if (setting.id().equals(settingId)) return category;
@@ -523,9 +845,9 @@ public final class SettingsScreen extends Screen {
         return groupExpanded;
     }
 
-    private static SettingsCatalog.Category categoryById(String id) {
+    private SettingsCatalog.Category categoryById(String id) {
         if (id == null) return null;
-        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+        for (SettingsCatalog.Category category : categories) {
             if (category.id().equals(id)) return category;
         }
         return null;
@@ -542,6 +864,19 @@ public final class SettingsScreen extends Screen {
         return out;
     }
 
+    private String categoryLabel(SettingsCatalog.Category category) {
+        if (target == null) return SettingsText.categoryLabel(category);
+        if (SCOPED_VISIBILITY_ID.equals(category.id())) {
+            return Component.translatable("waypointer.screen.appearance.section.visibility").getString();
+        }
+        return Component.translatableWithFallback(
+                "waypointer.settings.group." + category.id(), category.label()).getString();
+    }
+
+    static int childGuideHeight(int rowHeight, boolean lastChild) {
+        return lastChild ? 13 : rowHeight;
+    }
+
     private int measuredControlWidth(Layout layout) {
         int measured = MIN_CONTROL_W;
         measured = Math.max(measured, buttonWidth(
@@ -554,13 +889,13 @@ public final class SettingsScreen extends Screen {
         for (String key : List.of(
                 "waypointer.screen.settings.action.disable_all",
                 "waypointer.screen.settings.action.reset_defaults",
-                "waypointer.screen.settings.action.confirm_reset",
-                "waypointer.screen.settings.action.open_painter")) {
+                "waypointer.screen.settings.action.confirm_reset")) {
             measured = Math.max(measured, buttonWidth(Component.translatable(key)));
         }
 
-        int available = layout.mainRight() - CONTROL_RIGHT_INSET
-                - layout.mainLeft() - GAP - DOT_AREA_W - GAP_TIGHT - MIN_SETTING_LABEL_W;
+        int mainW = layout.mainRight() - CONTROL_RIGHT_INSET - layout.mainLeft() - GAP;
+        int labelRoom = Math.max(MIN_SETTING_LABEL_W, mainW / 2);
+        int available = mainW - DOT_AREA_W - GAP_TIGHT - labelRoom;
         return Math.min(measured, Math.max(60, available));
     }
 
@@ -568,10 +903,7 @@ public final class SettingsScreen extends Screen {
         int twoColumnCell = 60;
         for (String key : List.of(
                 "waypointer.screen.settings.config.copy",
-                "waypointer.screen.settings.config.import",
-                "waypointer.screen.settings.perf.run",
-                "waypointer.screen.settings.perf.cancel",
-                "waypointer.screen.settings.perf.copy_report")) {
+                "waypointer.screen.settings.config.import")) {
             twoColumnCell = Math.max(twoColumnCell, buttonWidth(Component.translatable(key)));
         }
 
@@ -611,7 +943,6 @@ public final class SettingsScreen extends Screen {
                 + column * (actionGridButtonWidth(clusterWidth, columns) + GAP);
     }
 
-
     private void buildRowWidgets(Row row, Layout layout) {
         Setting setting = row.setting;
         int controlRight = layout.mainRight() - CONTROL_RIGHT_INSET;
@@ -620,6 +951,7 @@ public final class SettingsScreen extends Screen {
         switch (setting.kind()) {
             case BOOL -> buildBoolControl(row, setting, controlRight, rowTop);
             case NUMBER -> buildNumberControl(row, setting, controlRight, rowTop);
+            case TEXT -> buildTextControl(row, setting, controlRight, rowTop);
             case ENUM -> buildEnumControl(row, setting, controlRight, rowTop);
             case COLOR -> buildColorControl(row, setting, controlRight, rowTop);
             case ACTION -> buildActionControls(row, setting, controlRight, rowTop);
@@ -629,6 +961,15 @@ public final class SettingsScreen extends Screen {
 
     private void buildActionControls(Row row, Setting setting, int controlRight, int rowTop) {
         switch (setting.id()) {
+            case SettingsCatalog.ACTION_MINIMAP_EDITOR -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.settings.action.minimap_editor",
+                    () -> MinecraftCompat.setScreen(minecraft, new CrystalHollowsMinimapEditorScreen(this, config)));
+            case SettingsCatalog.ACTION_WAYPOINT_PAINT -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.settings.action.open_painter",
+                    this::openWaypointPainter);
+            case SettingsCatalog.ACTION_FEEDBACK -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.settings.action.feedback",
+                    () -> MinecraftCompat.setScreen(minecraft, new FeedbackScreen(this, config)));
             case SettingsCatalog.ACTION_CONFIG_CODE -> buildConfigCodeControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_PRESETS -> buildPresetControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_DISABLE_ALL -> buildDialogActionControl(row, setting,
@@ -639,47 +980,16 @@ public final class SettingsScreen extends Screen {
                     "waypointer.screen.settings.action.reset_defaults",
                     "waypointer.screen.settings.action.confirm_reset",
                     this::confirmedResetDefaults);
-            case SettingsCatalog.ACTION_PERF_TEST -> buildPerfTestControls(row, setting, controlRight, rowTop);
-            case SettingsCatalog.ACTION_WAYPOINT_PAINT -> buildDialogActionControl(row, setting,
-                    controlRight, rowTop, "waypointer.screen.settings.action.open_painter",
-                    this::openWaypointPainter);
             default -> { }
         }
     }
 
-    private void buildPerfTestControls(Row row, Setting setting, int controlRight, int rowTop) {
-        int columns = 2;
-        int buttonW = actionGridButtonWidth(actionClusterWidth, columns);
-        Button run = styledButton(actionGridButtonX(
-                        controlRight, actionClusterWidth, columns, 0), 0, buttonW, BTN_H,
-                Component.translatable(PerfStressTestController.running()
-                        ? "waypointer.screen.settings.perf.cancel"
-                        : "waypointer.screen.settings.perf.run"), b -> {
-                    if (PerfStressTestController.running()) {
-                        PerfStressTestController.cancelIfRunning();
-                    } else {
-                        PerfStressTestController.start(config);
-                    }
-                    rebuildPending = true;
-                }, SettingsText.tooltipOrNull(setting));
-        Button copy = styledButton(actionGridButtonX(
-                        controlRight, actionClusterWidth, columns, 1), 0, buttonW, BTN_H,
-                Component.translatable("waypointer.screen.settings.perf.copy_report"), b -> {
-                    if (PerfStressTestController.hasReport()) {
-                        minecraft.keyboardHandler.setClipboard(PerfStressTestController.report());
-                        PerfStressTestController.noteReportCopied();
-                    }
-                }, SettingsText.tooltip(setting, Component.translatable(
-                        "waypointer.screen.settings.perf.copy_report.tooltip")));
-
-        registerRowWidget(row, run, rowTop + 2);
-        registerRowWidget(row, copy, rowTop + 2, PerfStressTestController::hasReport);
-    }
-
     private void openWaypointPainter() {
-        if (WaypointerClient.manager() == null) return;
-        MinecraftCompat.setScreen(minecraft,
-                new WaypointPainterScreen(this, config, WaypointerClient.manager()));
+        ActiveGroupManager painterManager = WaypointerClient.manager();
+        if (painterManager == null) return;
+        rebuildPending = true;
+        MinecraftCompat.setScreen(minecraft, new WaypointPainterScreen(this, globalConfig,
+                painterManager, PaintScope.of(target, painterManager)));
     }
 
     private void buildConfigCodeControls(Row row, Setting setting, int controlRight, int rowTop) {
@@ -783,8 +1093,30 @@ public final class SettingsScreen extends Screen {
         registerRowWidget(row, button, rowTop + 2);
     }
 
+    private void buildTextControl(Row row, Setting setting, int controlRight, int rowTop) {
+        EditBox box = new EditBox(font, controlRight - controlWidth, 0, controlWidth, BTN_H,
+                SettingsText.label(setting)) {
+            @Override
+            public void setFocused(boolean focused) {
+                boolean wasFocused = isFocused();
+                super.setFocused(focused);
+                if (wasFocused && !focused) setValue(String.valueOf(setting.get(config, dungeonConfig)));
+            }
+        };
+        box.setMaxLength(256);
+        box.setValue(String.valueOf(setting.get(config, dungeonConfig)));
+        box.setResponder(value -> {
+            boolean valid = setting.acceptsText(value);
+            box.setTextColor(valid ? TEXT : 0xFF5555);
+            if (valid) applySetting(setting, value);
+        });
+        box.setTooltip(SettingsText.tooltipOrNull(setting));
+        registerRowWidget(row, box, rowTop + 2);
+    }
+
     private Component enumLabelFor(Setting setting) {
-        Object current = setting.get(config, dungeonConfig);
+        Object current = setting.id().equals("boxStyle")
+                ? config.effectiveBoxStyle() : setting.get(config, dungeonConfig);
         for (int i = 0; i < setting.enumOptions().size(); i++) {
             if (Objects.equals(setting.enumOptions().get(i).value(), current)) {
                 return SettingsText.enumOption(setting, i);
@@ -799,7 +1131,7 @@ public final class SettingsScreen extends Screen {
         ColorSwatchButton[] swatchRef = new ColorSwatchButton[1];
         ColorSwatchButton swatch = new ColorSwatchButton(
                 controlRight - controlWidth, 0, controlWidth, BTN_H,
-                Component.translatable("waypointer.screen.settings.color.pick").getString(),
+                "",
                 currentColor,
                 () -> {
                     int pickerColor = swatchRef[0] == null ? currentColor : swatchRef[0].getColor();
@@ -825,7 +1157,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private void registerRowWidget(Row row, AbstractWidget widget, int homeY, Supplier<Boolean> activeWhen) {
-        widget.visible = false; // first frame's refresh decides visibility
+        widget.visible = false;
         row.widgets.add(new WidgetSlot(widget, homeY, activeWhen));
         row.controlLeft = Math.min(row.controlLeft, widget.getX());
         addWidget(widget);
@@ -835,12 +1167,16 @@ public final class SettingsScreen extends Screen {
         Setting setting = row.setting;
         if (setting == null || setting.store() == Setting.Store.NONE) return;
         if (row.controlLeft == Integer.MAX_VALUE) return;
+        if (target != null) {
+            buildInheritDot(row, layout);
+            return;
+        }
 
         Object defaultValue = setting.defaultValue(defaultsMain, defaultsDungeon);
         ResetDotButton dot = new ResetDotButton(row.controlLeft - DOT_AREA_W, 0, 12, BTN_H,
                 b -> {
                     applySetting(setting, defaultValue);
-                    rebuildPending = true; // controls re-read config on rebuild
+                    rebuildPending = true;
                 });
         dot.setTooltip(SettingsText.tooltip(setting, Component.translatable(
                 "waypointer.screen.settings.reset.tooltip",
@@ -850,11 +1186,46 @@ public final class SettingsScreen extends Screen {
         addWidget(dot);
     }
 
+    private void buildInheritDot(Row row, Layout layout) {
+        Setting setting = row.setting;
+        Object inherited = setting.get(inheritedSnapshot, dungeonConfig);
+        ResetDotButton dot = new ResetDotButton(row.controlLeft - DOT_AREA_W, 0, 12, BTN_H,
+                b -> inherit(setting));
+        dot.setMessage(Component.translatable("waypointer.screen.appearance.inherit"));
+        dot.setTooltip(SettingsText.tooltip(setting, Component.translatable(
+                "waypointer.screen.appearance.inherit.tooltip",
+                SettingsText.localizedValue(setting, inherited),
+                target.sourceLabel(target.scope().source(setting.id())))));
+        dot.visible = false;
+        row.dot = new WidgetSlot(dot, layout.rowsTop() + row.y + 2);
+        addWidget(dot);
+    }
+
+    private void inherit(Setting setting) {
+        target.scope().inherit(setting.id());
+        afterScopedWrite();
+        rebuildPending = true;
+    }
+
+    private void afterScopedWrite() {
+        WaypointStyles.applyTo(config, WaypointStyles.capture(target.scope().effective()));
+        target.afterWrite().run();
+    }
+
     private record PresetOption(String id, String label, String description) {
     }
 
-
     private void applySetting(Setting setting, Object value) {
+        if (target != null) {
+            setting.set(config, dungeonConfig, value);
+            target.scope().capture(config, setting.id());
+            target.afterWrite().run();
+            if (STRUCTURAL_IDS.contains(setting.id())
+                    || CHANGED_ID.equals(activeCategoryId) && !target.scope().isSetHere(setting.id())) {
+                rebuildPending = true;
+            }
+            return;
+        }
         String before = setting.formatValue(setting.get(config, dungeonConfig));
         setting.set(config, dungeonConfig, value);
         String after = setting.formatValue(setting.get(config, dungeonConfig));
@@ -866,12 +1237,12 @@ public final class SettingsScreen extends Screen {
     }
 
     private void afterBulkConfigChange() {
+        CrystalHollowsProjection.refreshStyles(WaypointerClient.manager(), config);
         RecentSettings.clear();
         searchQuery = "";
         clearPendingConfirmation();
         rebuildPending = true;
     }
-
 
     private boolean consumeOrArmConfirmation(int action) {
         long now = System.currentTimeMillis();
@@ -880,7 +1251,7 @@ public final class SettingsScreen extends Screen {
         }
         pendingConfirmationAction = action;
         pendingConfirmationUntilMillis = now + CONFIRMATION_WINDOW_MS;
-        rebuildPending = true; // relabel the armed button
+        rebuildPending = true;
         return false;
     }
 
@@ -933,14 +1304,14 @@ public final class SettingsScreen extends Screen {
         afterBulkConfigChange();
     }
 
-
     private void copyConfigCode(Button b) {
         try {
-            String code = WaypointerConfigCodec.encode(config);
+            String code = UniversalShareCodec.encodeConfig(config);
             minecraft.keyboardHandler.setClipboard(code);
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.copied"), GuiTokens.SUCCESS));
-        } catch (Throwable t) {
+        } catch (RuntimeException t) {
+            Waypointer.LOGGER.warn("Could not copy the settings code", t);
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.copy_failed"), GuiTokens.DANGER));
         }
@@ -950,7 +1321,7 @@ public final class SettingsScreen extends Screen {
         String text;
         try {
             text = minecraft.keyboardHandler.getClipboard();
-        } catch (Throwable t) {
+        } catch (RuntimeException t) {
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.clipboard_failed"), GuiTokens.DANGER));
             return;
@@ -962,45 +1333,37 @@ public final class SettingsScreen extends Screen {
         }
 
         try {
-            WaypointerConfig decoded = WaypointerConfigCodec.decode(text);
-            int changedSettings = SettingsCatalog.countChangedSettings(config, decoded);
-            showImportConfigConfirmation(decoded, changedSettings);
+            UniversalShareCodec.Decoded share = UniversalShareCodec.decode(text);
+            if (!(share instanceof UniversalShareCodec.Configuration configuration)) {
+                throw new IllegalArgumentException("clipboard share is not a configuration");
+            }
+            WaypointerConfig decoded = configuration.config();
+            showImportConfigConfirmation(decoded);
         } catch (RuntimeException e) {
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.invalid"), GuiTokens.DANGER));
         }
     }
 
-    private void showImportConfigConfirmation(WaypointerConfig decoded, int changedSettings) {
+    private void showImportConfigConfirmation(WaypointerConfig decoded) {
         if (decoded == null) {
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.invalid"), GuiTokens.DANGER));
             return;
         }
 
-        Component title = Component.translatable(
-                "waypointer.screen.settings.config.confirm.title");
-        Component message = Component.translatable(changedSettings == 1
-                ? "waypointer.screen.settings.config.confirm.one"
-                : "waypointer.screen.settings.config.confirm.many", changedSettings);
-        ConfirmScreen confirmScreen = new ConfirmScreen(
-                confirmed -> {
-                    if (confirmed) {
-                        applyConfirmedConfigImport(decoded, changedSettings);
+        ConfigImportConfirmation.open(this, config, decoded, outcome -> {
+                    if (outcome.confirmed()) {
+                        applyConfirmedConfigImport(outcome.changedSettings());
                     } else {
                         setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                                 "waypointer.screen.settings.config.cancelled"),
                                 GuiTokens.TEXT_DIM));
                     }
-                    MinecraftCompat.setScreen(minecraft, this);
-                }, title, message,
-                Component.translatable("waypointer.screen.settings.config.import_settings"),
-                Component.translatable("gui.cancel"));
-        MinecraftCompat.setScreen(minecraft, confirmScreen);
+                });
     }
 
-    private void applyConfirmedConfigImport(WaypointerConfig decoded, int changedSettings) {
-        config.replaceWith(decoded);
+    private void applyConfirmedConfigImport(int changedSettings) {
         ConfigChangeHistory.recordBulk("Imported config code (" + changedSettings + " changed)");
         afterBulkConfigChange();
         setConfigCodeStatus(GuiTokens.colored(Component.translatable(changedSettings == 1
@@ -1019,7 +1382,6 @@ public final class SettingsScreen extends Screen {
                 ? Component.empty()
                 : configCodeStatus;
     }
-
 
     private void applyPreset(String presetId) {
         if ("nothing".equals(presetId)) {
@@ -1050,7 +1412,7 @@ public final class SettingsScreen extends Screen {
         if (!"minimal".equals(presetId)) return;
         WaypointerConfig preset = SettingsPresets.minimal(config);
         String nameKey = "waypointer.screen.settings.preset.minimal";
-        confirmPreset(nameKey, SettingsCatalog.countChangedSettings(config, preset), confirmed -> {
+        confirmPreset(nameKey, SettingsCatalog.countImportedSettings(config, preset), confirmed -> {
             if (confirmed) {
                 config.replaceWith(preset);
                 ConfigChangeHistory.recordBulk("Applied " + presetId + " preset");
@@ -1068,11 +1430,12 @@ public final class SettingsScreen extends Screen {
         if (dungeonConfig.showDungeonRouteLines()) changed++;
         if (dungeonConfig.showDungeonTracers()) changed++;
         if (dungeonConfig.secretCompletionSound()) changed++;
+        if (dungeonConfig.roomTimes()) changed++;
         return changed;
     }
 
     private void confirmPreset(String nameKey, int changed,
-                               java.util.function.Consumer<Boolean> onResult) {
+                               Consumer<Boolean> onResult) {
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     onResult.accept(confirmed);
@@ -1088,59 +1451,103 @@ public final class SettingsScreen extends Screen {
         MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
-
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        Layout layout = layout();
-        if (PerfStressTestController.onFrame()) {
-            rebuildPending = true;
-        }
-        if (PerfStressTestController.running()) {
-            hideWidgetsDuringPerformanceTest();
-            String status = font.plainSubstrByWidth(
-                    PerfStressTestController.statusLine(), Math.max(0, width - PAD_OUTER * 2));
-            String hint = font.plainSubstrByWidth(Component.translatable(
-                    "waypointer.screen.settings.perf.restore_hint").getString(),
-                    Math.max(0, width - PAD_OUTER * 2));
-            g.text(font, status, Math.max(PAD_OUTER, (width - font.width(status)) / 2),
-                    PAD_OUTER, TEXT, true);
-            g.text(font, hint, Math.max(PAD_OUTER, (width - font.width(hint)) / 2),
-                    PAD_OUTER + font.lineHeight + 2, TEXT_DIM, true);
-            perfCancelButton.visible = true;
-            perfCancelButton.extractRenderState(g, mouseX, mouseY, partial);
+        if (peeking) {
+            super.extractRenderState(g, mouseX, mouseY, partial);
             return;
         }
+        Layout layout = layout();
         refreshRowStates(layout);
 
-        g.fill(0, 0, width, height, SURFACE);
-        g.text(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        Component saveHint = Component.translatable("waypointer.screen.settings.auto_save");
-        g.text(font, saveHint,
-                width - PAD_OUTER - font.width(saveHint),
-                PAD_OUTER, TEXT_DIM, false);
+        boolean menuOpen = contextMenu.isOpen();
+        int widgetMouseX = menuOpen ? -1 : mouseX;
+        int widgetMouseY = menuOpen ? -1 : mouseY;
+        g.fill(0, 0, width, height, GuiTokens.panel(target == null ? SURFACE : SCOPED_BACKDROP));
+        if (target != null) {
+            g.fill(0, 0, width, layout.top(), GuiTokens.panel(SCOPED_PANEL));
+            g.fill(0, layout.bottom(), width, height, GuiTokens.panel(SCOPED_PANEL));
+        }
+        int titleW;
+        if (target == null) {
+            var title = font.substrByWidth(getTitle(), Math.max(0, width / 2 - PAD_OUTER));
+            titleW = font.width(title);
+            g.text(font, Language.getInstance().getVisualOrder(title), PAD_OUTER, PAD_OUTER, TEXT, false);
+        } else {
+            titleW = drawScopedTitle(g, Math.max(0, width / 2 - PAD_OUTER));
+        }
+        Component hint = target == null ? Component.empty() : breadcrumb();
+        var hintText = font.substrByWidth(hint, Math.max(0, width - PAD_OUTER * 2 - titleW - GAP_SECTION));
+        g.text(font, Language.getInstance().getVisualOrder(hintText),
+                width - PAD_OUTER - font.width(hintText), PAD_OUTER, TEXT_DIM, false);
 
-        renderSidebar(g, layout, mouseX, mouseY);
+        railTooltip = null;
+        renderSidebar(g, layout, widgetMouseX, widgetMouseY);
 
-        g.fill(layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom(), SURFACE_SUBTLE);
-        renderHeaderStrip(g, layout);
+        g.fill(layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom(),
+                GuiTokens.panel(target == null ? SURFACE_SUBTLE : SCOPED_PANEL));
+        Component headerTooltip = renderHeaderStrip(g, layout, widgetMouseX, widgetMouseY);
+        if (resetLookButton != null) resetLookButton.active = target.scope().count() > 0;
 
-        super.extractRenderState(g, mouseX, mouseY, partial);
+        super.extractRenderState(g, widgetMouseX, widgetMouseY, partial);
 
         g.enableScissor(layout.mainLeft(), layout.rowsTop(), layout.mainRight(), layout.bottom());
         for (Row row : rows) {
             int rowTop = layout.rowsTop() + row.y - scrollOffset;
             if (rowTop + row.height <= layout.rowsTop() || rowTop >= layout.bottom()) continue;
-            renderRow(g, row, rowTop, layout, mouseX, mouseY, partial);
+            renderRow(g, row, rowTop, layout, widgetMouseX, widgetMouseY, partial);
         }
+        if (updateButton != null && !searchActive()) renderUpdatePage(g, layout);
         g.disableScissor();
 
         renderScrollbar(g, layout.mainRight() - 4, layout.rowsTop(), layout.bottom());
+        if (menuOpen) {
+            contextMenu.render(g, font, mouseX, mouseY);
+        } else if (railTooltip != null) {
+            g.setTooltipForNextFrame(font, railTooltip, mouseX, mouseY);
+        } else if (headerTooltip != null) {
+            g.setTooltipForNextFrame(font, font.split(headerTooltip, Math.max(120, width / 3)), mouseX, mouseY);
+        }
     }
 
-    private void hideWidgetsDuringPerformanceTest() {
-        for (var child : children()) {
-            if (child instanceof AbstractWidget widget) widget.visible = false;
+    private int drawScopedTitle(GuiGraphicsExtractor g, int maxWidth) {
+        Component heading = Component.translatable("waypointer.settings.category.appearance");
+        g.text(font, heading, PAD_OUTER, PAD_OUTER, TEXT, false);
+        int x = PAD_OUTER + font.width(heading) + GAP;
+        int color = 0xFF000000 | (target.color() == AppearanceTarget.NO_COLOR
+                ? ACCENT & 0xFFFFFF : AppearanceTarget.readable(target.color()));
+        Icons.Icon icon = switch (target.scope().level()) {
+            case ZONE -> Icons.Icon.GLOBE;
+            case WAYPOINT -> Icons.Icon.MARKER;
+            default -> Icons.Icon.ROUTE;
+        };
+        int textX = x + 4 + Icons.SIZE;
+        Component room = target.roomName();
+        String label = room == null ? target.name().getString()
+                : room.getString() + " \u00b7 " + target.name().getString();
+        String plain = ChatFormatting.stripFormatting(label);
+        String name = font.plainSubstrByWidth(plain == null ? "" : plain,
+                Math.max(20, PAD_OUTER + maxWidth - textX - 6));
+        int right = textX + font.width(name) + 5;
+        int top = PAD_OUTER - 4, bottom = PAD_OUTER + 12;
+        g.fill(x, top, right, bottom, (color & 0xFFFFFF) | 0x2E000000);
+        g.fill(x, top, right, top + 1, (color & 0xFFFFFF) | 0xA0000000);
+        g.fill(x, bottom - 1, right, bottom, (color & 0xFFFFFF) | 0xA0000000);
+        g.fill(x, top + 1, x + 1, bottom - 1, (color & 0xFFFFFF) | 0xA0000000);
+        g.fill(right - 1, top + 1, right, bottom - 1, (color & 0xFFFFFF) | 0xA0000000);
+        Icons.draw(g, icon, x + 2, top, color);
+        g.text(font, name, textX, PAD_OUTER, color, false);
+        return right - PAD_OUTER;
+    }
+
+    private Component breadcrumb() {
+        MutableComponent out = Component.empty();
+        List<Component> crumbs = target.breadcrumb();
+        for (int i = 0; i < crumbs.size(); i++) {
+            if (i > 0) out.append(" \u203a ");
+            out.append(crumbs.get(i));
         }
+        return out;
     }
 
     private void refreshRowStates(Layout layout) {
@@ -1156,13 +1563,14 @@ public final class SettingsScreen extends Screen {
             }
             if (row.dot != null) {
                 row.dot.widget().setY(row.dot.homeY() - scrollOffset);
-                row.dot.widget().visible = inViewport
-                        && row.setting.isModified(config, dungeonConfig, defaultsMain, defaultsDungeon);
+                row.dot.widget().visible = inViewport && (target != null
+                        ? target.scope().isSetHere(row.setting.id())
+                        : row.setting.isModified(config, dungeonConfig, defaultsMain, defaultsDungeon));
             }
         }
     }
 
-    private void renderHeaderStrip(GuiGraphicsExtractor g, Layout layout) {
+    private Component renderHeaderStrip(GuiGraphicsExtractor g, Layout layout, int mouseX, int mouseY) {
         Component info;
         if (searchActive()) {
             int matches = rows.size();
@@ -1171,14 +1579,20 @@ public final class SettingsScreen extends Screen {
                     : matches == 1
                     ? "waypointer.screen.settings.matches.one"
                     : "waypointer.screen.settings.matches.many", matches);
-        } else if (RECENT_ID.equals(activeCategoryId)) {
-            info = Component.translatable("waypointer.screen.settings.recent");
+        } else if (target != null) {
+            info = Component.empty();
         } else {
-            SettingsCatalog.Category category = categoryById(activeCategoryId);
-            info = category == null ? Component.empty() : SettingsText.category(category);
+            info = Component.empty();
         }
-        g.text(font, info, layout.mainRight() - GAP - font.width(info),
-                layout.top() + 10, TEXT_DIM, false);
+        int infoRight = (scopeSwitcher == null ? layout.mainRight() : scopeSwitcher.getX()) - GAP;
+        int infoLeft = searchClearButton == null ? layout.mainLeft() + GAP
+                : searchClearButton.getX() + searchClearButton.getWidth() + GAP;
+        String infoText = GuiTokens.ellipsize(font, info.getString(), Math.max(0, infoRight - infoLeft));
+        int infoX = infoRight - font.width(infoText);
+        g.text(font, infoText, infoX, layout.top() + 10, target != null ? TEXT : TEXT_DIM, false);
+        boolean clipped = !infoText.equals(info.getString());
+        Component tooltip = clipped && mouseX >= infoX && mouseX <= infoRight
+                && mouseY >= layout.top() + 6 && mouseY <= layout.top() + 20 ? info : null;
 
         if (rows.isEmpty() && searchActive()) {
             int textX = layout.mainLeft() + GAP;
@@ -1187,16 +1601,32 @@ public final class SettingsScreen extends Screen {
             g.text(font, Component.translatable("waypointer.screen.settings.empty.hint"),
                     textX, layout.rowsTop() + 8 + 14, TEXT_DIM, false);
         }
+        return tooltip;
     }
 
     private List<SidebarEntry> sidebarEntries() {
         List<SidebarEntry> out = new ArrayList<>();
+        if (target != null) {
+            int count = target.scope().count();
+            if (count > 0) {
+                out.add(new SidebarEntry(CHANGED_ID, Component.translatable(
+                        "waypointer.screen.appearance.changed_here", count).getString()));
+            }
+            for (SettingsCatalog.Category category : categories) {
+                out.add(new SidebarEntry(category.id(), categoryLabel(category)));
+            }
+            return out;
+        }
         if (!RecentSettings.isEmpty()) {
             out.add(new SidebarEntry(RECENT_ID,
                     Component.translatable("waypointer.screen.settings.recent").getString()));
         }
-        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
-            out.add(new SidebarEntry(category.id(), SettingsText.categoryLabel(category)));
+        for (SettingsCatalog.Category category : categories) {
+            out.add(new SidebarEntry(category.id(), categoryLabel(category)));
+        }
+        if (updatePageAvailable()) {
+            out.add(new SidebarEntry(UPDATE_ID,
+                    Component.translatable("waypointer.screen.settings.update").getString()));
         }
         return out;
     }
@@ -1254,10 +1684,15 @@ public final class SettingsScreen extends Screen {
     private void renderSidebar(GuiGraphicsExtractor g, Layout layout, int mouseX, int mouseY) {
         int x1 = layout.sidebarLeft();
         int x2 = layout.sidebarRight();
-        g.fill(x1, layout.top(), x2, layout.bottom(), SURFACE);
+        g.fill(x1, layout.top(), x2, layout.bottom(), GuiTokens.panel(target == null ? SURFACE : SCOPED_PANEL));
         g.fill(x2, layout.top(), x2 + 1, layout.bottom(), BORDER);
-        g.text(font, Component.translatable("waypointer.screen.settings.categories"),
-                x1 + GAP, layout.top() + 10, TEXT_DIM, false);
+        boolean rail = layout.rail();
+        if (!rail) {
+            g.text(font, Component.translatable(target == null
+                            ? "waypointer.screen.settings.categories"
+                            : "waypointer.screen.appearance.sections"),
+                    x1 + GAP, layout.top() + 10, TEXT_DIM, false);
+        }
 
         int rowsTop = sidebarRowsTop(layout.top());
         int rowsBottom = layout.bottom() - GAP_TIGHT;
@@ -1280,9 +1715,29 @@ public final class SettingsScreen extends Screen {
 
             int bg = selected ? SELECTED : hovered ? HOVER : 0;
             if (bg != 0) g.fill(x1, rowY, x2, rowY + ROW_H, bg);
-            if (selected) g.fill(x1, rowY, x1 + 2, rowY + ROW_H, ACCENT);
+            boolean gold = UPDATE_ID.equals(entry.id());
+            if (selected) g.fill(x1, rowY, x1 + 2, rowY + ROW_H, gold ? UPDATE_GOLD : ACCENT);
 
+            Icons.Icon icon = sidebarIcon(entry.id());
+            if (rail) {
+                boolean empty = searching && searchCategoryCounts.getOrDefault(entry.id(), 0) == 0;
+                int tint = gold ? UPDATE_GOLD
+                        : selected ? ACCENT : hovered ? TEXT : empty ? 0x60FFFFFF : TEXT_MUTED;
+                if (icon != null) {
+                    Icons.drawCentered(g, icon, x1 + 2, rowY, x2 - x1 - 2, ROW_H, tint);
+                } else {
+                    String initial = entry.label().isEmpty() ? "?" : entry.label().substring(0, 1);
+                    g.text(font, initial, x1 + (x2 - x1 - font.width(initial)) / 2, rowY + 7, tint, false);
+                }
+                if (hovered) railTooltip = Component.literal(entry.label());
+                continue;
+            }
             int labelX = x1 + GAP + 2;
+            if (icon != null) {
+                Icons.draw(g, icon, labelX, rowY + (ROW_H - Icons.SIZE) / 2,
+                        gold ? UPDATE_GOLD : selected ? ACCENT : hovered ? TEXT : TEXT_MUTED);
+                labelX += Icons.SIZE + GAP_TIGHT;
+            }
             int labelMaxW = x2 - GAP - labelX;
             if (searching) {
                 Integer count = searchCategoryCounts.get(entry.id());
@@ -1294,13 +1749,129 @@ public final class SettingsScreen extends Screen {
                 }
             }
             String clipped = font.plainSubstrByWidth(entry.label(), Math.max(12, labelMaxW));
-            g.text(font, clipped, labelX, rowY + 7, selected ? TEXT : TEXT_DIM, false);
+            g.text(font, clipped, labelX, rowY + 7, gold ? UPDATE_GOLD : selected ? TEXT : TEXT_DIM, false);
         }
         g.disableScissor();
     }
 
+    private boolean updatePageAvailable() {
+        return target == null && WaypointerUpdates.snapshot().isPresent();
+    }
+
+    private static final int UPDATE_TITLE_Y = 12;
+    private static final int UPDATE_BUTTONS_Y = 46;
+    private static final int UPDATE_NOTES_Y = 82;
+
+    private void buildUpdatePage(Layout layout) {
+        contentHeight = 0;
+        int x = layout.mainLeft() + GAP_SECTION;
+        int y = layout.rowsTop() + UPDATE_BUTTONS_Y;
+        int updateW = Math.max(MIN_CONTROL_W, GuiTokens.iconButtonWidth(font,
+                Component.translatable("waypointer.screen.settings.update.restart"), Icons.Icon.CHECK));
+        updateButton = GuiTokens.styledButton(x, y, updateW, BTN_H,
+                Component.translatable("waypointer.screen.settings.update.install"),
+                b -> WaypointerUpdates.startInstall(), null, Icons.Icon.DOWNLOAD);
+        addRenderableWidget(updateButton);
+        Component modrinth = Component.translatable("waypointer.screen.settings.update.modrinth");
+        int linkX = x + updateW + GAP_TIGHT;
+        int linkW = GuiTokens.iconButtonWidth(font, modrinth, Icons.Icon.GLOBE);
+        addRenderableWidget(GuiTokens.styledButton(linkX, y, linkW, BTN_H, modrinth,
+                b -> ConfirmLinkScreen.confirmLinkNow(this, WaypointerUpdates.releasePage()),
+                null, Icons.Icon.GLOBE));
+        Component cancel = Component.translatable("waypointer.screen.settings.update.cancel");
+        updateCancelButton = GuiTokens.styledButton(linkX + linkW + GAP_TIGHT, y,
+                font.width(cancel) + BUTTON_TEXT_PADDING, BTN_H, cancel,
+                b -> WaypointerUpdates.cancelInstall(), null);
+        addRenderableWidget(updateCancelButton);
+        refreshUpdateButtons(WaypointerUpdates.snapshot().orElse(null));
+    }
+
+    private void refreshUpdateButtons(WaypointerUpdates.Snapshot update) {
+        if (updateButton == null || update == null) return;
+        WaypointerUpdates.Phase phase = update.phase();
+        Component label = switch (phase) {
+            case DOWNLOADING -> Component.translatable("waypointer.screen.settings.update.downloading",
+                    Math.round(update.progress() * 100));
+            case STAGED -> Component.translatable("waypointer.screen.settings.update.restart");
+            case FAILED -> Component.translatable("waypointer.screen.settings.update.retry");
+            default -> Component.translatable("waypointer.screen.settings.update.install");
+        };
+        updateButton.setMessage(label);
+        if (updateButton instanceof GuiTokens.StyledButton styled) {
+            styled.icon(phase == WaypointerUpdates.Phase.STAGED ? Icons.Icon.CHECK : Icons.Icon.DOWNLOAD);
+        }
+        updateButton.active = WaypointerUpdates.canInstall();
+        updateButton.setTooltip(phase == WaypointerUpdates.Phase.UNAVAILABLE
+                ? Tooltip.create(Component.translatable("waypointer.screen.settings.update.unavailable"))
+                : null);
+        updateCancelButton.visible = phase == WaypointerUpdates.Phase.STAGED;
+    }
+
+    private void renderUpdatePage(GuiGraphicsExtractor g, Layout layout) {
+        Optional<WaypointerUpdates.Snapshot> current = WaypointerUpdates.snapshot();
+        if (current.isEmpty()) return;
+        WaypointerUpdates.Snapshot update = current.get();
+        refreshUpdateButtons(update);
+        int x = layout.mainLeft() + GAP_SECTION;
+        int y = layout.rowsTop() + UPDATE_TITLE_Y;
+        Icons.draw(g, Icons.Icon.STAR, x, y - 2, UPDATE_GOLD);
+        g.text(font, Component.translatable("waypointer.screen.settings.update.title", update.latestVersion()),
+                x + Icons.SIZE + GAP_TIGHT, y, UPDATE_GOLD, false);
+        g.text(font, Component.translatable("waypointer.screen.settings.update.installed",
+                update.installedVersion()), x, y + 16, TEXT_MUTED, false);
+
+        int noteWidth = Math.max(80, layout.mainRight() - GAP_SECTION - x);
+        int lineY = layout.rowsTop() + UPDATE_NOTES_Y;
+        if (update.phase() == WaypointerUpdates.Phase.FAILED && update.failure() != null) {
+            for (var line : font.split(Component.literal(update.failure()), noteWidth)) {
+                g.text(font, line, x, layout.rowsTop() + UPDATE_BUTTONS_Y + BTN_H + 6, DANGER, false);
+                break;
+            }
+        }
+        for (String note : update.changelog()) {
+            if (lineY >= layout.bottom()) break;
+            boolean heading = note.startsWith("#");
+            boolean bullet = note.startsWith("- ");
+            String text = heading ? note.substring(1) : bullet ? note.substring(2) : note;
+            if (heading && lineY > layout.rowsTop() + UPDATE_NOTES_Y) lineY += 6;
+            int indent = bullet ? 10 : 0;
+            if (bullet) g.text(font, "\u2022", x + 2, lineY, TEXT_MUTED, false);
+            for (var line : font.split(Component.literal(text), noteWidth - indent)) {
+                g.text(font, line, x + indent, lineY, heading ? TEXT : TEXT_DIM, false);
+                lineY += 11;
+            }
+            if (heading) lineY += 2;
+        }
+    }
+
+    static Icons.Icon sidebarIcon(String id) {
+        return switch (id) {
+            case RECENT_ID -> Icons.Icon.CLOCK;
+            case CHANGED_ID -> Icons.Icon.SPARKLE;
+            case UPDATE_ID -> Icons.Icon.STAR;
+            case SCOPED_VISIBILITY_ID -> Icons.Icon.EYE;
+            case "waypoints" -> Icons.Icon.PIN;
+            case "appearance" -> Icons.Icon.BRUSH;
+            case "routes" -> Icons.Icon.ROUTE;
+            case "dungeons" -> Icons.Icon.SKULL;
+            case "mining" -> Icons.Icon.DUNGEON_BREAKER;
+            case "chat" -> Icons.Icon.CHAT;
+            case "sharing" -> Icons.Icon.SHARE;
+            case "system" -> Icons.Icon.GEAR;
+            case "feedback" -> Icons.Icon.MAIL;
+            case SCOPED_SECTION_PREFIX + "waypoint_marker" -> Icons.Icon.MARKER;
+            case SCOPED_SECTION_PREFIX + "sequenced" -> Icons.Icon.PREV_NEXT;
+            case SCOPED_SECTION_PREFIX + "etherwarp" -> Icons.Icon.DUNGEON_ETHERWARP;
+            case SCOPED_SECTION_PREFIX + "labels" -> Icons.Icon.TAG;
+            case SCOPED_SECTION_PREFIX + "tracers" -> Icons.Icon.TRACER;
+            case SCOPED_SECTION_PREFIX + "beacon_beams" -> Icons.Icon.BEACON;
+            case SCOPED_SECTION_PREFIX + "route_lines" -> Icons.Icon.ROUTE;
+            default -> null;
+        };
+    }
+
     static int sidebarRowsTop(int panelTop) {
-        // Matches Layout.rowsTop so the first sidebar row and first setting row align.
+
         return panelTop + 4 + BTN_H + GAP;
     }
 
@@ -1331,6 +1902,10 @@ public final class SettingsScreen extends Screen {
         }
 
         Setting setting = row.setting;
+        if (setting == null) {
+            for (WidgetSlot slot : row.widgets) slot.widget().extractRenderState(g, mouseX, mouseY, partial);
+            return;
+        }
         boolean enabled = setting.isEnabled(config, dungeonConfig);
 
         if (isHighlighted(setting)) {
@@ -1338,6 +1913,11 @@ public final class SettingsScreen extends Screen {
                     rowTop + row.height, SELECTED);
             g.fill(layout.mainLeft() + 1, rowTop, layout.mainLeft() + 3,
                     rowTop + row.height, ACCENT);
+        }
+
+        if (target != null && target.scope().isSetHere(setting.id())) {
+            g.fill(layout.mainLeft() + 1, rowTop + 3, layout.mainLeft() + 3,
+                    rowTop + row.height - 3, ACCENT);
         }
 
         boolean jumpHovered = row.jumpTargetId != null
@@ -1358,11 +1938,30 @@ public final class SettingsScreen extends Screen {
             labelX += 14;
         }
 
+        if (row.child) {
+            int guideX = layout.mainLeft() + GAP + 14;
+            g.fill(guideX, rowTop, guideX + 1,
+                    rowTop + childGuideHeight(row.height, row.lastChild), BORDER);
+            g.fill(guideX, rowTop + 12, labelX - 6, rowTop + 13, BORDER);
+        }
+
         int labelMaxW = labelLimit(row, layout) - labelX;
-        String clipped = font.plainSubstrByWidth(
-                SettingsText.label(setting).getString(), Math.max(12, labelMaxW));
-        int labelColor = row.header ? TEXT : enabled ? TEXT : TEXT_DIM;
-        g.text(font, clipped, labelX, rowTop + 8, labelColor, false);
+        Component tag = sourceTag(row);
+        if (tag != null) {
+            String tagText = font.plainSubstrByWidth(tag.getString(), Math.max(0, labelMaxW / 2));
+            int tagX = labelLimit(row, layout) - font.width(tagText);
+            g.text(font, tagText, tagX, rowTop + 8, TEXT_MUTED, false);
+            labelMaxW = tagX - GAP_TIGHT - labelX;
+        }
+        Component label = row.header
+                ? SettingsText.label(setting).copy().withStyle(ChatFormatting.BOLD)
+                : SettingsText.label(setting);
+        var clipped = font.substrByWidth(label, Math.max(12, labelMaxW));
+        int labelColor = row.header ? TEXT : !enabled ? TEXT_MUTED : row.child ? TEXT_DIM : TEXT;
+        g.text(font, Language.getInstance().getVisualOrder(clipped),
+                labelX, setting.kind() == Setting.Kind.ACTION && !row.widgets.isEmpty()
+                        ? opticalTextY(row.widgets.getFirst().widget().getY(), row.widgets.getFirst().widget().getHeight())
+                        : rowTop + 8, labelColor, false);
 
         for (WidgetSlot slot : row.widgets) {
             slot.widget().extractRenderState(g, mouseX, mouseY, partial);
@@ -1370,6 +1969,15 @@ public final class SettingsScreen extends Screen {
         if (row.dot != null) {
             row.dot.widget().extractRenderState(g, mouseX, mouseY, partial);
         }
+    }
+
+    private Component sourceTag(Row row) {
+        if (row.chip != null) return null;
+        String id = row.setting.id();
+        if (target == null) return zoneOverrideTags.get(id);
+        if (target.scope().isSetHere(id)) return null;
+        AppearanceScope.Layer source = target.scope().source(id);
+        return source == null ? null : target.sourceLabel(source);
     }
 
     private boolean isHighlighted(Setting setting) {
@@ -1401,14 +2009,11 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (PerfStressTestController.running()) {
-            return perfCancelButton != null && perfCancelButton.isMouseOver(event.x(), event.y())
-                    ? perfCancelButton.mouseClicked(event, doubleClick)
-                    : true;
-        }
+        if (peeking) return super.mouseClicked(event, doubleClick);
         double mx = event.x();
         double my = event.y();
         Layout layout = layout();
+        if (contextMenu.isOpen() && contextMenu.mouseClicked(mx, my)) return true;
 
         if (searchBox != null && searchBox.isMouseOver(mx, my)) {
             setFocused(searchBox);
@@ -1417,6 +2022,9 @@ public final class SettingsScreen extends Screen {
         }
         if (searchClearButton != null && searchClearButton.isMouseOver(mx, my)) {
             return searchClearButton.mouseClicked(event, doubleClick);
+        }
+        if (scopeSwitcher != null && scopeSwitcher.isMouseOver(mx, my)) {
+            return scopeSwitcher.mouseClicked(event, doubleClick);
         }
 
         if (inContentDeadStrip(mx, my, layout.mainLeft(), layout.mainRight(),
@@ -1467,7 +2075,7 @@ public final class SettingsScreen extends Screen {
         SettingsCatalog.Category home = categoryOf(settingId);
         if (home == null) return;
         activeCategoryId = home.id();
-        lastCategoryId = home.id();
+        if (target == null) lastCategoryId = home.id();
         searchQuery = "";
         pendingScrollToSettingId = settingId;
         highlightSettingId = settingId;
@@ -1478,7 +2086,7 @@ public final class SettingsScreen extends Screen {
     private void selectCategory(String categoryId) {
         if (categoryId.equals(activeCategoryId) && !searchActive()) return;
         activeCategoryId = categoryId;
-        if (!RECENT_ID.equals(categoryId)) lastCategoryId = categoryId;
+        if (target == null && !RECENT_ID.equals(categoryId)) lastCategoryId = categoryId;
         searchQuery = "";
         scrollOffset = 0;
         rebuildWidgets();
@@ -1486,39 +2094,33 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (PerfStressTestController.running()) {
-            if (event.key() == GLFW_KEY_ESCAPE) {
-                PerfStressTestController.cancelIfRunning();
-                rebuildPending = true;
-                return true;
-            }
-            return super.keyPressed(event);
-        }
-        if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
+        if (peeking) return super.keyPressed(event);
+        if (contextMenu.keyPressed(event.key())) return true;
+        if (event.key() == KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
             return true;
         }
-        if (super.keyPressed(event)) return true; // focused EditBoxes keep Home/End
+        if (super.keyPressed(event)) return true;
 
         Layout layout = layout();
         int viewportH = layout.bottom() - layout.rowsTop();
         int maxScroll = maxScrollFor(contentHeight, viewportH);
         int page = Math.max(SETTING_ROW_PITCH, viewportH - SETTING_ROW_PITCH);
         switch (event.key()) {
-            case GLFW_KEY_PAGE_UP -> {
+            case KEY_PAGE_UP -> {
                 scrollOffset = MathUtil.clamp(scrollOffset - page, 0, maxScroll);
                 return true;
             }
-            case GLFW_KEY_PAGE_DOWN -> {
+            case KEY_PAGE_DOWN -> {
                 scrollOffset = MathUtil.clamp(scrollOffset + page, 0, maxScroll);
                 return true;
             }
-            case GLFW_KEY_HOME -> {
+            case KEY_HOME -> {
                 scrollOffset = 0;
                 return true;
             }
-            case GLFW_KEY_END -> {
+            case KEY_END -> {
                 scrollOffset = maxScroll;
                 return true;
             }
@@ -1530,13 +2132,13 @@ public final class SettingsScreen extends Screen {
 
     private static boolean controlDown() {
         var win = Minecraft.getInstance().getWindow();
-        return InputConstants.isKeyDown(win, GLFW_KEY_LEFT_CONTROL)
-                || InputConstants.isKeyDown(win, GLFW_KEY_RIGHT_CONTROL);
+        return InputCompat.isKeyDown(win, InputConstants.KEY_LCONTROL)
+                || InputCompat.isKeyDown(win, InputConstants.KEY_RCONTROL);
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
-        if (PerfStressTestController.running()) return true;
+        if (peeking) return false;
         Layout layout = layout();
         if (mouseX >= layout.sidebarLeft() && mouseX <= layout.sidebarRight()
                 && mouseY >= layout.top() && mouseY <= layout.bottom()) {

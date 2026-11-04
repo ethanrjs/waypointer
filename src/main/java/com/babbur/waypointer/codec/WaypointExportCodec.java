@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 
 import java.io.ByteArrayOutputStream;
@@ -18,19 +20,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * Encodes routes into share formats owned by Waypointer and supported SkyBlock
- * mods. Third-party formats intentionally live outside {@link WaypointCodec} so
- * the native binary wire format can evolve without mixing in compatibility JSON.
- */
 public final class WaypointExportCodec {
 
-    /** Capability flags show which settings survive export to each format. */
     public enum Target {
         WAYPOINTER("Waypointer", true, true, true, true, true, true, true),
         SKYBLOCKER("Skyblocker", true, true, false, false, false, false, false),
         SKYTILS("Skytils", true, true, false, false, false, false, false),
-        SKYHANNI("SkyHanni", false, false, false, false, false, false, false);
+        SKYHANNI("SkyHanni", false, false, false, false, false, false, false),
+        SKYSOFT("SkySoft", true, true, true, false, true, false, false),
+        ODIN("Odin", true, true, true, false, false, false, false);
 
         private final String displayName;
         private final boolean supportsNames;
@@ -69,8 +67,11 @@ public final class WaypointExportCodec {
 
         public boolean supportsLabel()       { return supportsLabel; }
 
-        /** Whether the sender may remove the route's island. */
         public boolean supportsIslandChoice() { return supportsIslandChoice; }
+
+        public boolean supportsDungeonRooms() {
+            return this == WAYPOINTER || this == ODIN;
+        }
 
         public Target next() {
             Target[] all = values();
@@ -84,7 +85,7 @@ public final class WaypointExportCodec {
                     .includeRadii(supportsRadii && opts.includeRadii)
                     .includeWaypointFlags(supportsWaypointFlags && opts.includeWaypointFlags)
                     .includeGroupMeta(supportsGroupMeta && opts.includeGroupMeta)
-                    // Formats that cannot drop an island must always keep it.
+
                     .includeZone(!supportsIslandChoice || opts.includeZone)
                     .label(supportsLabel ? opts.label : "")
                     .build();
@@ -127,7 +128,6 @@ public final class WaypointExportCodec {
             "dark_auction", "crystal_hollows", "dungeon", "kuudra", "mineshaft",
             "lotus_atoll", "safari", "unknown");
 
-    /** Skytils 1.x {@code SkyblockIsland.mode} values at the supported upstream revision. */
     private static final Set<String> SKYTILS_RECIPIENT_ISLAND_IDS = Set.of(
             "dynamic", "garden", "combat_1", "crimson_isle", "combat_3", "fishing_1",
             "mining_1", "mining_2", "mining_3", "crystal_hollows", "farming_1",
@@ -145,14 +145,29 @@ public final class WaypointExportCodec {
             WaypointCodec.Options opts,
             Target target,
             RouteLibraryMetadata metadata) {
+        return encode(groups, opts, target, metadata, new WaypointerConfig());
+    }
+
+    public static String encode(List<WaypointGroup> groups, WaypointCodec.Options opts,
+                                Target target, RouteLibraryMetadata metadata, WaypointerConfig config) {
         WaypointCodec.Options safeOpts = target.coerce(opts);
+        if (groups.stream().anyMatch(group -> CrystalHollowsStructureZones.isStructureZone(group.zoneId()))) {
+            if (target != Target.WAYPOINTER) {
+                throw new IllegalArgumentException("Structure-relative routes require Waypointer export; "
+                        + target.displayName() + " cannot calibrate their coordinates");
+            }
+
+            safeOpts = safeOpts.toBuilder().includeZone(true).build();
+        }
         return switch (target) {
-            case WAYPOINTER -> RouteLibraryCodec.encode(groups, safeOpts, metadata);
+            case WAYPOINTER -> V11Codec.encodeBest(groups, safeOpts, metadata);
             case SKYBLOCKER -> WaypointImporter.SKYBLOCKER_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skyblockerJson(groups, safeOpts)));
             case SKYTILS -> WaypointImporter.SKYTILS_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skytilsJson(groups, safeOpts)));
             case SKYHANNI -> skyhanniJson(groups);
+            case SKYSOFT -> SkysoftWaypointExporter.encode(groups, config, safeOpts);
+            case ODIN -> OdinWaypointExporter.encode(groups, safeOpts);
         };
     }
 
@@ -227,9 +242,9 @@ public final class WaypointExportCodec {
                 point.addProperty("y", waypoint.y());
                 point.addProperty("z", waypoint.z());
 
-                point.addProperty("r", 0.0);
-                point.addProperty("g", 1.0);
-                point.addProperty("b", 0.0);
+                point.addProperty("r", 0);
+                point.addProperty("g", 1);
+                point.addProperty("b", 0);
 
                 JsonObject options = new JsonObject();
                 options.addProperty("name", Integer.toString(step));

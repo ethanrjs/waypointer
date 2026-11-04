@@ -21,12 +21,11 @@ import net.minecraft.world.phys.Vec3;
 import java.util.List;
 import java.util.Locale;
 
-/** Marks secrets complete from actions the client can observe. */
 public final class DungeonTriggerDetector {
 
     private static final double ENTITY_TRIGGER_RANGE_SQ = 36.0;
+    private static final double BAT_TRIGGER_RANGE_SQ = 100.0;
     private static final double ITEM_PICKUP_PLAYER_RANGE_SQ = 36.0;
-    private static final double ETHERWARP_TRIGGER_RANGE_SQ = 9.0;
     private static final double ETHERWARP_JUMP_DISTANCE_SQ = 4.0;
     private static final long ETHERWARP_ARM_WINDOW_MS = 1_500L;
     private static final float SECRET_BAT_SOUND_VOLUME = 0.1f;
@@ -62,11 +61,16 @@ public final class DungeonTriggerDetector {
         ClientEntityEvents.ENTITY_UNLOAD.register(this::onEntityUnload);
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
         DungeonSoundHook.setListener(this::onSoundPacket);
+        DungeonItemPickupHook.setListener(this::onItemPickup);
+    }
+
+    private boolean inCatacombs() {
+        return tracker.inDungeon() && (config == null || config.enabled());
     }
 
     private void onUseItem(ItemStack held, boolean sneaking) {
         if (!sneaking || held == null || held.isEmpty()) return;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
         if (DungeonItemIdentity.isEtherwarpItem(held)) {
             etherwarpArmedAtMillis = System.currentTimeMillis();
         }
@@ -85,14 +89,14 @@ public final class DungeonTriggerDetector {
         if (previous.distanceToSqr(current) < ETHERWARP_JUMP_DISTANCE_SQ) return;
 
         etherwarpArmedAtMillis = 0L;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
         advanceCurrentAction(Waypoint.FLAG_DUNGEON_ETHERWARP,
                 current.x, current.y, current.z);
     }
 
     private void onEntityUnload(Entity entity, ClientLevel level) {
         if (!(entity instanceof ItemEntity item)) return;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null
@@ -105,7 +109,14 @@ public final class DungeonTriggerDetector {
 
     }
 
-    private static boolean isSecretItemName(String rawName) {
+    private void onItemPickup(int collectorId, String itemName, double x, double y, double z) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || collectorId != player.getId()) return;
+        if (!inCatacombs() || !isSecretItemName(itemName)) return;
+        advanceCurrentAction(Waypoint.FLAG_DUNGEON_ITEM, x, y, z);
+    }
+
+    static boolean isSecretItemName(String rawName) {
         if (rawName == null || rawName.isEmpty()) return false;
         String name = rawName.toLowerCase(Locale.ROOT);
         for (String secretName : SECRET_ITEM_NAMES) {
@@ -117,7 +128,7 @@ public final class DungeonTriggerDetector {
     private void onSoundPacket(SoundEvent sound, float volume, double x, double y, double z) {
         if (volume != SECRET_BAT_SOUND_VOLUME) return;
         if (sound != SoundEvents.BAT_HURT && sound != SoundEvents.BAT_DEATH) return;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
         if (sound == SoundEvents.BAT_DEATH) {
             advanceCurrentAction(Waypoint.FLAG_DUNGEON_BAT, x, y, z);
         }
@@ -137,6 +148,16 @@ public final class DungeonTriggerDetector {
     private void advanceCurrentAction(int actionFlag, double x, double y, double z) {
         if (manager == null) return;
         for (WaypointGroup group : manager.activeGroups()) {
+            if (DungeonStepProgress.appliesTo(group)) {
+                int index = nearestStepAction(group, actionFlag, x, y, z);
+                if (index < 0) continue;
+                boolean secret = group.get(index).hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
+                if (DungeonStepProgress.complete(group, index)) {
+                    if (secret) DungeonSecretCompletionSound.play(config);
+                    if (group.isComplete()) manager.fireTransientDataChanged();
+                }
+                continue;
+            }
             int currentIndex = group.currentIndex();
             if (currentIndex < 0 || currentIndex >= group.size()) continue;
             Waypoint current = group.get(currentIndex);
@@ -144,10 +165,36 @@ public final class DungeonTriggerDetector {
             double dx = current.centerX() - x;
             double dy = current.centerY() - y;
             double dz = current.centerZ() - z;
-            if (dx * dx + dy * dy + dz * dz > ENTITY_TRIGGER_RANGE_SQ) continue;
+            if (dx * dx + dy * dy + dz * dz > triggerRangeSq(actionFlag)) continue;
             boolean secret = current.hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
             group.advancePast(currentIndex);
             if (secret) DungeonSecretCompletionSound.play(config);
         }
+    }
+
+    static double triggerRangeSq(int actionFlag) {
+        return actionFlag == Waypoint.FLAG_DUNGEON_BAT ? BAT_TRIGGER_RANGE_SQ : ENTITY_TRIGGER_RANGE_SQ;
+    }
+
+    static int nearestStepAction(WaypointGroup group, int actionFlag,
+                                 double x, double y, double z) {
+        boolean laterSecrets = actionFlag == Waypoint.FLAG_DUNGEON_ITEM
+                || actionFlag == Waypoint.FLAG_DUNGEON_BAT;
+        int[] best = { -1 };
+        double[] bestDistance = { triggerRangeSq(actionFlag) };
+        DungeonStepProgress.forEachCandidate(group, laterSecrets, i -> {
+            Waypoint waypoint = group.get(i);
+            if (!waypoint.hasFlag(actionFlag)) return true;
+            double dx = waypoint.centerX() - x;
+            double dy = waypoint.centerY() - y;
+            double dz = waypoint.centerZ() - z;
+            double distance = dx * dx + dy * dy + dz * dz;
+            if (best[0] < 0 ? distance <= bestDistance[0] : distance < bestDistance[0]) {
+                best[0] = i;
+                bestDistance[0] = distance;
+            }
+            return true;
+        });
+        return best[0];
     }
 }

@@ -1,7 +1,8 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.Waypointer;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.compat.InputCompat;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -19,31 +20,25 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/**
- * One-field modal for creating a waypoint with an optional name.
- */
 public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
-    private static final int PANEL_H = 136;
+    private static final int PANEL_H = 98;
     private static final int OPTIONS_PANEL_H = 158;
     private static final int DUNGEON_OPTIONS_PANEL_H = 174;
-    private static final int GLFW_KEY_ENTER = 257;
-    private static final int GLFW_KEY_KP_ENTER = 335;
+    private static final int KEY_ENTER = InputCompat.KEY_ENTER;
+    private static final int KEY_KP_ENTER = InputCompat.KEY_KP_ENTER;
     private static final int MAX_NAME_LENGTH = 64;
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
     private static final int DUNGEON_TYPE_ROW_WIDTH = PANEL_W - PAD_OUTER * 2;
-    private static final Identifier DUNGEON_TYPE_ICONS = Identifier.fromNamespaceAndPath(
-            Waypointer.MOD_ID, "textures/gui/dungeon_waypoint_types.png");
     private static String rememberedDungeonRoomKey;
     private static DungeonWaypointType rememberedDungeonType;
 
@@ -52,6 +47,7 @@ public final class AddNamedWaypointScreen extends Screen {
     private final WaypointerConfig config;
     private final WaypointGroup targetGroup;
     private final boolean useFixedPosition;
+    private final String fixedDungeonRoomIdentity;
     private final int fixedX;
     private final int fixedY;
     private final int fixedZ;
@@ -71,8 +67,8 @@ public final class AddNamedWaypointScreen extends Screen {
     private boolean subwaypointSelected;
     private boolean smallSelected;
     private DungeonWaypointType selectedDungeonType;
-    private boolean dungeonTypeIconsAvailable;
     private WaypointGroup previewGroup;
+    private Component placementError;
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                   WaypointerConfig config, WaypointGroup targetGroup) {
@@ -103,6 +99,9 @@ public final class AddNamedWaypointScreen extends Screen {
         this.config = config;
         this.targetGroup = targetGroup;
         this.useFixedPosition = useFixedPosition;
+        this.fixedDungeonRoomIdentity = useFixedPosition && targetGroup != null
+                && targetGroup.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                ? currentDungeonRoomIdentity() : null;
         this.fixedX = fixedX;
         this.fixedY = fixedY;
         this.fixedZ = fixedZ;
@@ -159,14 +158,15 @@ public final class AddNamedWaypointScreen extends Screen {
         int panelY = (height - panelH) / 2;
         int inner = panelX + PAD_OUTER;
         int fieldW = PANEL_W - PAD_OUTER * 2;
-        dungeonTypeIconsAvailable = minecraft != null
-                && minecraft.getResourceManager().getResource(DUNGEON_TYPE_ICONS).isPresent();
 
         nameBox = new EditBox(font, inner, panelY + 34, fieldW, BTN_H,
                 Component.translatable("waypointer.screen.add_named.name"));
         nameBox.setMaxLength(MAX_NAME_LENGTH);
         nameBox.setValue(enteredName);
         nameBox.setResponder(this::onNameEdited);
+        EditBox box = nameBox;
+        nameBox.addFormatter((visible, offset) -> com.babbur.waypointer.render.LabelText.editorPreview(
+                box.getValue(), offset, visible.length(), ACCENT & 0xFFFFFF));
         addRenderableWidget(nameBox);
 
         if (showSubtypeOptions) {
@@ -218,8 +218,15 @@ public final class AddNamedWaypointScreen extends Screen {
         int panelX = (width - PANEL_W) / 2;
         int panelH = panelHeight();
         int panelY = (height - panelH) / 2;
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, SURFACE);
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, GuiTokens.panel(SURFACE));
         g.text(font, getTitle(), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
+        if (placementError != null) {
+            int errorY = panelY + panelH + GAP;
+            for (var line : font.split(placementError, PANEL_W - PAD_OUTER * 2)) {
+                g.text(font, line, panelX + PAD_OUTER, errorY, DANGER, false);
+                errorY += font.lineHeight;
+            }
+        }
 
         if (showSubtypeOptions) {
             int optionsY = panelY + 66;
@@ -257,7 +264,7 @@ public final class AddNamedWaypointScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
-        if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        if (key == KEY_ENTER || key == KEY_KP_ENTER) {
             createAndClose();
             return true;
         }
@@ -302,6 +309,11 @@ public final class AddNamedWaypointScreen extends Screen {
         WaypointGroup target = targetGroup == null
                 ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
                 : targetGroup;
+        if (useFixedPosition && target.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                && !Objects.equals(fixedDungeonRoomIdentity, currentDungeonRoomIdentity())) {
+            placementError = DungeonRoomWaypointPlacement.unavailableMessage();
+            return;
+        }
 
         Waypoint waypoint;
         if (useFixedPosition && options.small()) {
@@ -316,7 +328,14 @@ public final class AddNamedWaypointScreen extends Screen {
             waypoint = new Waypoint(x, y, z, name,
                     config.defaultWaypointColor(), flags, 0.0);
         }
-        target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, waypoint));
+        Waypoint stored = useFixedPosition
+                ? DungeonRoomWaypointPlacement.toStoredWaypoint(target, waypoint)
+                : DungeonRoomWaypointPlacement.editorDefaultWaypoint(target, waypoint);
+        if (stored == null) {
+            placementError = DungeonRoomWaypointPlacement.unavailableMessage(target);
+            return;
+        }
+        target.add(stored);
         new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1,
                 config.showWaypointChatShareButtons());
         manager.fireDataChanged();
@@ -395,7 +414,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     static synchronized DungeonWaypointType selectionForRoom(
             String roomKey, DungeonWaypointType suggestedType) {
-        if (!java.util.Objects.equals(rememberedDungeonRoomKey, roomKey)) {
+        if (!Objects.equals(rememberedDungeonRoomKey, roomKey)) {
             rememberedDungeonRoomKey = roomKey;
             rememberedDungeonType = suggestedType;
         }
@@ -433,6 +452,8 @@ public final class AddNamedWaypointScreen extends Screen {
             previewGroup.setGradientMode(targetGroup.gradientMode());
             previewGroup.setPaint(targetGroup.paint());
             previewGroup.setPaintEnabled(targetGroup.paintEnabled());
+            previewGroup.setStylePresetId(targetGroup.stylePresetId());
+            previewGroup.setStyleOverride(targetGroup.styleOverride());
             manager.setWaypointPreview(previewGroup);
         }
 
@@ -451,7 +472,10 @@ public final class AddNamedWaypointScreen extends Screen {
                 : new Waypoint(fixedX, fixedY, fixedZ, previewName,
                         config.defaultWaypointColor(), flags, 0.0);
 
-        List<Waypoint> previewWaypoints = new ArrayList<>(targetGroup.waypoints());
+        List<Waypoint> previewWaypoints = new ArrayList<>(targetGroup.size() + 1);
+        for (Waypoint stored : targetGroup.waypoints()) {
+            previewWaypoints.add(DungeonRoomWaypointPlacement.toActualWaypoint(targetGroup, stored));
+        }
         previewWaypoints.add(preview);
         previewGroup.replaceWaypoints(previewWaypoints);
         previewGroup.focusOnlyVisibleIndex(previewWaypoints.size() - 1);
@@ -517,26 +541,14 @@ public final class AddNamedWaypointScreen extends Screen {
                     rowY + DUNGEON_TYPE_BUTTON_SIZE, border);
             g.fill(x + 1, rowY + 1, x + DUNGEON_TYPE_BUTTON_SIZE - 1,
                     rowY + DUNGEON_TYPE_BUTTON_SIZE - 1, fill);
-            renderDungeonTypeIcon(g, x, rowY, type, active ? TEXT : TEXT_DIM);
+            renderDungeonTypeIcon(g, x, rowY, type, active || hovered ? TEXT : TEXT_DIM);
         }
     }
 
     private void renderDungeonTypeIcon(GuiGraphicsExtractor g, int x, int y,
                                        DungeonWaypointType type, int color) {
-        int inset = (DUNGEON_TYPE_BUTTON_SIZE - DungeonWaypointType.ICON_SIZE) / 2;
-        if (dungeonTypeIconsAvailable) {
-            g.blit(RenderPipelines.GUI_TEXTURED, DUNGEON_TYPE_ICONS,
-                    x + inset, y + inset,
-                    type.iconIndex() * (float) DungeonWaypointType.ICON_SIZE, 0f,
-                    DungeonWaypointType.ICON_SIZE, DungeonWaypointType.ICON_SIZE,
-                    DungeonWaypointType.ICON_ATLAS_WIDTH, DungeonWaypointType.ICON_SIZE);
-            return;
-        }
-        String glyph = type.fallbackGlyph();
-        g.text(font, glyph,
-                x + (DUNGEON_TYPE_BUTTON_SIZE - font.width(glyph)) / 2,
-                y + (DUNGEON_TYPE_BUTTON_SIZE - font.lineHeight) / 2,
-                color, false);
+        Icons.drawCentered(g, Icons.forDungeonType(type), x, y,
+                DUNGEON_TYPE_BUTTON_SIZE, DUNGEON_TYPE_BUTTON_SIZE, color);
     }
 
     private void renderDungeonTypeTooltip(GuiGraphicsExtractor g, String text,
@@ -554,7 +566,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             int typeIndex = dungeonTypeAt(event.x(), event.y());
             if (typeIndex >= 0) {
                 selectedDungeonType = toggleDungeonType(
@@ -577,6 +589,12 @@ public final class AddNamedWaypointScreen extends Screen {
     public void removed() {
         clearPreview();
         super.removed();
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
     }
 
     @Override

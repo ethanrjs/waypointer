@@ -46,6 +46,54 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void routeLastEditedInTheRoomIsTheOneDrawn() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        WaypointGroup first = WaypointGroup.create("First", "sync-room");
+        first.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        first.add(Waypoint.at(4, 70, 7));
+        WaypointGroup second = WaypointGroup.create("Second", "sync-room");
+        second.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        second.add(Waypoint.at(4, 70, 7));
+        manager.add(first);
+        manager.add(second);
+
+        sync = new DungeonRoomRouteSync(manager, tracker);
+        sync.install();
+        tracker.setCurrentRoom(room("sync-room"));
+        String generatedId = DungeonRoomRouteProjection.generatedGroupId("sync-room");
+        assertEquals(first.id(), manager.get(generatedId).runtimeSourceGroupId());
+
+        manager.noteRouteEdited(second);
+        manager.fireDataChanged();
+
+        assertEquals(second.id(), manager.get(generatedId).runtimeSourceGroupId());
+    }
+
+    @Test
+    void editingARoomRouteInWorldRendersThatRoute() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        WaypointGroup first = WaypointGroup.create("First", "sync-room");
+        first.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        first.add(Waypoint.at(4, 70, 7));
+        WaypointGroup second = WaypointGroup.create("Second", "sync-room");
+        second.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        second.add(Waypoint.at(5, 70, 8));
+        manager.add(first);
+        manager.add(second);
+        sync = new DungeonRoomRouteSync(manager, tracker);
+        sync.install();
+        tracker.setCurrentRoom(room("sync-room"));
+
+        manager.isolateRouteForEditing(second);
+
+        List<WaypointGroup> active = manager.activeGroups();
+        assertEquals(1, active.size());
+        assertEquals(second.id(), active.getFirst().runtimeSourceGroupId());
+    }
+
+    @Test
     void regularRouteWithTheSameZoneIsNotProjected() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());

@@ -8,6 +8,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -24,10 +25,11 @@ import java.security.PublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 public final class PublisherIdentityStore {
@@ -40,9 +42,15 @@ public final class PublisherIdentityStore {
     private static final Object CREATION_LOCK = new Object();
 
     private final Path file;
+    private final Path sharedFile;
 
     public PublisherIdentityStore(Path file) {
+        this(file, null);
+    }
+
+    private PublisherIdentityStore(Path file, Path sharedFile) {
         this.file = file.toAbsolutePath().normalize();
+        this.sharedFile = sharedFile == null ? null : sharedFile.toAbsolutePath().normalize();
     }
 
     public static PublisherIdentityStore defaultLocation() {
@@ -50,15 +58,73 @@ public final class PublisherIdentityStore {
                 .resolve(Waypointer.MOD_ID)
                 .resolve("publisher")
                 .resolve("identity.json");
-        return new PublisherIdentityStore(file);
+        return forProfile(file, sharedIdentityFile(
+                System.getProperty("os.name", ""), Path.of(System.getProperty("user.home")),
+                System.getenv("APPDATA"), System.getenv("XDG_CONFIG_HOME")));
+    }
+
+    static PublisherIdentityStore forProfile(Path profileFile, Path sharedFile) {
+        if (profileFile.toAbsolutePath().normalize().equals(sharedFile.toAbsolutePath().normalize())) {
+            return new PublisherIdentityStore(profileFile);
+        }
+        return new PublisherIdentityStore(profileFile, sharedFile);
+    }
+
+    static Path sharedIdentityFile(String osName, Path home, String appData, String xdgConfig) {
+        String os = osName.toLowerCase(Locale.ROOT);
+        Path base;
+        if (os.contains("mac")) base = home.resolve("Library/Application Support");
+        else if (os.contains("win")) base = absoluteOrDefault(appData, home.resolve("AppData/Roaming"));
+        else base = absoluteOrDefault(xdgConfig, home.resolve(".config"));
+        return base.resolve("waypointer/publisher/identity.json");
+    }
+
+    private static Path absoluteOrDefault(String value, Path fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        Path path = Path.of(value);
+        return path.isAbsolute() ? path : fallback;
     }
 
     public Path file() {
         return file;
     }
 
+    public record IdentityStatus(String status, String publisherId, String publisherName) { }
+
+    public record Diagnostics(IdentityStatus profile, IdentityStatus shared, String comparison) { }
+
+    public Diagnostics inspect() {
+        IdentityStatus profile = inspectFile(file);
+        IdentityStatus shared = sharedFile == null
+                ? new IdentityStatus("not configured", null, null) : inspectFile(sharedFile);
+        String comparison = "unavailable";
+        if (profile.publisherId() != null && shared.publisherId() != null) {
+            comparison = !profile.publisherId().equals(shared.publisherId()) ? "different signing identities"
+                    : !Objects.equals(profile.publisherName(), shared.publisherName())
+                    ? "same signing identity; saved names differ" : "same signing identity and name";
+        }
+        return new Diagnostics(profile, shared, comparison);
+    }
+
+    private static IdentityStatus inspectFile(Path path) {
+        if (Files.notExists(path, LinkOption.NOFOLLOW_LINKS)) return new IdentityStatus("missing", null, null);
+        try {
+            PublisherIdentity identity = new PublisherIdentityStore(path).readIdentity();
+            return new IdentityStatus("readable; signing key verified", identity.publisherId(), identity.publisherName());
+        } catch (RuntimeException failure) {
+            return new IdentityStatus("unreadable or invalid", null, null);
+        }
+    }
+
     public PublisherIdentity loadOrCreate() {
         if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return load();
+        PublisherIdentity inherited = sharedFile == null ? null
+                : new PublisherIdentityStore(sharedFile).loadOrCreate();
+        loadOrCreate(inherited);
+        return load();
+    }
+
+    private PublisherIdentity loadOrCreate(PublisherIdentity inherited) {
         synchronized (CREATION_LOCK) {
             if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return load();
             Path parent = file.getParent();
@@ -73,9 +139,10 @@ public final class PublisherIdentityStore {
                         LinkOption.NOFOLLOW_LINKS);
                      FileLock ignored = channel.lock()) {
                     if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
-                        writeNew(PublisherIdentity.generate(Instant.now()));
+                        writeNew(inherited == null
+                                ? PublisherIdentity.generate(Instant.now()) : inherited);
                     }
-                    return load();
+                    return readIdentity();
                 }
             } catch (IOException failure) {
                 throw new CatalogStorageException(
@@ -85,6 +152,39 @@ public final class PublisherIdentityStore {
     }
 
     public PublisherIdentity load() {
+        PublisherIdentity local = readIdentity();
+        PublisherIdentity shared = sharedIdentity(local);
+        if (shared == null || !shared.publisherId().equals(local.publisherId())
+                || shared.publisherName() == null) return local;
+        if (local.publisherName() != null) {
+            requireMatchingName(local, shared);
+            return local;
+        }
+        synchronized (CREATION_LOCK) {
+            try (FileChannel channel = FileChannel.open(file.getParent().resolve("identity.lock"),
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+                 FileLock ignored = channel.lock()) {
+                PublisherIdentity current = readIdentity();
+                if (!current.publisherId().equals(shared.publisherId())) {
+                    throw new CatalogStorageException("Publisher identity changed while synchronizing its name");
+                }
+                requireMatchingName(current, shared);
+                if (current.publisherName() == null) writeReplacement(shared);
+                return readIdentity();
+            } catch (IOException failure) {
+                throw new CatalogStorageException("Could not synchronize the publisher name", failure);
+            }
+        }
+    }
+
+    private static void requireMatchingName(PublisherIdentity local, PublisherIdentity shared) {
+        if (local.publisherName() != null && !local.publisherName().equals(shared.publisherName())) {
+            throw new CatalogStorageException("Publisher names disagree for the same identity. "
+                    + "Restore a matching identity.json backup.");
+        }
+    }
+
+    private PublisherIdentity readIdentity() {
         rejectUnsafeFile();
         try {
             long size = Files.size(file);
@@ -110,14 +210,21 @@ public final class PublisherIdentityStore {
             byte[] probe = PublisherIdentity.identityProbe();
             if (!identity.verifies(probe, identity.sign(probe))) throw invalidIdentity(null);
             return identity;
-        } catch (IOException | DateTimeParseException failure) {
-            throw invalidIdentity(failure);
         } catch (Exception failure) {
             throw invalidIdentity(failure);
         }
     }
 
     public PublisherIdentity savePublisherName(PublisherIdentity identity, String name) {
+        return savePublisherName(identity, name, false);
+    }
+
+    PublisherIdentity saveConfirmedPublisherName(CatalogPublishReceipt receipt) {
+        return savePublisherName(receipt.identity(), receipt.expectedPublisherName(), true);
+    }
+
+    private PublisherIdentity savePublisherName(
+            PublisherIdentity identity, String name, boolean confirmed) {
         if (identity == null) throw new IllegalArgumentException("Publisher identity is required");
         String validName = PublisherNamePolicy.requireValid(name);
         synchronized (CREATION_LOCK) {
@@ -132,26 +239,42 @@ public final class PublisherIdentityStore {
                         StandardOpenOption.CREATE, StandardOpenOption.WRITE,
                         LinkOption.NOFOLLOW_LINKS);
                      FileLock ignored = channel.lock()) {
-                    PublisherIdentity stored = load();
+                    PublisherIdentity stored = readIdentity();
                     if (!stored.publisherId().equals(identity.publisherId())) {
                         throw new IllegalStateException(
                                 "Publisher identity changed before its name was saved");
                     }
-                    if (stored.publisherName() != null) {
-                        if (!stored.publisherName().equals(validName)) {
-                            throw new IllegalStateException(
-                                    "The publisher name is permanent and cannot be changed");
-                        }
-                        return stored;
+                    if (!confirmed && stored.publisherName() != null && !stored.publisherName().equals(validName)) {
+                        throw new IllegalStateException(
+                                "The publisher name is permanent and cannot be changed");
                     }
                     PublisherIdentity named = stored.withPublisherName(validName);
-                    writeReplacement(named);
-                    return load();
+                    if (sharedFile != null) {
+                        PublisherIdentityStore shared = new PublisherIdentityStore(sharedFile);
+                        PublisherIdentity sharedIdentity = sharedIdentity(stored);
+                        if (sharedIdentity != null
+                                && sharedIdentity.publisherId().equals(named.publisherId())) {
+                            shared.savePublisherName(sharedIdentity, validName, confirmed);
+                        }
+                    }
+                    if (!validName.equals(stored.publisherName())) writeReplacement(named);
+                    return readIdentity();
                 }
             } catch (IOException failure) {
                 throw new CatalogStorageException(
                         "Could not save the publisher name", failure);
             }
+        }
+    }
+
+    private PublisherIdentity sharedIdentity(PublisherIdentity local) {
+        if (sharedFile == null) return null;
+        try {
+            return new PublisherIdentityStore(sharedFile).loadOrCreate(local);
+        } catch (CatalogStorageException failure) {
+            Waypointer.LOGGER.warn("Could not synchronize the shared publisher identity; "
+                    + "the current profile identity is still available", failure);
+            return null;
         }
     }
 
@@ -163,7 +286,7 @@ public final class PublisherIdentityStore {
         try {
             Files.createDirectories(parent);
             if (Files.isSymbolicLink(file)) throw invalidIdentity(null);
-            byte[] json = serialize(identity).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] json = serialize(identity).getBytes(StandardCharsets.UTF_8);
             CatalogAtomicFile.create(
                     file, json, "identity-", PublisherIdentityStore::setOwnerOnlyPermissions);
         } catch (IOException failure) {
@@ -178,7 +301,7 @@ public final class PublisherIdentityStore {
         }
         try {
             rejectUnsafeFile();
-            byte[] json = serialize(identity).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] json = serialize(identity).getBytes(StandardCharsets.UTF_8);
             CatalogAtomicFile.replace(
                     file, json, "identity-", PublisherIdentityStore::setOwnerOnlyPermissions);
         } catch (IOException failure) {

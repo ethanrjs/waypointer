@@ -1,5 +1,10 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.core.RouteIcon;
+import com.babbur.waypointer.core.SafeText;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -9,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -18,7 +24,7 @@ final class CatalogJson {
     private static final Pattern CATALOG_CURSOR = Pattern.compile("[A-Za-z0-9_-]{1,683}");
     private static final int MAX_ROUTES = 50;
     private static final int MAX_TEXT = 512;
-    private static final int MAX_PAYLOAD = 256 * 1024;
+    private static final int MAX_PAYLOAD = CatalogProtocol.MAX_PAYLOAD_CHARS;
 
     private CatalogJson() {
     }
@@ -33,7 +39,6 @@ final class CatalogJson {
         List<CatalogRouteSummary> routes = new ArrayList<>(values.size());
         Set<String> ids = new HashSet<>();
         int rejectedRoutes = 0;
-        // Preserve wire order and the first occurrence of each route ID.
         for (JsonElement value : values) {
             try {
                 CatalogRouteSummary route = parseSummary(object(value, "route"));
@@ -63,10 +68,61 @@ final class CatalogJson {
         JsonObject route = object(root.get("route"), "route");
         CatalogRouteSummary summary = parseSummary(route);
         String payload = requiredUtf8String(route, "payload", MAX_PAYLOAD);
-        if (!payload.startsWith("WP:")) {
+        if (!payload.startsWith("WP:")
+                && !payload.startsWith(DungeonRoomShareCodec.MAGIC)) {
+            CatalogProtocol.requireInstallable(summary);
             throw new IllegalArgumentException("Catalog route is not a Waypointer code");
         }
         return new CatalogRouteDetails(summary, payload);
+    }
+
+    private static final int MAX_PREVIEW_GROUPS = 256;
+    private static final int MAX_PREVIEW_POINTS = 5_000;
+    private static final int MAX_COORDINATE = 30_000_000;
+
+    static CatalogRoutePreviewData parsePreview(String json) {
+        JsonObject root = object(JsonParser.parseString(json), "preview response");
+        JsonArray groupValues = array(root.get("groups"), "groups");
+        if (groupValues.size() > MAX_PREVIEW_GROUPS) {
+            throw new IllegalArgumentException("Preview has too many groups");
+        }
+        List<CatalogRoutePreviewData.Group> groups = new ArrayList<>();
+        int points = 0;
+        for (JsonElement groupValue : groupValues) {
+            JsonObject group = object(groupValue, "group");
+            boolean dungeon = "dungeon".equals(optionalString(group, "kind", 16, "regular"));
+            JsonArray pointValues = array(group.get("points"), "points");
+            List<CatalogRoutePreviewData.Point> parsed = new ArrayList<>(pointValues.size());
+            for (JsonElement pointValue : pointValues) {
+                if (++points > MAX_PREVIEW_POINTS) {
+                    throw new IllegalArgumentException("Preview has too many points");
+                }
+                JsonArray point = array(pointValue, "point");
+                if (point.size() != 5) throw new IllegalArgumentException("Preview point needs 5 numbers");
+                parsed.add(new CatalogRoutePreviewData.Point(
+                        boundedInt(point.get(0), MAX_COORDINATE), boundedInt(point.get(1), 4096),
+                        boundedInt(point.get(2), MAX_COORDINATE),
+                        boundedInt(point.get(3), Integer.MAX_VALUE) & 0xFFFFFF,
+                        boundedInt(point.get(4), 1) == 1));
+            }
+            groups.add(new CatalogRoutePreviewData.Group(dungeon, parsed));
+        }
+        return new CatalogRoutePreviewData(
+                optionalPositiveInt(root, "version", 1),
+                Math.max(points, optionalPositiveInt(root, "totalPoints", Math.max(1, points))),
+                optionalBoolean(root, "truncated", false),
+                groups);
+    }
+
+    private static int boundedInt(JsonElement value, int limit) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("Preview point must be numbers");
+        }
+        double number = value.getAsDouble();
+        if (number != Math.rint(number) || Math.abs(number) > limit) {
+            throw new IllegalArgumentException("Preview point is out of range");
+        }
+        return (int) number;
     }
 
     static CatalogPublishResult parsePublishResult(String json) {
@@ -74,6 +130,35 @@ final class CatalogJson {
         CatalogRouteSummary route = parseSummary(object(root.get("route"), "route"));
         String manageToken = optionalString(root, "manageToken", 128, "");
         return new CatalogPublishResult(route, manageToken);
+    }
+
+    static CatalogRouteSummary parseRouteResponse(String json) {
+        JsonObject root = object(JsonParser.parseString(json), "route response");
+        return parseSummary(object(root.get("route"), "route"));
+    }
+
+    static String updateBody(CatalogRouteUpdate update) {
+        if (update == null || update.isEmpty()) {
+            throw new IllegalArgumentException("Route update has no changes");
+        }
+        JsonObject root = new JsonObject();
+        if (update.title() != null) {
+            root.addProperty("title", requireLength(update.title(), "title", 80));
+        }
+        if (update.description() != null) {
+            root.addProperty("description",
+                    requireTrimmedLength(update.description(), "description", 10, 500));
+        }
+        if (update.visibility() != null) {
+            root.addProperty("visibility", update.visibility().wireName());
+        }
+        if (update.payload() != null) {
+            root.addProperty("payload", requireUtf8Length(update.payload(), "payload", MAX_PAYLOAD));
+            if (update.zoneId() != null && !update.zoneId().isBlank()) {
+                root.addProperty("zoneId", requireLength(update.zoneId(), "zoneId", 64));
+            }
+        }
+        return root.toString();
     }
 
     static CatalogApiException parseError(int status, String json) {
@@ -123,16 +208,23 @@ final class CatalogJson {
             throw new IllegalArgumentException("Catalog route is empty");
         }
 
+        String title = SafeText.line(requiredString(route, "title", 80));
+        if (title.isEmpty()) throw new IllegalArgumentException("title has an invalid length");
+        String zoneId = requiredString(route, "zoneId", 64);
+        String zoneLabel = SafeText.line(requiredString(route, "zoneLabel", 80));
+
+        CrystalHollowsStructure structure = CrystalHollowsStructureZones.structureFor(zoneId);
+        if (structure != null) zoneLabel = structure.displayName();
         return new CatalogRouteSummary(
                 id,
-                requiredString(route, "title", 80),
-                optionalString(route, "description", 500, ""),
-                optionalString(route, "authorName", 40, ""),
+                title,
+                SafeText.paragraph(optionalString(route, "description", 500, "")),
+                SafeText.line(optionalString(route, "authorName", 40, "")),
                 publisherId,
                 optionalBoolean(route, "publisherVerified", false),
                 optionalString(route, "visibility", 16, "public"),
-                requiredString(route, "zoneId", 64),
-                requiredString(route, "zoneLabel", 80),
+                zoneId,
+                zoneLabel.isEmpty() ? zoneId : zoneLabel,
                 waypointCount,
                 groupCount,
                 positiveInt(route, "codecVersion"),
@@ -140,7 +232,40 @@ final class CatalogJson {
                 optionalNonNegativeLong(route, "downloads", 0L),
                 optionalString(route, "createdAt", MAX_TEXT, ""),
                 optionalString(route, "updatedAt", MAX_TEXT, ""),
-                optionalString(route, "sharePath", 128, "/r/" + id));
+                optionalString(route, "sharePath", 128, "/r/" + id),
+                optionalTags(route),
+                optionalIcon(route),
+                optionalRequiredVersion(route));
+    }
+
+    private static final Pattern MOD_VERSION = Pattern.compile("\\d{1,4}(\\.\\d{1,4}){1,3}");
+
+    private static String optionalRequiredVersion(JsonObject route) {
+        JsonElement value = route.get("requiresVersion");
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "";
+        String version = value.getAsString().strip();
+        return MOD_VERSION.matcher(version).matches() ? version : "";
+    }
+
+    private static String optionalIcon(JsonObject route) {
+        JsonElement value = route.get("icon");
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "";
+        return RouteIcon.normalize(value.getAsString());
+    }
+
+    private static final Pattern TAG = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");
+
+    private static List<String> optionalTags(JsonObject route) {
+        JsonElement value = route.get("tags");
+        if (value == null || !value.isJsonArray()) return List.of();
+        List<String> tags = new ArrayList<>();
+        for (JsonElement element : value.getAsJsonArray()) {
+            if (tags.size() >= 8) break;
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) continue;
+            String tag = element.getAsString().trim().toLowerCase(Locale.ROOT);
+            if (TAG.matcher(tag).matches() && !tags.contains(tag)) tags.add(tag);
+        }
+        return List.copyOf(tags);
     }
 
     private static JsonObject object(JsonElement value, String name) {

@@ -4,7 +4,11 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.config.WaypointerConfig;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.sounds.SoundEvents;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +17,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EtherwarpAlignmentCueTest {
@@ -61,7 +67,8 @@ class EtherwarpAlignmentCueTest {
         route.add(waypoint);
         manager.add(route);
 
-        EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager, () -> true);
+        EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager,
+                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id());
 
         assertEquals(List.of(new EtherwarpAlignmentCue.Target("regular:0", route.get(0))),
                 cue.activeTargets());
@@ -79,7 +86,8 @@ class EtherwarpAlignmentCueTest {
         route.addAll(List.of(first, second, disabled));
         manager.add(route);
 
-        EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager, () -> true);
+        EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager,
+                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id());
 
         assertEquals(List.of(
                         new EtherwarpAlignmentCue.Target("regular:0", route.get(0)),
@@ -101,7 +109,8 @@ class EtherwarpAlignmentCueTest {
         WaypointGroup secondRoute = new WaypointGroup("second", "Second", "hub");
         secondRoute.add(second);
         manager.addAll(List.of(firstRoute, secondRoute));
-        EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager, () -> true);
+        EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager,
+                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id());
 
         List<EtherwarpAlignmentCue.Target> targets = cue.activeTargets();
         EtherwarpAlignmentCue.Target matched = EtherwarpAlignmentCue.matchedTarget(
@@ -125,5 +134,24 @@ class EtherwarpAlignmentCueTest {
                 ability, false, List.of(target)));
         assertFalse(EtherwarpAlignmentCue.canCheckAlignment(
                 Optional.empty(), true, List.of(target)));
+    }
+
+    @Test
+    void soundIdsPreserveExistingCuesAndAcceptCustomSounds() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        assertSame(SoundEvents.EXPERIENCE_ORB_PICKUP, EtherwarpAlignmentCue.cueSound(
+                WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id()).event());
+        assertSame(SoundEvents.NOTE_BLOCK_PLING.value(), EtherwarpAlignmentCue.cueSound(
+                WaypointerConfig.EtherwarpAlignmentSound.PLING.id()).event());
+        assertSame(SoundEvents.BELL_BLOCK, EtherwarpAlignmentCue.cueSound(
+                WaypointerConfig.EtherwarpAlignmentSound.BELL.id()).event());
+        assertNull(EtherwarpAlignmentCue.cueSound(
+                WaypointerConfig.EtherwarpAlignmentSound.OFF.id()));
+        assertEquals("custom:cue/ready",
+                EtherwarpAlignmentCue.cueSound("custom:cue/ready").event().location().toString());
+        assertSame(SoundEvents.NOTE_BLOCK_PLING.value(),
+                EtherwarpAlignmentCue.cueSound("minecraft:block.note_block.pling").event());
+        assertNull(EtherwarpAlignmentCue.cueSound("not a sound"));
     }
 }

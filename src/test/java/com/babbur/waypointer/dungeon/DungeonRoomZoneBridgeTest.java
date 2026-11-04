@@ -41,8 +41,6 @@ class DungeonRoomZoneBridgeTest {
             tracker.setCurrentRoom(namedSpiderRoom());
 
             assertEquals("spider", manager.currentZone().id());
-            // Stored room routes hold room-local coordinates, so what surfaces
-            // is the runtime mirror the sync projects for this room placement.
             List<WaypointGroup> active = manager.activeGroups();
             assertEquals(1, active.size());
             assertEquals("Spider Route", active.get(0).name());

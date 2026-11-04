@@ -1,45 +1,81 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.api.ImportSource;
+import com.babbur.waypointer.api.ImportSummary;
+import com.babbur.waypointer.catalog.CatalogInstallState;
 import com.babbur.waypointer.catalog.CatalogPage;
+import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteCatalogScreenSearchTest {
 
     @Test
-    void initialZoneFilterFollowsTheCurrentZoneButNotDungeonsOrUnknowns() {
-        org.junit.jupiter.api.Assertions.assertEquals("hub",
+    void keyboardPagingAndBoundaryJumpsStayWithinLoadedResults() {
+        assertEquals(-1, RouteCatalogScreen.selectionIndex(-1, 1, 0));
+        assertEquals(0, RouteCatalogScreen.selectionIndex(-1, 4, 10));
+        assertEquals(9, RouteCatalogScreen.selectionIndex(-1, -4, 10));
+        assertEquals(6, RouteCatalogScreen.selectionIndex(2, 4, 10));
+        assertEquals(2, RouteCatalogScreen.selectionIndex(6, -4, 10));
+        assertEquals(0, RouteCatalogScreen.selectionIndex(6, -10, 10));
+        assertEquals(9, RouteCatalogScreen.selectionIndex(2, 10, 10));
+    }
+
+    @Test
+    void splitViewFitsNormalGuiScalesWithoutSqueezingRouteTitles() {
+        assertEquals(320, RouteCatalogScreen.catalogListWidth(320));
+        for (int contentWidth : new int[] {420, 424, 584, 744}) {
+            int listWidth = RouteCatalogScreen.catalogListWidth(contentWidth);
+            assertTrue(listWidth >= 224);
+            assertTrue(contentWidth - listWidth - GuiTokens.GAP_SECTION >= 180);
+        }
+    }
+
+    @Test
+    void initialZoneFilterAlwaysStartsOnAllZones() {
+        org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("hub")));
+                        Zone.fromId("hub")));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(null));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.UNKNOWN));
+                        Zone.UNKNOWN));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.PRIVATE_WORLD));
+                        Zone.PRIVATE_WORLD));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("dungeon_f7")));
+                        Zone.fromId("dungeon_f7")));
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("dungeon")));
-        org.junit.jupiter.api.Assertions.assertEquals("dungeon_hub",
+                        Zone.fromId("dungeon")));
+        org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
-                        com.babbur.waypointer.core.Zone.fromId("dungeon_hub")));
+                        Zone.fromId("dungeon_hub")));
     }
     @Test
-    void editedSearchRebuildsTheClearedViewThenRestoresSearchFocus() {
+    void editedSearchOnlySchedulesRebuildAfterTheEditBoxFinishesMutation() {
         CatalogBrowserModel browser = new CatalogBrowserModel();
         browser.applyPage(new CatalogPage(List.of(summary()), true, "next"), false);
         List<String> events = new ArrayList<>();
@@ -49,17 +85,32 @@ class RouteCatalogScreenSearchTest {
                 () -> events.add("state"),
                 () -> {
                     assertTrue(browser.routes().isEmpty());
-                    events.add("rebuild");
-                },
-                () -> events.add("focus")));
+                    events.add("schedule");
+                }));
 
-        assertEquals(List.of("state", "rebuild", "focus"), events);
+        assertEquals(List.of("state", "schedule"), events);
         assertFalse(RouteCatalogScreen.applySearchEdit(
                 browser, "crystal",
                 () -> events.add("unexpected-state"),
-                () -> events.add("unexpected-rebuild"),
-                () -> events.add("unexpected-focus")));
-        assertEquals(List.of("state", "rebuild", "focus"), events);
+                () -> events.add("unexpected-schedule")));
+        assertEquals(List.of("state", "schedule"), events);
+    }
+
+    @Test
+    void completeCachedCatalogSearchesPlayersLocallyButPartialPagesNeverHideResults() {
+        var cache = RouteCatalogScreen.<CatalogPage>boundedPageCache(32);
+        cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
+                new CatalogPage(List.of(summary()), false, null));
+        assertEquals(List.of(summary()), RouteCatalogScreen.cachedSearchPage(cache, null, "tes").routes());
+        assertEquals(List.of(summary()), RouteCatalogScreen.cachedSearchPage(cache, "hub", "TESTER").routes());
+        assertTrue(RouteCatalogScreen.cachedSearchPage(cache, "rift", "tester").routes().isEmpty());
+        assertTrue(RouteCatalogScreen.cachedSearchPage(cache, null, "missing").routes().isEmpty());
+        cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
+                new CatalogPage(List.of(summary()), true, "next"));
+        assertNull(RouteCatalogScreen.cachedSearchPage(cache, null, "tes"));
+        var exact = new CatalogPage(List.of(summary()), true, "next");
+        cache.put(RouteCatalogScreen.searchCacheKey(null, "tes"), exact);
+        assertSame(exact, RouteCatalogScreen.cachedSearchPage(cache, null, "tes"));
     }
 
     @Test
@@ -88,7 +139,7 @@ class RouteCatalogScreenSearchTest {
 
     @Test
     void searchCacheIsBoundedAndEvictsTheLeastRecentlyUsedQuery() {
-        java.util.LinkedHashMap<String, Integer> cache =
+        LinkedHashMap<String, Integer> cache =
                 RouteCatalogScreen.boundedPageCache(2);
         cache.put(RouteCatalogScreen.searchCacheKey(null, "a"), 1);
         cache.put(RouteCatalogScreen.searchCacheKey(null, "b"), 2);
@@ -108,10 +159,11 @@ class RouteCatalogScreenSearchTest {
         assertEquals("", ids.get(0));
         assertTrue(ids.contains("hub"));
         assertTrue(ids.contains("crystal_hollows"));
+        assertTrue(ids.contains("dungeon"), "Catacombs route packs have one catalog zone");
         assertFalse(ids.contains("unknown"));
         assertFalse(ids.contains("private_world"));
         assertFalse(ids.contains("mineshaft"));
-        assertEquals(ids.size(), new java.util.HashSet<>(ids).size());
+        assertEquals(ids.size(), new HashSet<>(ids).size());
     }
 
     @Test
@@ -185,22 +237,22 @@ class RouteCatalogScreenSearchTest {
 
     @Test
     void installedFocusOpensTheFirstImportedGroupThatStillExists() {
-        com.babbur.waypointer.core.ActiveGroupManager manager =
-                new com.babbur.waypointer.core.ActiveGroupManager();
-        com.babbur.waypointer.core.WaypointGroup group =
-                com.babbur.waypointer.core.WaypointGroup.create("Installed", "hub");
+        ActiveGroupManager manager =
+                new ActiveGroupManager();
+        WaypointGroup group =
+                WaypointGroup.create("Installed", "hub");
         manager.addAll(List.of(group));
-        com.babbur.waypointer.api.ImportSummary summary =
-                new com.babbur.waypointer.api.ImportSummary(
-                        com.babbur.waypointer.api.ImportSource.WAYPOINTER, "Route",
+        ImportSummary summary =
+                new ImportSummary(
+                        ImportSource.WAYPOINTER, "Route",
                         1, 1, List.of("missing", group.id()));
 
         assertNull(RouteCatalogScreen.installedFocus(null, summary));
         assertNull(RouteCatalogScreen.installedFocus(manager, null));
         assertSame(group, RouteCatalogScreen.installedFocus(manager, summary));
         assertNull(RouteCatalogScreen.installedFocus(manager,
-                new com.babbur.waypointer.api.ImportSummary(
-                        com.babbur.waypointer.api.ImportSource.WAYPOINTER, "Route",
+                new ImportSummary(
+                        ImportSource.WAYPOINTER, "Route",
                         1, 1, List.of("missing"))));
     }
 
@@ -212,8 +264,38 @@ class RouteCatalogScreenSearchTest {
         assertEquals(40 + 110 - 8, geo[2] + 5, "caret right edge mirrors the label inset");
         assertEquals(30 + 9, geo[3], "caret optically centered in a 20px control");
 
-        // Label max width never collapses below a legible floor on narrow buttons.
         assertEquals(12, RouteCatalogScreen.filterSelectGeometry(0, 0, 30, 20)[1]);
+    }
+
+    @Test
+    void aRouteThisClientCannotReadSaysWhichReleaseCan() {
+        var newer = new CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Gems", "",
+                "A", "", false, "public", "hub", "Hub", 3, 1, 12, 1, 0, "", "", "/r/a",
+                List.of(), "", "1.14.0");
+        var state = CatalogInstallState.inspect(
+                "https://waypointermod.com/api/", newer, List.of());
+        assertEquals(CatalogInstallState.Action.UNSUPPORTED_CODEC, state.action());
+        assertFalse(state.canInstall());
+        assertTrue(RouteCatalogScreen.needsAttention(state.action()));
+
+        TranslatableContents line = assertInstanceOf(TranslatableContents.class,
+                RouteCatalogScreen.installStateLine(state, newer).getContents());
+        assertEquals("waypointer.screen.route_catalog.state.requires_line", line.getKey());
+        assertEquals("1.14.0", line.getArgs()[0]);
+
+        TranslatableContents failure = assertInstanceOf(TranslatableContents.class,
+                RouteCatalogScreen.friendlyFailure(new CompletionException(
+                        assertThrows(IllegalArgumentException.class,
+                                () -> CatalogProtocol.requireInstallable(newer)))).getContents());
+        assertEquals("waypointer.screen.route_catalog.state.requires_line", failure.getKey());
+
+        var unnamed = new CatalogRouteSummary("BBBBBBBBBBBBBBBBBBBBBB", "Gems", "",
+                "B", "", false, "public", "hub", "Hub", 3, 1, 12, 1, 0, "", "", "/r/b");
+        TranslatableContents generic = assertInstanceOf(TranslatableContents.class,
+                RouteCatalogScreen.installStateLine(
+                        CatalogInstallState.inspect("https://waypointermod.com/api/", unnamed, List.of()),
+                        unnamed).getContents());
+        assertEquals("waypointer.screen.route_catalog.state.unsupported_line", generic.getKey());
     }
 
     private static CatalogRouteSummary summary() {
@@ -221,5 +303,26 @@ class RouteCatalogScreenSearchTest {
                 "AAAAAAAAAAAAAAAAAAAAAA", "Route", "Description", "Tester", "", false,
                 "unlisted", "hub", "Hub", 1, 1, 9, 1,
                 0, "", "", "/r/AAAAAAAAAAAAAAAAAAAAAA");
+    }
+
+    @Test
+    void sortedAndTaggedPagesCacheApartButCanReuseACompleteListing() {
+        var plain = RouteCatalogScreen.searchCacheKey("hub", "gems");
+        assertEquals(plain, RouteCatalogScreen.searchCacheKey("hub", "gems", null, CatalogBrowserModel.Sort.RECOMMENDED));
+        assertTrue(!plain.equals(RouteCatalogScreen.searchCacheKey("hub", "gems", null, CatalogBrowserModel.Sort.POPULAR)));
+        assertTrue(!plain.equals(RouteCatalogScreen.searchCacheKey("hub", "gems", "mining-cult",
+                CatalogBrowserModel.Sort.RECOMMENDED)));
+
+        var tagged = new CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Gems", "",
+                "A", "", false, "public", "hub", "Hub", 3, 1, 9, 1, 0, "", "", "/r/a",
+                List.of("mining-cult"));
+        var untagged = new CatalogRouteSummary("BBBBBBBBBBBBBBBBBBBBBB", "Gems too", "",
+                "B", "", false, "public", "hub", "Hub", 3, 1, 9, 1, 0, "", "", "/r/b");
+        Map<String, com.babbur.waypointer.catalog.CatalogPage> cache = new HashMap<>();
+        cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
+                new com.babbur.waypointer.catalog.CatalogPage(List.of(tagged, untagged), false, null));
+
+        var cut = RouteCatalogScreen.cachedSearchPage(cache, null, "", "mining-cult", CatalogBrowserModel.Sort.POPULAR);
+        assertEquals(List.of(tagged), cut.routes());
     }
 }

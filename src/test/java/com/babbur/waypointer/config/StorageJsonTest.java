@@ -1,11 +1,13 @@
 package com.babbur.waypointer.config;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.RoutePack;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
@@ -16,15 +18,83 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Round-trip tests for the JSON codec. Avoids FabricLoader calls by using the
- * package-private static helpers directly.
- */
 class StorageJsonTest {
+
+    @Test
+    void routeIconIsSavedOnlyWhenChosen() {
+        WaypointGroup group = WaypointGroup.create("Icon", "hub");
+        assertFalse(Storage.groupToJson(group).has("icon"));
+        group.setIcon("minecraft:prismarine_shard*");
+        JsonObject encoded = Storage.groupToJson(group);
+        assertEquals("minecraft:prismarine_shard*", encoded.get("icon").getAsString());
+        assertEquals("minecraft:prismarine_shard*", Storage.groupFromJson(encoded).icon());
+        encoded.addProperty("icon", "<script>");
+        assertEquals("", Storage.groupFromJson(encoded).icon());
+    }
+
+    @Test
+    void radiusSourceIsSavedLocallyButNotShared() {
+        WaypointGroup group = WaypointGroup.create("Radius", "hub");
+        assertFalse(Storage.groupToJson(group).has("radiusSource"));
+        group.setCustomRadius(7.5);
+
+        JsonObject encoded = Storage.groupToJson(group);
+        assertEquals(WaypointGroup.RadiusSource.CUSTOM, Storage.groupFromJson(encoded).radiusSource());
+        assertFalse(Storage.routeToShareJson(group).has("radiusSource"));
+        assertEquals(WaypointGroup.RadiusSource.UNKNOWN,
+                Storage.groupFromJson(Storage.routeToShareJson(group)).radiusSource());
+    }
+
+    @Test
+    void formerAnimatedPaintKeepsItsFirstFrameWhenLoadingAndSaving() {
+        WaypointPaint first = WaypointPaint.solid(0x123456);
+        JsonArray frames = new JsonArray();
+        frames.add(Storage.paintToJson(first));
+        frames.add(Storage.paintToJson(WaypointPaint.solid(0xABCDEF)));
+        JsonObject paint = new JsonObject();
+        paint.add("frames", frames);
+        WaypointGroup group = WaypointGroup.create("Paint", "hub");
+        JsonObject encoded = Storage.groupToJson(group);
+        encoded.add("paint", paint);
+        WaypointGroup loaded = Storage.groupFromJson(encoded);
+        assertEquals(first, loaded.paint());
+        assertFalse(Storage.groupToJson(loaded).getAsJsonObject("paint").has("frames"));
+        frames.remove(1);
+        frames.remove(0);
+        assertThrows(IllegalArgumentException.class, () -> Storage.paintFromJson(paint));
+    }
+
+    @Test
+    void styleKeysFromANewerVersionSurviveLoadAndSave() {
+        WaypointGroup group = WaypointGroup.create("Styled", "hub");
+        group.add(Waypoint.at(1, 2, 3));
+        JsonObject encoded = Storage.groupToJson(group);
+        JsonObject style = new JsonObject();
+        style.addProperty("showTracer", "true");
+        style.addProperty("labelScale", "not-a-number");
+        style.addProperty("futureGlowRadius", "3");
+        style.addProperty("crystalHollowsSkyblockerSharing", "true");
+        encoded.add("styleOverride", style);
+        encoded.getAsJsonArray("waypoints").get(0).getAsJsonObject().add("styleOverride", style.deepCopy());
+
+        WaypointGroup loaded = Storage.groupFromJson(encoded);
+        JsonObject saved = Storage.groupToJson(loaded);
+
+        for (JsonObject savedStyle : List.of(saved.getAsJsonObject("styleOverride"),
+                saved.getAsJsonArray("waypoints").get(0).getAsJsonObject().getAsJsonObject("styleOverride"))) {
+            assertEquals("true", savedStyle.get("showTracer").getAsString());
+            assertEquals("3", savedStyle.get("futureGlowRadius").getAsString());
+            assertFalse(savedStyle.has("labelScale"), "invalid values of known properties are still dropped");
+            assertFalse(savedStyle.has("crystalHollowsSkyblockerSharing"), "styles never carry behaviour settings");
+        }
+        assertEquals(1, WaypointStyles.setCount(loaded.styleOverride()));
+    }
 
     @TempDir
     Path tempDir;
@@ -88,9 +158,6 @@ class StorageJsonTest {
 
     @Test
     void group_dropsTempWaypointsOnSave() {
-        // Temp waypoints intentionally don't survive a save -- they're session
-        // scratch. We stuff three of them into a group plus one real waypoint
-        // and expect only the real one to survive the round-trip.
         WaypointGroup g = WaypointGroup.create("temp-route", "dungeon_f7");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.add(Waypoint.at(1, 10, 1).withName("keeper"));
@@ -124,6 +191,22 @@ class StorageJsonTest {
         WaypointGroup recovered = assertDoesNotThrow(() -> Storage.groupFromJson(json));
         assertNull(recovered.catalogProvenance());
         assertEquals(group.id(), recovered.id());
+    }
+
+    @Test
+    void group_routePackIsSavedButNeverShared() {
+        WaypointGroup group = WaypointGroup.create("Altar", "altar");
+        group.add(Waypoint.at(1, 2, 3));
+        group.setRoutePack(new RoutePack("pack-1", "FlameOfWar"));
+
+        JsonObject json = Storage.groupToJson(group);
+        assertEquals(new RoutePack("pack-1", "FlameOfWar"), Storage.groupFromJson(json).routePack());
+        assertFalse(Storage.routeToShareJson(group).has("routePack"));
+        assertNull(Storage.routeFromShareJson(json).routePack());
+
+        json.getAsJsonObject("routePack").addProperty("id", "");
+        WaypointGroup recovered = assertDoesNotThrow(() -> Storage.groupFromJson(json));
+        assertNull(recovered.routePack());
     }
 
     @Test
@@ -166,11 +249,7 @@ class StorageJsonTest {
 
     @Test
     void attached_save_snapshots_live_state_at_pump_time() throws Exception {
-        // Snapshots are deferred to the pump, so a mutation made directly on a
-        // group after the manager event -- which fires no event of its own --
-        // still reaches disk instead of being silently dropped until the next
-        // unrelated change. The snapshot is taken on the pumping thread, so it
-        // is still one consistent point in time, just a later one.
+
         ActiveGroupManager manager = new ActiveGroupManager();
         Path file = tempDir.resolve("waypoints.json");
         Storage storage = new Storage(file);
@@ -265,9 +344,7 @@ class StorageJsonTest {
 
     @Test
     void aBurstOfPersistentChangesCostsOneSnapshot() {
-        // Bulk operations (hide-all, import, closing the route list) fire the
-        // persistent listener once per route. Serializing per event is what made
-        // those stall with a large library; one pump must cover the whole burst.
+
         ActiveGroupManager manager = new ActiveGroupManager();
         Storage storage = new Storage(tempDir.resolve("waypoints.json"));
         storage.attach(manager);
@@ -443,12 +520,8 @@ class StorageJsonTest {
 
     @Test
     void group_perGroupGradientEndpointsRoundTrip() {
-        // Gradient endpoints are per-group (not global). If the codec drops
-        // them the gradient silently resets on the next load -- users then
-        // report "my colours keep reverting" and we chase the wrong bug.
         WaypointGroup g = WaypointGroup.create("palette", "galatea");
-        // MANUAL prevents the setter's re-apply from overwriting waypoint colors
-        // we haven't added yet, which isn't the point of this test.
+
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setGradientStartColor(0x112233);
         g.setGradientEndColor(0xFEDCBA);
@@ -644,7 +717,7 @@ class StorageJsonTest {
         g.add(Waypoint.at(1, 10, 1).withName("a"));
         g.add(Waypoint.at(2, 10, 2).withName("b"));
         g.add(Waypoint.at(3, 10, 3).withName("c"));
-        g.advancePast(1); // currentIndex = 2
+        g.advancePast(1);
 
         JsonObject json = Storage.groupToJson(g);
         WaypointGroup copy = Storage.groupFromJson(json);
@@ -763,6 +836,53 @@ class StorageJsonTest {
     }
 
     @Test
+    void loadAndAttachRewritesLegacyMineshaftRouteAndFolderOnce() throws Exception {
+        Path file = tempDir.resolve("legacy-mineshaft.json");
+        Files.writeString(file, """
+                {
+                  "schema": 2,
+                  "groups": [{
+                    "id": "shaft-route",
+                    "name": "Shaft Route",
+                    "zone": "mineshaft",
+                    "waypoints": [{"x": 1, "y": 2, "z": 3}]
+                  }],
+                  "folders": [{
+                    "id": "shaft-folder",
+                    "name": "Shafts",
+                    "zone": "mineshaft",
+                    "groupIds": ["shaft-route"]
+                  }]
+                }
+                """);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(file);
+
+        storage.load(manager);
+
+        assertEquals("mineshaft_unknown", manager.get("shaft-route").zoneId());
+        assertEquals("mineshaft_unknown", manager.folder("shaft-folder").zoneId());
+        assertEquals(List.of("shaft-route"), manager.groupIdsInFolder("shaft-folder"));
+
+        storage.attach(manager);
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals("mineshaft_unknown", saved.getAsJsonArray("groups").get(0)
+                .getAsJsonObject().get("zone").getAsString());
+        assertEquals("mineshaft_unknown", saved.getAsJsonArray("folders").get(0)
+                .getAsJsonObject().get("zone").getAsString());
+
+        ActiveGroupManager reloadedManager = new ActiveGroupManager();
+        Storage reloadedStorage = new Storage(file);
+        reloadedStorage.load(reloadedManager);
+        reloadedStorage.attach(reloadedManager);
+        reloadedStorage.flush();
+        assertEquals(0, reloadedStorage.writeCount());
+    }
+
+    @Test
     void foldersRoundTripWithOrderCollapseAndMembership() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup first = new WaypointGroup("first", "First", "hub");
@@ -786,6 +906,189 @@ class StorageJsonTest {
                 loaded.folders());
         assertEquals(List.of("first", "second"), loaded.groupIdsInFolder("folder"),
                 "folder membership follows the manager's global route order");
+    }
+
+    @Test
+    void aRouteThatStopsQualifyingForItsFolderLeavesItInsteadOfInvalidatingTheFile() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup kept = new WaypointGroup("kept", "Kept", "hub");
+        WaypointGroup converted = new WaypointGroup("converted", "Converted", "hub");
+        manager.addAll(List.of(kept, converted));
+        manager.addFolder(new RouteFolder("folder", "Mining", "hub", false),
+                List.of(kept.id(), converted.id()));
+        converted.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        Path file = tempDir.resolve("folder-member-changed.json");
+
+        new Storage(file).save(manager);
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+
+        assertFalse(Files.exists(file.resolveSibling(file.getFileName() + ".invalid")));
+        assertEquals(2, loaded.allGroups().size());
+        assertEquals(List.of("kept"), loaded.groupIdsInFolder("folder"));
+    }
+
+    @Test
+    void runtimeFoldersAndTheirRuntimeRoutesAreNeverPersisted() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Odawa", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        manager.addFolder(new RouteFolder("runtime-folder", "Structures", "crystal_hollows",
+                false, 0x55FFFF, true), List.of(runtime.id()));
+        Path file = tempDir.resolve("runtime-folder.json");
+
+        new Storage(file).save(manager);
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertTrue(saved.getAsJsonArray("groups").isEmpty());
+        assertTrue(saved.getAsJsonArray("folders").isEmpty());
+
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+        assertTrue(loaded.allGroups().isEmpty());
+        assertTrue(loaded.folders().isEmpty());
+    }
+
+    @Test
+    void runtimeFolderLifecycleNotifiesDataWithoutCapturingOrWriting() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Odawa", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+
+        Storage storage = new Storage(tempDir.resolve("runtime-folder-lifecycle.json"));
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        RouteFolder folder = new RouteFolder("runtime-folder", "Structures",
+                "crystal_hollows", false, 0x55FFFF, true);
+        manager.addFolder(folder, List.of());
+        assertTrue(manager.renameFolder(folder.id(), "Generated structures"));
+        assertTrue(manager.setFolderCollapsed(folder.id(), true));
+        assertTrue(manager.setFolderColor(folder.id(), 0xC46DFF));
+        assertTrue(manager.assignGroupToFolder(runtime.id(), folder.id()));
+        assertTrue(manager.removeGroupFromFolder(runtime.id()));
+        assertTrue(manager.deleteFolder(folder.id()));
+
+        storage.flush();
+
+        assertEquals(7, allChanges.get());
+        assertEquals(0, persistentChanges.get());
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+        assertEquals(0, storage.writeCount());
+        assertFalse(Files.exists(storage.file()));
+    }
+
+    @Test
+    void savedFolderLifecycleCapturesAndWritesOnceForAChangeBurst() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "hub");
+        manager.add(saved);
+
+        Path file = tempDir.resolve("saved-folder-lifecycle.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        RouteFolder folder = new RouteFolder("folder", "Saved routes", "hub", false);
+        manager.addFolder(folder, List.of(saved.id()));
+        assertTrue(manager.renameFolder(folder.id(), "Renamed routes"));
+        assertTrue(manager.setFolderCollapsed(folder.id(), true));
+        assertTrue(manager.setFolderColor(folder.id(), 0xC46DFF));
+        assertTrue(manager.removeGroupFromFolder(saved.id()));
+        assertTrue(manager.assignGroupToFolder(saved.id(), folder.id()));
+        assertTrue(manager.deleteFolder(folder.id()));
+
+        assertEquals(7, allChanges.get());
+        assertEquals(7, persistentChanges.get());
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+
+        storage.pumpPendingSnapshot();
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject savedJson = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertTrue(savedJson.getAsJsonArray("folders").isEmpty());
+        assertEquals("saved", savedJson.getAsJsonArray("groups").get(0)
+                .getAsJsonObject().get("id").getAsString());
+    }
+
+    @Test
+    void clearPersistsRemovalOfAnOtherwiseEmptySavedFolder() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.addFolder(new RouteFolder("empty", "Empty", "hub", false), List.of());
+
+        Path file = tempDir.resolve("clear-empty-folder.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+
+        manager.clear();
+        storage.flush();
+
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        assertEquals(1, storage.writeCount());
+        assertTrue(JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .getAsJsonArray("folders").isEmpty());
+    }
+
+    @Test
+    void replaceAllPersistsReplacementOfAnOtherwiseEmptySavedFolder() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.addFolder(new RouteFolder("empty", "Empty", "hub", false), List.of());
+
+        Path file = tempDir.resolve("replace-all-empty-folder.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+
+        manager.replaceAll(List.of(), List.of(), Map.of());
+        storage.flush();
+
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        assertEquals(1, storage.writeCount());
+        assertTrue(JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .getAsJsonArray("folders").isEmpty());
+    }
+
+    @Test
+    void duplicateRuntimeFolderCannotReplaceSavedFolderOrDirtyStorage() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "hub");
+        manager.add(saved);
+        manager.addFolder(new RouteFolder("shared", "Saved routes", "hub", false),
+                List.of(saved.id()));
+
+        Path file = tempDir.resolve("duplicate-folder-lifetime.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        assertThrows(IllegalArgumentException.class, () -> manager.addFolder(
+                new RouteFolder("shared", "Generated routes", "hub", false,
+                        RouteFolder.DEFAULT_COLOR, true), List.of()));
+        storage.flush();
+
+        assertEquals("shared", manager.folderForGroup(saved.id()).id());
+        assertFalse(manager.folderForGroup(saved.id()).runtimeOnly());
+        assertEquals(0, allChanges.get());
+        assertEquals(0, persistentChanges.get());
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+        assertEquals(0, storage.writeCount());
+        assertFalse(Files.exists(file));
     }
 
     @Test

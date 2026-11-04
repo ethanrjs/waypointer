@@ -1,8 +1,7 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.codec.WaypointCodec;
-import com.babbur.waypointer.config.WaypointerConfig;
-import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
@@ -10,8 +9,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExportImportSliceScreenTest {
 
@@ -50,29 +47,27 @@ class ExportImportSliceScreenTest {
     }
 
     @Test
+    void collapsed_folder_selection_stays_scoped_to_the_selected_routes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        WaypointGroup outside = WaypointGroup.create("Outside", "the_end");
+        manager.addAll(List.of(first, second, outside));
+        RouteFolder folder = new RouteFolder(
+                "folder", "Mining", "hub", false, 0x123456);
+        manager.addFolder(folder, List.of(first.id(), second.id()));
+        manager.toggleFolderCollapsed(folder.id());
+
+        assertEquals(List.of(second), WaypointerScreen.logicalSelectedGroups(
+                manager, "hub", new LinkedHashSet<>(List.of(second.id()))));
+        assertEquals(List.of(first, second), WaypointerScreen.exportFolderGroups(manager, folder));
+    }
+
+    @Test
     void preview_overflow_text_uses_compact_more_lines_copy() {
         assertEquals("...0 more lines", ExportPolicy.previewOverflowText(0));
         assertEquals("...1 more line", ExportPolicy.previewOverflowText(1));
         assertEquals("...3 more lines", ExportPolicy.previewOverflowText(3));
     }
 
-    @Test
-    void export_defaults_include_waypoint_flags_for_all_route_shapes() {
-        WaypointerConfig config = new WaypointerConfig();
-        WaypointGroup normal = WaypointGroup.create("Normal", "hub");
-        normal.add(Waypoint.at(0, 64, 0));
-
-        WaypointGroup subway = WaypointGroup.create("Subway", "hub");
-        subway.add(Waypoint.at(0, 64, 0));
-        subway.add(Waypoint.at(1, 64, 1));
-        assertTrue(subway.toggleSubwaypoint(1));
-
-        WaypointCodec.Options normalOptions =
-                ExportPolicy.optionsFromConfig(config, List.of(normal)).build();
-        WaypointCodec.Options subwayOptions =
-                ExportPolicy.optionsFromConfig(config, List.of(subway)).build();
-
-        assertTrue(normalOptions.includeWaypointFlags);
-        assertTrue(subwayOptions.includeWaypointFlags);
-    }
 }

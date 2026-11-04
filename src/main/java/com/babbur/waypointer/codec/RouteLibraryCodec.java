@@ -15,6 +15,7 @@ import com.google.gson.stream.JsonToken;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -33,7 +34,6 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
-/** Versioned wrapper for native routes plus local route-library metadata. */
 public final class RouteLibraryCodec {
     public static final String MAGIC = "WPL:1:";
 
@@ -58,14 +58,34 @@ public final class RouteLibraryCodec {
         safeMetadata = metadataForOptions(safeMetadata, options);
         if (safeMetadata.isEmpty()) return WaypointCodec.encode(groups, options);
         safeMetadata.validateForGroups(groups);
+        try {
+            String library = WaypointCodec.MAGIC + V10RouteLibraryCodec
+                    .encodeCandidate(groups, options, safeMetadata).transport();
+            WaypointImporter.enforceTextPayloadLimit(library);
+            return library;
+        } catch (V10ProfileLimitException profileLimit) {
+
+        } catch (IOException failure) {
+            throw new IllegalStateException("route library export failed", failure);
+        }
+        return encodeLegacyWrapper(groups, options, safeMetadata);
+    }
+
+    static String encodeLegacyWrapper(
+            List<WaypointGroup> groups,
+            WaypointCodec.Options options,
+            RouteLibraryMetadata metadata) {
+        RouteLibraryMetadata safeMetadata = metadataForOptions(
+                metadata == null ? RouteLibraryMetadata.empty() : metadata, options);
+        if (safeMetadata.isEmpty()) return WaypointCodec.encode(groups, options);
+        safeMetadata.validateForGroups(groups);
         String payload = WaypointCodec.encode(groups, options);
 
         JsonObject root = new JsonObject();
         root.addProperty("payload", payload);
         root.add("manualColors", encodeManualColors(safeMetadata.manualColors()));
         root.add("folders", encodeFolders(safeMetadata.folders()));
-        // Written only when present so unpainted codes keep the pre-paint shape
-        // and older clients (which ignore unknown keys) stay compatible.
+
         if (!safeMetadata.paints().isEmpty()) {
             root.add("paints", encodePaints(safeMetadata.paints()));
         }
@@ -98,6 +118,9 @@ public final class RouteLibraryCodec {
     }
 
     public static Decoded decode(String payload) {
+        if (payload != null && payload.trim().startsWith(WaypointCodec.MAGIC)) {
+            return decodeUniversal(payload.trim());
+        }
         Envelope envelope = readEnvelope(payload);
         JsonObject root = envelope.root();
         String inner = envelope.nativePayload();
@@ -106,7 +129,7 @@ public final class RouteLibraryCodec {
                 requireArray(root, "manualColors"));
         List<RouteLibraryMetadata.FolderDefinition> folders = decodeFolders(
                 requireArray(root, "folders"));
-        // Optional: codes written before waypoint paints existed omit the key.
+
         List<RouteLibraryMetadata.PaintEntry> paints = root.has("paints")
                 ? decodePaints(requireArray(root, "paints"))
                 : List.of();
@@ -114,13 +137,38 @@ public final class RouteLibraryCodec {
                 new RouteLibraryMetadata(manualColors, folders, paints);
 
         DecodeDebug nativePayload = WaypointCodec.debugDecode(inner);
-        if (nativePayload.version() != WaypointCodec.currentWireVersion()) {
+        if (nativePayload.version() != WaypointCodec.WIRE_VERSION
+                && nativePayload.version() != WaypointCodec.V10_WIRE_VERSION) {
             throw new IllegalArgumentException(
-                    "route library payload must contain a wire-v9 native route");
+                    "route library payload must contain a wire-v9 or wire-v10 native route");
         }
         List<WaypointGroup> groups = nativePayload.decodedGroups();
         metadata.validateForGroups(groups);
         return new Decoded(groups, nativePayload.label(), metadata);
+    }
+
+    private static Decoded decodeUniversal(String payload) {
+        WaypointImporter.enforceTextPayloadLimit(payload);
+        String transport = payload.substring(WaypointCodec.MAGIC.length());
+        V10Transport.CheckedFrame frame;
+        try {
+            if (!V10Transport.looksLikeV10(transport)) {
+                throw new IllegalArgumentException("not a route library payload");
+            }
+            frame = V10Transport.probe(transport);
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("not a route library payload: "
+                    + failure.getMessage(), failure);
+        }
+        if (!V10RouteLibraryCodec.isLibrarySemantic(frame.semantic())) {
+            throw new IllegalArgumentException("not a route library payload");
+        }
+        try {
+            return V10RouteLibraryCodec.decode(frame);
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("route library decode failed: "
+                    + failure.getMessage(), failure);
+        }
     }
 
     public static String unwrapNativePayload(String payload) {
@@ -162,10 +210,14 @@ public final class RouteLibraryCodec {
 
     static String encodeBody(String json) {
         Objects.requireNonNull(json, "json");
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > MAX_JSON_BYTES) {
+            throw new IllegalArgumentException("route library metadata is too large");
+        }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
         try (DeflaterOutputStream compressed = new DeflaterOutputStream(out, deflater)) {
-            compressed.write(json.getBytes(StandardCharsets.UTF_8));
+            compressed.write(bytes);
         } catch (IOException failure) {
             throw new IllegalStateException("route library export failed", failure);
         } finally {
@@ -200,7 +252,7 @@ public final class RouteLibraryCodec {
         }
     }
 
-    private static byte[] readLimited(java.io.InputStream input) throws IOException {
+    private static byte[] readLimited(InputStream input) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int total = 0;

@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Bundled, read-only Catacombs room identity catalog. */
 public final class DungeonRoomData {
 
     public interface BlockLookup {

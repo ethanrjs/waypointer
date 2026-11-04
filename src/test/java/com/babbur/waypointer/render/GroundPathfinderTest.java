@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -236,7 +237,7 @@ class GroundPathfinderTest {
 
     @Test
     void cachedLineStartCanFollowPlayerWithoutRepathing() {
-        List<Vec3> points = new java.util.ArrayList<>(List.of(
+        List<Vec3> points = new ArrayList<>(List.of(
                 new Vec3(0.0, 64.12, 0.0),
                 new Vec3(5.5, 65.5, 5.5)));
 

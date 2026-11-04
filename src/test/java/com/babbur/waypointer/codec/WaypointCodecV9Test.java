@@ -36,7 +36,7 @@ class WaypointCodecV9Test {
     void compact_full_route_round_trips_names_colors_and_order() {
         WaypointGroup route = compactRoute(64);
 
-        String encoded = WaypointCodec.encode(List.of(route));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route));
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
@@ -68,7 +68,7 @@ class WaypointCodecV9Test {
         route.add(new Waypoint(4, 70, -8, "named", 0x123456,
                 Waypoint.FLAG_DEPTH_CHECKED | Waypoint.FLAG_DISABLED, 4.5));
 
-        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(route))).get(0);
+        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encodeV9ForTest(List.of(route))).get(0);
 
         assertEquals("named", decoded.get(0).name());
         assertEquals(0x123456, decoded.get(0).color());
@@ -90,7 +90,7 @@ class WaypointCodecV9Test {
                 .build();
 
         WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(
-                WaypointCodec.encode(List.of(route), options));
+                WaypointCodec.encodeV9ForTest(List.of(route), options));
         WaypointGroup result = decoded.groups().get(0);
 
         assertTrue(options.includeNames);
@@ -119,7 +119,7 @@ class WaypointCodecV9Test {
                 Integer.MIN_VALUE | Waypoint.FLAG_DEPTH_CHECKED, 4.54));
         route.setGradientMode(WaypointGroup.GradientMode.STATIC);
 
-        String encoded = WaypointCodec.encode(List.of(route));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route));
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
@@ -148,7 +148,7 @@ class WaypointCodecV9Test {
         }
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> WaypointCodec.encode(List.of(route)));
+                () -> WaypointCodec.encodeV9ForTest(List.of(route)));
 
         assertTrue(error.getMessage().contains("exceeds waypoint limit"));
     }
@@ -158,12 +158,12 @@ class WaypointCodecV9Test {
         WaypointGroup malformedName = WaypointGroup.create("safe", "mining_3");
         malformedName.add(new Waypoint(0, 64, 0, "bad\uD800", Waypoint.DEFAULT_COLOR, 0, 0));
         assertThrows(IllegalArgumentException.class,
-                () -> WaypointCodec.encode(List.of(malformedName)));
+                () -> WaypointCodec.encodeV9ForTest(List.of(malformedName)));
 
         WaypointGroup malformedZone = WaypointGroup.create("safe", "bad\uD800");
         malformedZone.add(Waypoint.at(0, 64, 0));
         assertThrows(IllegalArgumentException.class,
-                () -> WaypointCodec.encode(List.of(malformedZone)));
+                () -> WaypointCodec.encodeV9ForTest(List.of(malformedZone)));
     }
 
     @Test
@@ -171,7 +171,7 @@ class WaypointCodecV9Test {
         WaypointGroup route = compactRoute(64);
         route.setSkipAheadEnabled(false);
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), WaypointCodec.Options.NO_NAMES);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
         assertEquals(WaypointCodec.V9_CONTENT_KIND_GENERAL_ROUTE,
@@ -190,7 +190,7 @@ class WaypointCodecV9Test {
                 .includeGroupMeta(false)
                 .build();
 
-        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(route), options)).get(0);
+        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encodeV9ForTest(List.of(route), options)).get(0);
 
         assertEquals(WaypointGroup.GradientMode.MANUAL, decoded.gradientMode());
         assertEquals(0xFF0000, decoded.get(0).color());
@@ -207,7 +207,7 @@ class WaypointCodecV9Test {
                 .includeWaypointFlags(false)
                 .build();
 
-        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(route), options)).get(0);
+        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encodeV9ForTest(List.of(route), options)).get(0);
 
         assertEquals(WaypointGroup.GradientMode.AUTO, decoded.gradientMode());
         assertEquals(0xFF0000, decoded.get(0).color());
@@ -225,7 +225,7 @@ class WaypointCodecV9Test {
             route.add(new Waypoint(index, 64, -index, names.get(index), 0x44AA66, 0, 0.0));
         }
 
-        String encoded = WaypointCodec.encode(List.of(route));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route));
         assertEquals(WaypointCodec.V9_CONTENT_KIND_COMPACT_ROUTE,
                 WaypointCodec.v9ContentKind(WaypointCodec.debugDecode(encoded).headerByte()));
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
@@ -244,9 +244,9 @@ class WaypointCodecV9Test {
                 "solo", 0xFEDCBA, 0, 0.0));
 
         WaypointGroup emptyDecoded = WaypointCodec.decode(
-                WaypointCodec.encode(List.of(empty))).get(0);
+                WaypointCodec.encodeV9ForTest(List.of(empty))).get(0);
         WaypointGroup oneDecoded = WaypointCodec.decode(
-                WaypointCodec.encode(List.of(one))).get(0);
+                WaypointCodec.encodeV9ForTest(List.of(one))).get(0);
 
         assertTrue(emptyDecoded.isEmpty());
         assertEquals("empty", emptyDecoded.name());
@@ -261,7 +261,7 @@ class WaypointCodecV9Test {
     void explicit_coordinate_only_uses_trained_kind_two() {
         WaypointGroup route = kindTwoRoute();
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), WaypointCodec.Options.NO_NAMES);
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
@@ -287,7 +287,7 @@ class WaypointCodecV9Test {
                 .withPreciseSixteenths(134_000_000 * Waypoint.PRECISE_SCALE + 1,
                         64 * Waypoint.PRECISE_SCALE + 8, 8));
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), WaypointCodec.Options.NO_NAMES);
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
@@ -303,7 +303,7 @@ class WaypointCodecV9Test {
         route.add(Waypoint.at(0, 64, 0));
         route.add(Waypoint.at(1, 64, 1));
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), WaypointCodec.Options.NO_NAMES);
 
         assertEquals(WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE_WITH_META,
                 WaypointCodec.v9ContentKind(WaypointCodec.debugDecode(encoded).headerByte()));
@@ -317,7 +317,7 @@ class WaypointCodecV9Test {
         route.add(Waypoint.at(0, 64, 0));
         route.add(Waypoint.at(2, 65, 3));
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), WaypointCodec.Options.NO_NAMES);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
         assertEquals(WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE_WITH_META,
@@ -334,14 +334,14 @@ class WaypointCodecV9Test {
         route.add(Waypoint.at(0, 64, 0));
         route.add(Waypoint.at(2, 65, 3));
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), WaypointCodec.Options.NO_NAMES);
         byte[] body = currentBody(encoded);
         assertEquals(WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE_WITH_META,
                 WaypointCodec.v9ContentKind(body[0] & 0xFF));
 
         int groupFlagsOffset = 1;
         while ((body[groupFlagsOffset++] & 0x80) != 0) {
-            // Skip the anonymous zone-reference varint.
+
         }
         body[groupFlagsOffset] |= (byte) 0x80;
 
@@ -360,7 +360,7 @@ class WaypointCodecV9Test {
         second.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         second.add(Waypoint.at(1, 2, 3));
 
-        String encoded = WaypointCodec.encode(
+        String encoded = WaypointCodec.encodeV9ForTest(
                 List.of(extreme, second), WaypointCodec.Options.NO_NAMES);
         List<WaypointGroup> decoded = WaypointCodec.decode(encoded);
 
@@ -379,7 +379,7 @@ class WaypointCodecV9Test {
                 .withFlags(Waypoint.FLAG_DEPTH_CHECKED));
         route.add(Waypoint.at(134_217_727, 64, 0));
 
-        String encoded = WaypointCodec.encode(List.of(route));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route));
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
         assertEquals(WaypointCodec.V9_CONTENT_KIND_GENERAL_ROUTE,
@@ -404,7 +404,7 @@ class WaypointCodecV9Test {
                 .label("Emoji 🚇 route")
                 .build();
 
-        String encoded = WaypointCodec.encode(List.of(route), options);
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route), options);
         WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(encoded);
 
         assertEquals(WaypointCodec.V9_CONTENT_KIND_COMPACT_ROUTE,
@@ -431,7 +431,7 @@ class WaypointCodecV9Test {
                 .withPreciseSixteenths(19, 1132, 11);
         route.add(child);
 
-        String encoded = WaypointCodec.encode(List.of(route));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(route));
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
         assertEquals(WaypointCodec.V9_CONTENT_KIND_GENERAL_ROUTE,
@@ -444,7 +444,7 @@ class WaypointCodecV9Test {
 
     @Test
     void unknown_v9_content_kind_is_rejected_before_body_parse() throws Exception {
-        String encoded = WaypointCodec.encode(List.of(compactRoute(32)));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(compactRoute(32)));
         byte[] body = currentBody(encoded);
         body[0] = (byte) ((body[0] & 0x8F) | (7 << 4));
 
@@ -459,12 +459,12 @@ class WaypointCodecV9Test {
     void compact_decoder_rejects_coordinates_the_waypoint_model_cannot_represent() throws Exception {
         byte[] body = {
                 (byte) ((WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE << 4) | 9),
-                2, // trained zone token: mining_3
-                1, // one waypoint
+                2,
+                1,
                 (byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 0x01,
-                0, 0, // y=0, z=0
-                0, 0, // three zero delta widths
-                0 // empty range payload
+                0, 0,
+                0, 0,
+                0
         };
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -478,17 +478,17 @@ class WaypointCodecV9Test {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
         output.writeByte(WaypointCodec.WIRE_VERSION);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 1); // group count
-        WaypointCodec.writeVarint(output, 0); // group name
-        WaypointCodec.writeVarint(output, 0); // custom zone = pool[0]
-        output.writeByte(0b0000_0101); // bodyless + sequence + VECTOR
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
+        output.writeByte(0b0000_0101);
         WaypointCodec.writeVarint(output, 2);
         WaypointCodec.writeZigzag(output, 134_217_727);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
-        WaypointCodec.writeZigzag(output, 1); // next x would be 134,217,728
+        WaypointCodec.writeZigzag(output, 1);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
         output.flush();
@@ -504,14 +504,14 @@ class WaypointCodecV9Test {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
         output.writeByte(WaypointCodec.WIRE_VERSION);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 1); // group count
-        WaypointCodec.writeVarint(output, 0); // group name
-        WaypointCodec.writeVarint(output, 0); // custom zone = pool[0]
-        output.writeByte(0b0010_0101); // bodyless + sequence + FIXED_COMPACT
         WaypointCodec.writeVarint(output, 1);
-        output.write(new byte[] { 0, 2, 0, 0, 1 }); // (0,0,0), then one nonzero padding bit
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
+        output.writeByte(0b0010_0101);
+        WaypointCodec.writeVarint(output, 1);
+        output.write(new byte[] { 0, 2, 0, 0, 1 });
         output.flush();
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -525,13 +525,13 @@ class WaypointCodecV9Test {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
         output.writeByte(WaypointCodec.WIRE_VERSION);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 1); // group count
-        WaypointCodec.writeVarint(output, 0); // group name
-        WaypointCodec.writeVarint(output, 0); // custom zone = pool[0]
-        output.writeByte(0b0011_0101); // bodyless + sequence + FIT_COMPACT
-        WaypointCodec.writeVarint(output, 0); // empty group
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
+        output.writeByte(0b0011_0101);
+        WaypointCodec.writeVarint(output, 0);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
         WaypointCodec.writeZigzag(output, 0);
@@ -558,12 +558,12 @@ class WaypointCodecV9Test {
         byte[] label = hostile.getBytes(StandardCharsets.UTF_8);
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream output = new DataOutputStream(raw);
-        output.writeByte(0x80 | WaypointCodec.WIRE_VERSION); // label + general kind
+        output.writeByte(0x80 | WaypointCodec.WIRE_VERSION);
         WaypointCodec.writeVarint(output, label.length);
         output.write(label);
-        WaypointCodec.writeVarint(output, 1); // pool count
-        WaypointCodec.writeVarint(output, 0); // pool[0] = ""
-        WaypointCodec.writeVarint(output, 0); // group count
+        WaypointCodec.writeVarint(output, 1);
+        WaypointCodec.writeVarint(output, 0);
+        WaypointCodec.writeVarint(output, 0);
         output.flush();
         String encoded = encodeBody(raw.toByteArray());
 
@@ -573,7 +573,7 @@ class WaypointCodecV9Test {
 
     @Test
     void compact_body_rejects_trailing_and_truncated_range_bytes() throws Exception {
-        String encoded = WaypointCodec.encode(List.of(compactRoute(64)));
+        String encoded = WaypointCodec.encodeV9ForTest(List.of(compactRoute(64)));
         assertEquals(WaypointCodec.V9_CONTENT_KIND_COMPACT_ROUTE,
                 WaypointCodec.v9ContentKind(WaypointCodec.debugDecode(encoded).headerByte()));
         byte[] body = currentBody(encoded);

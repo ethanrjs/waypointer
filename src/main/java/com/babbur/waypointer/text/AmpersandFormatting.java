@@ -1,12 +1,5 @@
 package com.babbur.waypointer.text;
 
-/**
- * Translates player-friendly Minecraft formatting codes in waypoint labels.
- *
- * <p>Waypoint names stay stored exactly as the user typed them. Rendering paths
- * call this helper at the edge so names like {@code &e&lMineshaft} display with
- * the same color/style language Skyblock players already use in chat.
- */
 public final class AmpersandFormatting {
 
     private static final char FORMAT_PREFIX = '\u00A7';

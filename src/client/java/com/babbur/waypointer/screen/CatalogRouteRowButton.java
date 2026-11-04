@@ -1,11 +1,14 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.catalog.CatalogInstallState;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
@@ -16,30 +19,38 @@ import static com.babbur.waypointer.screen.GuiTokens.GAP_TIGHT;
 import static com.babbur.waypointer.screen.GuiTokens.HOVER;
 import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
+import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 
 final class CatalogRouteRowButton extends AbstractButton {
-    private static final int STATUS_OK = GuiTokens.SUCCESS;
-    private static final int ROW_TITLE_TOP = 6;
-    private static final int ROW_META_TOP = 20;
+    static final int HEIGHT = 32;
+    private static final int TITLE_TOP = 6;
+    private static final int META_TOP = 18;
+    static final int ICON_SLOT = 22;
+
+    static final int MINING_CULT = 0xFF9B6BFF;
+    private static final int MINING_CULT_FILL = 0xFF3A2470;
+    private static final int MINING_CULT_TEXT = 0xFFEADFFF;
 
     final CatalogRouteSummary route;
     private final boolean selected;
-    private final boolean installed;
+    private final boolean divider;
+    private final CatalogInstallState.Action installAction;
     private final Runnable onPress;
 
     CatalogRouteRowButton(
             int x, int y, int width, int height, CatalogRouteSummary route,
-            boolean selected, boolean installed, Runnable onPress) {
+            boolean selected, boolean divider, CatalogInstallState.Action installAction, Runnable onPress) {
         super(x, y, width, height, Component.literal(route.title()));
         this.route = route;
         this.selected = selected;
-        this.installed = installed;
+        this.divider = divider;
+        this.installAction = installAction;
         this.onPress = onPress;
     }
 
     @Override
-    public void onPress(net.minecraft.client.input.InputWithModifiers input) {
+    public void onPress(InputWithModifiers input) {
         onPress.run();
     }
 
@@ -52,82 +63,126 @@ final class CatalogRouteRowButton extends AbstractButton {
         int y2 = y1 + getHeight();
         int background = selected ? SELECTED : isHoveredOrFocused() ? HOVER : 0;
         if (background != 0) graphics.fill(x1, y1, x2, y2, background);
-        graphics.fill(x1, y2 - 1, x2, y2, BORDER);
+        if (divider) graphics.fill(x1 + GAP, y2 - 1, x2 - GAP, y2, BORDER);
         if (selected) graphics.fill(x1, y1, x1 + 2, y2, ACCENT);
-        if (isFocused()) drawFocusBorder(graphics, x1, y1, x2, y2);
+        if (isFocused() && !selected) graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
 
-        var font = Minecraft.getInstance().font;
-        int textX = x1 + GAP;
-        int textWidth = Math.max(20, getWidth() - GAP * 2);
-        String installedTag = installed ? Component.translatable(
-                "waypointer.screen.route_catalog.row.installed_tag").getString() : "";
-        String verifiedTag = route.publisherVerified() ? Component.translatable(
-                "waypointer.screen.route_catalog.publisher.verified").getString().trim() : "";
-        int installedTagW = font.width(installedTag);
-        int verifiedTagW = font.width(verifiedTag);
-        int stateW = installedTagW + verifiedTagW
-                + (installedTagW > 0 && verifiedTagW > 0 ? GAP : 0);
-        int titleAvailable = Math.max(20, textWidth - (stateW == 0 ? 0 : stateW + GAP));
+        Font font = Minecraft.getInstance().font;
+        RouteIcons.slotted(graphics, route.displayIcon(), x1 + GAP, y1 + (HEIGHT - ICON_SLOT) / 2, ICON_SLOT, 16);
+        int textX = x1 + GAP + ICON_SLOT + GAP;
+        int right = x2 - GAP;
 
-        graphics.text(font, font.plainSubstrByWidth(route.title(), titleAvailable),
-                textX, y1 + ROW_TITLE_TOP, TEXT, false);
-        renderMetadata(graphics, textX, textWidth, x2, y1);
-        renderStateTags(graphics, textX, x2, y1,
-                installedTag, installedTagW, verifiedTag, verifiedTagW);
-    }
-
-    private static void drawFocusBorder(
-            GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2) {
-        graphics.fill(x1, y1, x2, y1 + 1, ACCENT);
-        graphics.fill(x1, y2 - 1, x2, y2, ACCENT);
-        graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
-        graphics.fill(x2 - 1, y1, x2, y2, ACCENT);
-    }
-
-    private void renderMetadata(
-            GuiGraphicsExtractor graphics, int textX, int textWidth, int x2, int y1) {
-        var font = Minecraft.getInstance().font;
-        Component author = route.authorName().isBlank()
-                ? Component.translatable("waypointer.screen.route_catalog.publisher.unknown")
-                : Component.literal(route.authorName());
-        int columnW = Math.max(1, textWidth / 3);
-        graphics.text(font, font.plainSubstrByWidth(
-                        route.zoneLabel(), Math.max(1, columnW - GAP_TIGHT)),
-                textX, y1 + ROW_META_TOP, ACCENT, false);
-        String stats = Component.translatable(
-                "waypointer.screen.route_catalog.row.stats",
-                compactWaypoints(route.waypointCount()),
-                compactInstalls(route.downloads())).getString();
-        graphics.text(font, font.plainSubstrByWidth(
-                        stats, Math.max(1, columnW - GAP_TIGHT)),
-                textX + columnW, y1 + ROW_META_TOP, TEXT_MUTED, false);
-        String publisher = Component.translatable(
-                "waypointer.screen.route_catalog.publisher.by", author).getString();
-        String clippedPublisher = font.plainSubstrByWidth(
-                publisher, Math.max(1, textWidth - columnW * 2));
-        graphics.text(font, clippedPublisher,
-                x2 - GAP - font.width(clippedPublisher), y1 + ROW_META_TOP,
-                TEXT_MUTED, false);
-    }
-
-    private static void renderStateTags(
-            GuiGraphicsExtractor graphics, int textX, int x2, int y1,
-            String installedTag, int installedTagW,
-            String verifiedTag, int verifiedTagW) {
-        var font = Minecraft.getInstance().font;
-        int stateX = x2 - GAP;
-        if (installedTagW > 0) {
-            graphics.text(font, installedTag,
-                    stateX - installedTagW, y1 + ROW_TITLE_TOP, STATUS_OK, false);
-            stateX -= installedTagW + GAP;
+        int stateW = drawInstallState(graphics, font, installAction, route, right, y1 + TITLE_TOP, true);
+        int titleRight = right - (stateW > 0 ? stateW + GAP : 0);
+        int badgeW = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT) ? miningCultWidth(font) + GAP_TIGHT : 0;
+        String title = GuiTokens.ellipsize(font, route.title(), Math.max(20, titleRight - textX - badgeW));
+        graphics.text(font, title, textX, y1 + TITLE_TOP, TEXT, false);
+        if (badgeW > 0) {
+            int pillX = textX + font.width(title) + GAP_TIGHT;
+            drawMiningCult(graphics, font, pillX, y1 + TITLE_TOP);
+            miningCultTooltip(graphics, font, pillX, y1 + TITLE_TOP, mouseX, mouseY);
         }
-        if (verifiedTagW > 0 && stateX - verifiedTagW >= textX + 20) {
-            graphics.text(font, verifiedTag,
-                    stateX - verifiedTagW, y1 + ROW_TITLE_TOP, ACCENT, false);
+
+        String stats = Component.translatable("waypointer.screen.route_catalog.row.stats",
+                compactWaypoints(route.waypointCount()), compactInstalls(route.downloads())).getString();
+        int statsW = font.width(stats);
+        int metaRight = right - statsW - GAP;
+        if (metaRight - textX < 60) {
+            statsW = 0;
+            metaRight = right;
+        } else {
+            graphics.text(font, stats, right - statsW, y1 + META_TOP, TEXT_MUTED, false);
         }
+        drawZoneAndPublisher(graphics, font, route, textX, y1 + META_TOP, metaRight - textX);
     }
 
-    /** Row copy stays compact: full numbers below 1000, then 1.2k / 3M. */
+    static void drawZoneAndPublisher(GuiGraphicsExtractor graphics, Font font, CatalogRouteSummary route,
+                                     int x, int y, int maxWidth) {
+        String zone = GuiTokens.ellipsize(font, route.zoneLabel(), Math.max(20, maxWidth * 3 / 5));
+        graphics.text(font, zone, x, y, ACCENT, false);
+        int used = font.width(zone);
+        String separator = "  ·  ";
+        String publisher = Component.translatable("waypointer.screen.route_catalog.publisher.by",
+                route.authorName().isBlank()
+                        ? Component.translatable("waypointer.screen.route_catalog.publisher.unknown")
+                        : Component.literal(route.authorName())).getString();
+        int checkW = route.publisherVerified() ? 9 : 0;
+        int room = maxWidth - used - font.width(separator) - checkW;
+        if (room < 24) return;
+        graphics.text(font, separator, x + used, y, TEXT_MUTED, false);
+        used += font.width(separator);
+        String shown = GuiTokens.ellipsize(font, publisher, room);
+        graphics.text(font, shown, x + used, y, TEXT_DIM, false);
+        used += font.width(shown);
+        if (checkW > 0) Icons.drawAt(graphics, Icons.Icon.BADGE_CHECK, x + used + 6, y + 4, ACCENT);
+    }
+
+    private static final int PILL_PAD = 3;
+    private static final int LOGO_W = 8;
+
+    static int miningCultWidth(Font font) {
+        return PILL_PAD + LOGO_W + PILL_PAD + font.width(Component.translatable(
+                "waypointer.screen.route_catalog.tag.mining_cult.short")) + PILL_PAD;
+    }
+
+    static int drawMiningCult(GuiGraphicsExtractor graphics, Font font, int x, int y) {
+        String label = Component.translatable("waypointer.screen.route_catalog.tag.mining_cult.short").getString();
+        int w = miningCultWidth(font);
+        graphics.fill(x, y - 2, x + w, y + 9, MINING_CULT_FILL);
+        graphics.fill(x, y - 2, x + w, y - 1, MINING_CULT);
+        graphics.fill(x, y + 8, x + w, y + 9, MINING_CULT);
+        graphics.fill(x, y - 2, x + 1, y + 9, MINING_CULT);
+        graphics.fill(x + w - 1, y - 2, x + w, y + 9, MINING_CULT);
+        Icons.drawAt(graphics, Icons.Icon.BADGE_GEM, x + PILL_PAD + 4, y + 4, MINING_CULT_TEXT);
+        graphics.text(font, label, x + PILL_PAD + LOGO_W + PILL_PAD, y, MINING_CULT_TEXT, false);
+        return w;
+    }
+
+    static void miningCultTooltip(GuiGraphicsExtractor graphics, Font font, int pillX, int y, int mouseX, int mouseY) {
+        if (mouseX < pillX || mouseX >= pillX + miningCultWidth(font) || mouseY < y - 2 || mouseY >= y + 9) return;
+        graphics.setTooltipForNextFrame(font, font.split(Component.translatable(
+                "waypointer.screen.route_catalog.tag.mining_cult.hover"), 200), mouseX, mouseY);
+    }
+
+    static int drawInstallState(GuiGraphicsExtractor graphics, Font font, CatalogInstallState.Action action,
+                                CatalogRouteSummary route, int right, int y, boolean compact) {
+        if (action == null) return 0;
+        String key;
+        int color;
+        switch (action) {
+            case INSTALLED, LOCAL_NEWER -> {
+                key = "waypointer.screen.route_catalog.state.installed";
+                color = GuiTokens.SUCCESS;
+            }
+            case UPDATE -> {
+                key = "waypointer.screen.route_catalog.state.update";
+                color = GuiTokens.WARNING;
+            }
+            case REPAIR -> {
+                key = "waypointer.screen.route_catalog.state.repair";
+                color = GuiTokens.WARNING;
+            }
+            case UNSUPPORTED_CODEC -> {
+                key = route.requiredModVersion().isEmpty()
+                        ? "waypointer.screen.route_catalog.state.unsupported"
+                        : "waypointer.screen.route_catalog.state.requires";
+                color = GuiTokens.WARNING;
+            }
+            default -> {
+                return 0;
+            }
+        }
+        String text = Component.translatable(key, route.requiredModVersion()).getString();
+        if (compact && (action == CatalogInstallState.Action.INSTALLED
+                || action == CatalogInstallState.Action.LOCAL_NEWER)) {
+            Icons.drawAt(graphics, Icons.Icon.BADGE_CHECK, right - 4, y + 3, color);
+            return 8;
+        }
+        int w = font.width(text);
+        graphics.text(font, text, right - w, y, color, false);
+        return w;
+    }
+
     static String compactCount(long value, LocalizedNumberFormatter numbers) {
         if (value < 1_000) return numbers.integer(Math.max(0, value));
         if (value < 1_000_000) return scaledCount(value, 1_000, "k", numbers);
@@ -172,9 +227,18 @@ final class CatalogRouteRowButton extends AbstractButton {
             description.append(Component.translatable(
                     "waypointer.screen.route_catalog.publisher.verified"));
         }
-        if (installed) {
+        if (route.hasTag(CatalogRouteSummary.TAG_MINING_CULT)) {
+            description.append(Component.literal(". ")).append(Component.translatable(
+                    "waypointer.screen.route_catalog.tag.mining_cult"));
+        }
+        if (installAction == CatalogInstallState.Action.INSTALLED
+                || installAction == CatalogInstallState.Action.LOCAL_NEWER) {
             description.append(Component.translatable(
                     "waypointer.screen.route_catalog.row.installed_narration"));
+        }
+        if (installAction == CatalogInstallState.Action.UNSUPPORTED_CODEC) {
+            description.append(Component.literal(". "))
+                    .append(RouteCatalogScreen.requiresLine(route.requiredModVersion()));
         }
         return selected
                 ? Component.translatable(

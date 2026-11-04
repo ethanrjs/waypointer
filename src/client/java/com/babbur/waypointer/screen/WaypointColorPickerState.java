@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 
 import java.util.Objects;
@@ -40,12 +39,11 @@ final class WaypointColorPickerState {
     boolean applyColor(WaypointGroup group, int rgb) {
         if (group == null || targetIndex < 0 || targetIndex >= group.size()) return false;
 
-        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        setLockedColor(group, targetIndex, rgb);
+        group.lockWaypointColor(targetIndex, rgb);
         if (applyToSubwaypoints && ownsSubwaypoints(group, targetIndex)) {
             int end = group.childEndExclusive(targetIndex);
             for (int child = targetIndex + 1; child < end; child++) {
-                setLockedColor(group, child, rgb);
+                group.lockWaypointColor(child, rgb);
             }
         }
         return true;
@@ -58,9 +56,4 @@ final class WaypointColorPickerState {
                 && group.childEndExclusive(index) > index + 1;
     }
 
-    private static void setLockedColor(WaypointGroup group, int index, int rgb) {
-        Waypoint waypoint = group.get(index);
-        group.set(index, waypoint.withColor(rgb & 0xFFFFFF)
-                .withFlags(waypoint.flags() | Waypoint.FLAG_LOCKED_COLOR));
-    }
 }

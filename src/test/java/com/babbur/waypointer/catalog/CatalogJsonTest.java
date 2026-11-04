@@ -1,6 +1,11 @@
 package com.babbur.waypointer.catalog;
 
 import com.google.gson.JsonObject;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -11,10 +16,187 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CatalogJsonTest {
+    @Test
+    void dungeonDetailsReachTheCatalogDecoderAndInstaller() {
+        var group = WaypointGroup.create("Dungeon", "test-room");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        group.add(Waypoint.at(1, 70, 2));
+        var prepared = CatalogProtocol.prepareCatalogPayload(List.of(group));
+        var route = new JsonObject();
+        route.addProperty("id", "Abcdefghijklmnopqrstuv");
+        route.addProperty("title", "Dungeon");
+        route.addProperty("zoneId", "dungeon");
+        route.addProperty("zoneLabel", "Dungeons");
+        route.addProperty("waypointCount", 1);
+        route.addProperty("groupCount", 1);
+        route.addProperty("codecVersion", DungeonRoomShareCodec.CATALOG_CODEC_VERSION);
+        route.addProperty("payload", prepared.payload());
+        var root = new JsonObject();
+        root.add("route", route);
+        var details = CatalogJson.parseDetails(root.toString());
+        var manager = new ActiveGroupManager();
+        CatalogRouteInstaller.install(manager, RouteCatalogClient.PRODUCTION_API.toString(), details);
+        assertEquals(WaypointGroup.RouteKind.DUNGEON,
+                manager.allGroups().iterator().next().routeKind());
+    }
+
     private static final String ID = "Abcdefghijklmnopqrstuv";
     private static final String SECOND_ID = "Bcdefghijklmnopqrstuvw";
     private static final String THIRD_ID = "Cdefghijklmnopqrstuvwx";
     private static final String EMOJI = "\uD83D\uDE00";
+
+    @Test
+    void previewRejectsMalformedPoints() {
+        for (String bad : List.of(
+                "{\"groups\":[{\"points\":[[1,2,3,4]]}]}",
+                "{\"groups\":[{\"points\":[[1,2,3,4,\"x\"]]}]}",
+                "{\"groups\":[{\"points\":[[1.5,2,3,4,0]]}]}",
+                "{\"groups\":[{\"points\":[[99999999,2,3,4,0]]}]}",
+                "{\"groups\":{}}")) {
+            assertThrows(IllegalArgumentException.class, () -> CatalogJson.parsePreview(bad), bad);
+        }
+        var dungeon = CatalogJson.parsePreview(
+                "{\"truncated\":true,\"groups\":[{\"kind\":\"dungeon\",\"points\":[[0,-60,0,0,0]]}]}");
+        assertTrue(dungeon.truncated());
+        assertTrue(dungeon.groups().getFirst().dungeon());
+    }
+
+    @Test
+    void crystalHollowsStructureRoutesShowJustTheStructureName() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv",
+                  "title":"City loot",
+                  "zoneId":"crystal_hollows_structure_lost_precursor_city",
+                  "zoneLabel":"Crystal Hollows Structure Lost Precursor City",
+                  "waypointCount":4,
+                  "groupCount":1,
+                  "codecVersion":9
+                }],"hasMore":false}
+                """);
+
+        assertEquals("Lost Precursor City", page.routes().getFirst().zoneLabel());
+    }
+
+    @Test
+    void readsServerTagsAndIgnoresMalformedOnes() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv",
+                  "title":"Tungsten loop",
+                  "zoneId":"dwarven_mines",
+                  "zoneLabel":"Dwarven Mines",
+                  "waypointCount":16,
+                  "groupCount":1,
+                  "codecVersion":9,
+                  "tags":["mining-cult", "Mining-Cult", "has space", 7, "x".repeat(40), "featured"]
+                },{
+                  "id":"Bcdefghijklmnopqrstuvw",
+                  "title":"Untagged",
+                  "zoneId":"hub",
+                  "zoneLabel":"Hub",
+                  "waypointCount":3,
+                  "groupCount":1,
+                  "codecVersion":9
+                }],"hasMore":false}
+                """.replace("\"x\".repeat(40)", "\"" + "x".repeat(40) + "\""));
+
+        CatalogRouteSummary tagged = page.routes().getFirst();
+        assertEquals(List.of("mining-cult", "featured"), tagged.tags());
+        assertTrue(tagged.hasTag(CatalogRouteSummary.TAG_MINING_CULT));
+        assertTrue(page.routes().get(1).tags().isEmpty(), "older servers send no tags");
+    }
+
+    @Test
+    void readsTheReleaseARouteNeedsAndIgnoresMalformedVersions() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[
+                  {"id":"Abcdefghijklmnopqrstuv","title":"New","zoneId":"hub","zoneLabel":"Hub",
+                   "waypointCount":1,"groupCount":1,"codecVersion":12,"requiresVersion":"1.14.0"},
+                  {"id":"Bcdefghijklmnopqrstuvw","title":"Odd","zoneId":"hub","zoneLabel":"Hub",
+                   "waypointCount":1,"groupCount":1,"codecVersion":12,"requiresVersion":"soon<3"},
+                  {"id":"Cdefghijklmnopqrstuvwx","title":"Old","zoneId":"hub","zoneLabel":"Hub",
+                   "waypointCount":1,"groupCount":1,"codecVersion":9}
+                ],"hasMore":false}
+                """);
+        assertEquals(List.of("1.14.0", "", ""),
+                page.routes().stream().map(CatalogRouteSummary::requiredModVersion).toList());
+    }
+
+    @Test
+    void aRouteFromANewerCodecNamesTheReleaseThatReadsIt() {
+        JsonObject route = summaryObject(ID, "From the future", "Needs a newer Waypointer");
+        route.addProperty("codecVersion", 12);
+        route.addProperty("requiresVersion", "1.14.0");
+        route.addProperty("payload", "WP:a format this client has never seen");
+        JsonObject root = new JsonObject();
+        root.add("route", route);
+
+        CatalogRouteDetails details = CatalogJson.parseDetails(root.toString());
+        CatalogRouteTooNewException tooNew = assertThrows(CatalogRouteTooNewException.class,
+                () -> CatalogRouteInstaller.prepare(details));
+        assertEquals("1.14.0", tooNew.requiredModVersion());
+
+        route.addProperty("payload", "WP2:a new prefix too");
+        assertEquals("1.14.0", assertThrows(CatalogRouteTooNewException.class,
+                () -> CatalogJson.parseDetails(root.toString())).requiredModVersion());
+
+        route.addProperty("codecVersion", 9);
+        IllegalArgumentException unreadable = assertThrows(IllegalArgumentException.class,
+                () -> CatalogJson.parseDetails(root.toString()));
+        assertFalse(unreadable instanceof CatalogRouteTooNewException,
+                "a code this client should read is just broken");
+    }
+
+    @Test
+    void sharedTextIsCleanedAndAnUnreadableTitleSkipsOnlyThatRoute() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv",
+                  "title":"\\u00a7c[ADMIN]\\u202e Free route",
+                  "description":"Line one\\nLine two\\u0007",
+                  "authorName":"\\u00a7kSomeone",
+                  "zoneId":"hub",
+                  "zoneLabel":"\\u200bHub",
+                  "waypointCount":3,
+                  "groupCount":1,
+                  "codecVersion":9
+                },{
+                  "id":"Bcdefghijklmnopqrstuvw",
+                  "title":"\\u00a7\\u202e",
+                  "zoneId":"hub",
+                  "zoneLabel":"Hub",
+                  "waypointCount":3,
+                  "groupCount":1,
+                  "codecVersion":9
+                }],"hasMore":false}
+                """);
+
+        assertEquals(1, page.routes().size());
+        CatalogRouteSummary route = page.routes().getFirst();
+        assertEquals("c[ADMIN] Free route", route.title());
+        assertEquals("Line one\nLine two", route.description());
+        assertEquals("kSomeone", route.authorName());
+        assertEquals("Hub", route.zoneLabel());
+    }
+
+    @Test
+    void readsTheChosenIconAndFallsBackToTheZone() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv", "title":"Tungsten", "zoneId":"dwarven_mines",
+                  "zoneLabel":"Dwarven Mines", "waypointCount":16, "groupCount":1, "codecVersion":9,
+                  "icon":"minecraft:diamond_pickaxe*"
+                },{
+                  "id":"Bcdefghijklmnopqrstuvw", "title":"Odd", "zoneId":"dwarven_mines",
+                  "zoneLabel":"Dwarven Mines", "waypointCount":3, "groupCount":1, "codecVersion":9,
+                  "icon":"<b>pickaxe</b>"
+                }],"hasMore":false}
+                """);
+        assertEquals("minecraft:diamond_pickaxe*", page.routes().getFirst().icon());
+        assertEquals("", page.routes().get(1).icon());
+        assertEquals("minecraft:iron_pickaxe", page.routes().get(1).displayIcon());
+    }
 
     @Test
     void parsesCurrentSiteSummaryAndSupportsLocalSearch() {

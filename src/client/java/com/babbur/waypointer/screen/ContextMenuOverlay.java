@@ -4,8 +4,11 @@ import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
@@ -16,21 +19,20 @@ import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
+import static com.babbur.waypointer.compat.InputCompat.KEY_DOWN;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_ESCAPE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_KP_ENTER;
+import static com.babbur.waypointer.compat.InputCompat.KEY_SPACE;
+import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
-/**
- * Shared right-click / menu-key popup. One instance per screen; at most one open.
- * Every item shows its gesture accelerator as a right-aligned hint, so the menu
- * doubles as the discoverable reference for the hidden gestures it mirrors.
- */
 final class ContextMenuOverlay {
 
-    record Item(Component label, String hint, boolean enabled, Runnable action) {
+    record Item(Component label, String hint, boolean enabled, Runnable action, Icons.Icon icon) {
+        Item(Component label, String hint, boolean enabled, Runnable action) {
+            this(label, hint, enabled, action, null);
+        }
+
         static Item of(Component label, String hint, Runnable action) {
             return new Item(label, hint, true, action);
         }
@@ -42,6 +44,27 @@ final class ContextMenuOverlay {
         static Item disabled(Component label, String hint) {
             return new Item(label, hint, false, null);
         }
+
+        Item withIcon(Icons.Icon icon) {
+            return new Item(label, hint, enabled, action, icon);
+        }
+    }
+
+    private static final int ICON_COLUMN = Icons.SIZE + 4;
+
+    static String hint(String id) {
+        return Component.translatable("waypointer.screen.menu.hint." + id).getString();
+    }
+
+    static List<Item> withIcons(List<Item> items, Map<String, Icons.Icon> icons) {
+        List<Item> out = new ArrayList<>(items.size());
+        for (Item item : items) {
+            Icons.Icon icon = item.label().getContents()
+                    instanceof TranslatableContents translatable
+                    ? icons.get(translatable.getKey()) : null;
+            out.add(icon == null || item.icon() != null ? item : item.withIcon(icon));
+        }
+        return out;
     }
 
     private static final int MIN_W = 130;
@@ -54,6 +77,7 @@ final class ContextMenuOverlay {
     private int width;
     private int height;
     private int cursor = -1;
+    private boolean hintsHidden;
 
     boolean isOpen() {
         return open;
@@ -61,15 +85,42 @@ final class ContextMenuOverlay {
 
     void close() {
         open = false;
+        hintsHidden = false;
         items = List.of();
         cursor = -1;
     }
 
-    /** Opens beside a pointer position, flipped above when it would clip the bottom. */
     void openAt(Font font, List<Item> menuItems, double anchorX, double anchorY,
                 int minX, int minY, int maxRight, int maxBottom) {
-        openMeasured(menuItems, measureWidest(font, menuItems),
-                anchorX, anchorY, minX, minY, maxRight, maxBottom);
+        int widest = fittedWidest(font, menuItems, maxRight - minX);
+        openMeasured(menuItems, widest, anchorX, anchorY, minX, minY, maxRight, maxBottom);
+        fitWidth(minX, maxRight);
+    }
+
+    void openUnder(Font font, List<Item> menuItems, int anchorX, int anchorBottomY, int anchorWidth,
+                   int minX, int minY, int maxRight, int maxBottom) {
+        openAt(font, menuItems, anchorX, anchorBottomY, minX, minY, maxRight, maxBottom);
+        if (!open) return;
+        width = Math.min(Math.max(width, anchorWidth), maxRight - minX);
+        x = clampedX(anchorX, minX, maxRight, width);
+    }
+
+    static int naturalWidth(Font font, List<Item> menuItems) {
+        return menuWidth(measureWidest(font, menuItems, true));
+    }
+
+    private int fittedWidest(Font font, List<Item> menuItems, int room) {
+        int widest = measureWidest(font, menuItems, true);
+        boolean hide = menuWidth(widest) > room;
+        int result = hide ? measureWidest(font, menuItems, false) : widest;
+        hintsHidden = hide;
+        return result;
+    }
+
+    private void fitWidth(int minX, int maxRight) {
+        if (!open || width <= maxRight - minX) return;
+        width = Math.max(40, maxRight - minX);
+        x = minX;
     }
 
     void openMeasured(List<Item> menuItems, int widestItemWidth,
@@ -85,11 +136,11 @@ final class ContextMenuOverlay {
         open = true;
     }
 
-    /** Opens with its bottom edge sitting on {@code anchorBottomY} (footer menus). */
     void openAbove(Font font, List<Item> menuItems, int anchorX, int anchorBottomY,
                    int minX, int minY, int maxRight) {
-        openAboveMeasured(menuItems, measureWidest(font, menuItems),
-                anchorX, anchorBottomY, minX, minY, maxRight);
+        int widest = fittedWidest(font, menuItems, maxRight - minX);
+        openAboveMeasured(menuItems, widest, anchorX, anchorBottomY, minX, minY, maxRight);
+        fitWidth(minX, maxRight);
     }
 
     void openAboveMeasured(List<Item> menuItems, int widestItemWidth,
@@ -105,15 +156,20 @@ final class ContextMenuOverlay {
         open = true;
     }
 
-    private static int measureWidest(Font font, List<Item> menuItems) {
+    private static int measureWidest(Font font, List<Item> menuItems, boolean withHints) {
         int widest = 0;
         if (menuItems == null) return widest;
         for (Item item : menuItems) {
             int w = font.width(item.label());
-            if (item.hint() != null) w += GAP_SECTION + font.width(item.hint());
+            if (withHints && item.hint() != null) w += GAP_SECTION + font.width(item.hint());
             widest = Math.max(widest, w);
         }
-        return widest;
+        return widest + (hasIcons(menuItems) ? ICON_COLUMN : 0);
+    }
+
+    private static boolean hasIcons(List<Item> menuItems) {
+        for (Item item : menuItems) if (item.icon() != null) return true;
+        return false;
     }
 
     static int menuWidth(int widestItemWidth) {
@@ -128,18 +184,15 @@ final class ContextMenuOverlay {
         return (int) Math.max(minX, Math.min(anchorX, maxRight - width));
     }
 
-    /** Prefers opening below the anchor; flips above when it would clip the bottom. */
     static int openY(double anchorY, int height, int minY, int maxBottom) {
-        int below = (int) anchorY;
-        return below + height <= maxBottom
-                ? Math.max(minY, below)
-                : Math.max(minY, below - height);
+        return Math.max(minY, Math.min((int) anchorY, maxBottom - height));
     }
 
     void render(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY) {
         if (!open) return;
         GuiTokens.drawTooltipPanel(g, x, y, x + width, y + height);
         int hovered = itemIndexAt(mouseX, mouseY);
+        int labelX = x + GAP + (hasIcons(items) ? ICON_COLUMN : 0);
         for (int i = 0; i < items.size(); i++) {
             Item item = items.get(i);
             int rowY = y + 1 + i * ROW_H;
@@ -147,7 +200,6 @@ final class ContextMenuOverlay {
             boolean isHovered = i == hovered && item.enabled();
             if (isCursor) {
                 g.fill(x + 1, rowY, x + width - 1, rowY + ROW_H, SELECTED);
-                g.fill(x + 1, rowY, x + 3, rowY + ROW_H, ACCENT);
             } else if (isHovered) {
                 g.fill(x + 1, rowY, x + width - 1, rowY + ROW_H, HOVER);
             }
@@ -156,18 +208,21 @@ final class ContextMenuOverlay {
             int labelColor = !item.enabled() ? TEXT_MUTED
                     : isHovered || isCursor ? TEXT : TEXT_DIM;
             int hintX = x + width - GAP;
-            if (item.hint() != null) {
+            if (item.hint() != null && !hintsHidden) {
                 int hintW = font.width(item.hint());
                 g.text(font, item.hint(), hintX - hintW, rowY + 7, TEXT_MUTED, false);
                 hintX -= hintW + GAP;
             }
-            int labelMaxW = Math.max(12, hintX - (x + GAP));
+            if (item.icon() != null) {
+                int iconColor = !item.enabled() ? TEXT_MUTED : isHovered || isCursor ? ACCENT : TEXT_DIM;
+                Icons.draw(g, item.icon(), x + GAP, rowY + (ROW_H - Icons.SIZE) / 2, iconColor);
+            }
+            int labelMaxW = Math.max(12, hintX - labelX);
             g.text(font, font.plainSubstrByWidth(item.label().getString(), labelMaxW),
-                    x + GAP, rowY + 7, labelColor, false);
+                    labelX, rowY + 7, labelColor, false);
         }
     }
 
-    /** Consumes every click while open; outside clicks just dismiss. */
     boolean mouseClicked(double mouseX, double mouseY) {
         if (!open) return false;
         int index = itemIndexAt(mouseX, mouseY);
@@ -186,19 +241,19 @@ final class ContextMenuOverlay {
     boolean keyPressed(int keyCode) {
         if (!open) return false;
         switch (keyCode) {
-            case GLFW_KEY_ESCAPE -> {
+            case KEY_ESCAPE -> {
                 close();
                 return true;
             }
-            case GLFW_KEY_UP -> {
+            case KEY_UP -> {
                 moveCursor(-1);
                 return true;
             }
-            case GLFW_KEY_DOWN -> {
+            case KEY_DOWN -> {
                 moveCursor(1);
                 return true;
             }
-            case GLFW_KEY_ENTER, GLFW_KEY_KP_ENTER, GLFW_KEY_SPACE -> {
+            case KEY_ENTER, KEY_KP_ENTER, KEY_SPACE -> {
                 if (cursor >= 0 && cursor < items.size() && items.get(cursor).enabled()) {
                     Runnable action = items.get(cursor).action();
                     close();

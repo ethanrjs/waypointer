@@ -6,7 +6,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 
-/** Removes expired temporary waypoints and clears them between server sessions. */
 public final class TempWaypointCleaner {
 
     private static final int CHECK_INTERVAL_TICKS = 40;

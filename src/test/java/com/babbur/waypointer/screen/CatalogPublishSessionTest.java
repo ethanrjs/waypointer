@@ -7,13 +7,17 @@ import com.babbur.waypointer.catalog.CatalogPublishResult;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -28,6 +32,30 @@ class CatalogPublishSessionTest {
     Path temporaryDirectory;
 
     @Test
+    void onePublishRequestContainsEverySelectedRouteAndItsOriginalZone() {
+        PublisherIdentity named = namedIdentity("bundle", "Tester_1");
+        AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
+        CatalogPublishSession session = new CatalogPublishSession(route(), () -> named,
+                (request, identity, prepared) -> {
+                    sent.set(request);
+                    return CompletableFuture.completedFuture(completion(identity));
+                }, Runnable::run);
+        completeForm(session.form());
+        WaypointGroup garden = WaypointGroup.create("Garden", "garden");
+        garden.add(Waypoint.at(3, 70, 4));
+        session.form().addGroups(List.of(garden));
+        session.beginPublish();
+
+        assertEquals(CatalogPublishSession.Phase.SUCCEEDED, session.snapshot().phase());
+        assertEquals("multiple", sent.get().zoneId());
+        var payload = WaypointCodec.decodeCanonicalV9(sent.get().payload());
+        assertEquals(List.of("hub", "garden"), payload.groups().stream()
+                .map(WaypointGroup::zoneId).toList());
+        assertEquals("Published route", sent.get().title());
+        assertEquals("A useful route description.", sent.get().description());
+    }
+
+    @Test
     void firstPublishPausesForANameThenKeepsItsResultWithoutAView() {
         PublisherIdentityStore identityStore = new PublisherIdentityStore(
                 temporaryDirectory.resolve("anonymous/identity.json"));
@@ -36,8 +64,9 @@ class CatalogPublishSessionTest {
                 new CompletableFuture<>();
         AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
         CatalogPublishSession session = new CatalogPublishSession(
-                route(), () -> anonymous, (request, ignoredIdentity) -> {
+                route(), () -> anonymous, (request, ignoredIdentity, prepared) -> {
                     sent.set(request);
+                    assertEquals(request.payload(), prepared.payload());
                     return network;
                 }, Runnable::run);
         completeForm(session.form());
@@ -71,7 +100,7 @@ class CatalogPublishSessionTest {
         PublisherIdentity named = namedIdentity("existing", "Tester_1");
         CatalogPublishSession session = new CatalogPublishSession(
                 route(), () -> named,
-                (request, identity) -> CompletableFuture.completedFuture(
+                (request, identity, prepared) -> CompletableFuture.completedFuture(
                         completion(identity)), Runnable::run);
         completeForm(session.form());
 
@@ -92,7 +121,7 @@ class CatalogPublishSessionTest {
         PublisherIdentity named = namedIdentity("named", "Tester_1");
         AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
         CatalogPublishSession session = new CatalogPublishSession(
-                route(), () -> named, (request, identity) -> {
+                route(), () -> named, (request, identity, prepared) -> {
                     sent.set(request);
                     return CompletableFuture.completedFuture(completion(identity));
                 }, Runnable::run);
@@ -119,7 +148,7 @@ class CatalogPublishSessionTest {
         AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
         AtomicInteger publishes = new AtomicInteger();
         CatalogPublishSession session = new CatalogPublishSession(
-                route(), () -> named, (request, identity) -> {
+                route(), () -> named, (request, identity, prepared) -> {
                     sent.set(request);
                     if (publishes.incrementAndGet() == 1) {
                         return CompletableFuture.failedFuture(
@@ -136,12 +165,10 @@ class CatalogPublishSessionTest {
         CatalogPublishSession.Snapshot needsName = session.snapshot();
         assertEquals(CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME,
                 needsName.phase());
-        assertNull(needsName.failure());
+        assertNotNull(needsName.failure());
         assertTrue(needsName.attempt() > beforePublish,
                 "a new attempt lets the view reopen its name prompt");
 
-        // While a name is needed, the publish action re-notifies instead of
-        // restarting, and there is no published code to copy yet.
         session.beginPublish();
         assertEquals(CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME,
                 session.snapshot().phase());
@@ -156,19 +183,61 @@ class CatalogPublishSessionTest {
     }
 
     @Test
-    void publisherNameRequiredDetectionUnwrapsAsyncWrappers() {
+    void takenPublisherNameImmediatelyReopensPromptAndRetriesWithTheSameKeyAndDraft() {
+        PublisherIdentity named = namedIdentity("taken", "TakenName");
+        AtomicInteger publishes = new AtomicInteger();
+        AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
+        CatalogPublishSession session = new CatalogPublishSession(route(), () -> named,
+                (request, signer, prepared) -> {
+                    sent.set(request);
+                    assertEquals(named.publicKeyBase64(), signer.publicKeyBase64());
+                    if (publishes.incrementAndGet() <= 2) {
+                        return CompletableFuture.failedFuture(CatalogApiExceptions.withCode(
+                                409, "publisher_name_taken", "name taken"));
+                    }
+                    assertNull(signer.publisherName(), "retry may claim a different name with the same key");
+                    return CompletableFuture.completedFuture(completion(signer));
+                }, Runnable::run);
+        completeForm(session.form());
+        session.beginPublish();
+
+        var firstPrompt = session.snapshot();
+        assertEquals(CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME, firstPrompt.phase());
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(firstPrompt.failure()));
+        assertTrue(RoutePublishUiState.shouldPromptPublisherName(-1, firstPrompt));
+        session.confirmPublisherName("AlsoTaken");
+        assertTrue(RoutePublishUiState.shouldPromptPublisherName(
+                firstPrompt.attempt(), session.snapshot()), "another collision must reopen the modal");
+        session.confirmPublisherName("AvailableName");
+
+        assertEquals(CatalogPublishSession.Phase.SUCCEEDED, session.snapshot().phase());
+        assertNull(session.snapshot().failure(), "a successful retry clears the old rejection");
+        assertEquals("AvailableName", sent.get().publisherName());
+        assertEquals("Published route", sent.get().title());
+        assertEquals("A useful route description.", sent.get().description());
+        assertEquals(CatalogPublishRequest.Visibility.UNLISTED, sent.get().visibility());
+        assertEquals(1, session.form().groups().size());
+        assertEquals(named.publisherId(), session.snapshot().identity().publisherId());
+    }
+
+    @Test
+    void publisherNameEntryDetectionUnwrapsAsyncWrappers() {
         RuntimeException required = CatalogApiExceptions.withCode(
                 401, "publisher_name_required", "name unknown");
-        assertTrue(CatalogPublishSession.publisherNameRequired(required));
-        assertTrue(CatalogPublishSession.publisherNameRequired(
-                new java.util.concurrent.CompletionException(
-                        new java.util.concurrent.ExecutionException(required))));
-        assertFalse(CatalogPublishSession.publisherNameRequired(
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(required));
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(
+                CatalogApiExceptions.withCode(400, "invalid_publisher_name", "invalid name")));
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(
+                new CompletionException(
+                        new ExecutionException(required))));
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 CatalogApiExceptions.withCode(429, "rate_limited", "slow down")));
-        assertFalse(CatalogPublishSession.publisherNameRequired(
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
+                CatalogApiExceptions.withCode(409, "publisher_name_locked", "name permanent")));
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 new IllegalStateException("boom")));
-        assertFalse(CatalogPublishSession.publisherNameRequired(
-                new java.util.concurrent.CompletionException(
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
+                new CompletionException(
                         new IllegalStateException("boom"))));
     }
 
@@ -176,7 +245,7 @@ class CatalogPublishSessionTest {
     void loadFailureBecomesAStableTerminalState() {
         CatalogPublishSession session = new CatalogPublishSession(
                 route(), () -> { throw new IllegalStateException("identity unavailable"); },
-                (request, identity) -> {
+                (request, identity, prepared) -> {
                     throw new AssertionError("publish must not run");
                 }, Runnable::run);
         completeForm(session.form());

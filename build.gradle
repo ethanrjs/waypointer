@@ -10,13 +10,25 @@ plugins {
 }
 
 def minecraftTargets = [
-		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1.2 <26.2'],
-		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3']
+		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2', fabricApiDependency: '>=0.145.4'],
+		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3', fabricApiDependency: '>=0.152.1'],
+		'26.3'  : [fabricApi: '0.162.0+26.3',   dependency: '>=26.3 <26.4', fabricApiDependency: '>=0.162.0']
 ]
 def targetMinecraft = project.minecraft_version.toString()
 def target = minecraftTargets[targetMinecraft]
 if (target == null) {
 	throw new GradleException("Unsupported minecraft_version ${targetMinecraft}; use ${minecraftTargets.keySet().join(' or ')}")
+}
+
+def shaderPack = providers.gradleProperty('shaderPack').map { file(it) }
+def shaderTestMods = [
+		'26.1.2': [iris: '5H9TsVy4', sodium: 'vf7UgZpC'],
+		'26.2'  : [iris: 'oaD6KQls', sodium: '2Yom1N68'],
+		'26.3'  : [iris: 'vTN4NRGW', sodium: 'bAZQdGpg']
+]
+if (shaderPack.isPresent() && (!shaderPack.get().isFile()
+		|| !shaderPack.get().name.toLowerCase(Locale.ROOT).endsWith('.zip'))) {
+	throw new GradleException('-PshaderPack must name an existing shader-pack ZIP')
 }
 
 def wrapperCommand = System.getProperty('os.name').startsWith('Windows')
@@ -29,6 +41,7 @@ def allowStaleDocumentation = providers.gradleProperty('allowStaleDocumentation'
 def forwardedBuildArguments = requestedTranslationCommit.isPresent()
 		? ["-PtranslationCommit=${requestedTranslationCommit.get()}"]
 		: []
+forwardedBuildArguments += "--max-workers=${gradle.startParameter.maxWorkerCount}"
 if (allowStaleDocumentation.get()) {
 	forwardedBuildArguments += '-PallowStaleDocumentation=true'
 }
@@ -43,10 +56,32 @@ def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
 			+ ['build', '-Pminecraft_version=26.2', '--console=plain']
 			+ forwardedBuildArguments)
 }
+def buildMinecraft26_3 = tasks.register('buildMinecraft26_3', Exec) {
+	dependsOn buildMinecraft26_2
+	commandLine(wrapperCommand
+			+ ['build', '-Pminecraft_version=26.3', '--console=plain']
+			+ forwardedBuildArguments)
+}
 tasks.register('buildAllTargets') {
 	group = 'build'
 	description = 'Builds and tests every supported Minecraft target serially.'
-	dependsOn buildMinecraft26_2
+	dependsOn buildMinecraft26_3
+}
+
+def previousSmokeTask = null
+minecraftTargets.keySet().each { minecraftTarget ->
+	def prerequisite = previousSmokeTask
+	previousSmokeTask = tasks.register("smokeMinecraft${minecraftTarget.replace('.', '_')}", Exec) {
+		if (prerequisite != null) dependsOn prerequisite
+		commandLine(wrapperCommand + ['runClientGameTest', "-Pminecraft_version=${minecraftTarget}",
+				'--no-daemon', '--console=plain'] + forwardedBuildArguments
+				+ (shaderPack.isPresent() ? ["-PshaderPack=${shaderPack.get().absolutePath}"] : []))
+	}
+}
+tasks.register('smokeAllTargets') {
+	group = 'verification'
+	description = 'Launches Minecraft and loads a world on every supported target.'
+	dependsOn previousSmokeTask
 }
 
 version = project.mod_version
@@ -63,16 +98,29 @@ tasks.named('jar', Jar) {
 
 repositories {
 	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+		content { includeGroup 'maven.modrinth' }
+	}
+	maven {
 		name = 'Hypixel'
 		url = 'https://repo.hypixel.net/repository/Hypixel/'
 	}
 	mavenCentral()
 }
 
+def targetAccessWidener = file(targetMinecraft == '26.3'
+		? 'src/client-26.3/resources/waypointer.accesswidener'
+		: 'src/main/resources/waypointer.accesswidener')
+sourceSets.main.resources.exclude('waypointer.accesswidener')
+if (targetMinecraft == '26.3') {
+	sourceSets.main.resources.exclude('assets/waypointer/shaders/core/*')
+}
+
 loom {
 	splitEnvironmentSourceSets()
 
-	accessWidenerPath = file("src/main/resources/waypointer.accesswidener")
+	accessWidenerPath = targetAccessWidener
 
 	mods {
 		"waypointer" {
@@ -82,10 +130,108 @@ loom {
 	}
 }
 
-// The picture-in-picture renderer changed its constructor and render callback
-// between 26.1.2 and 26.2. Keep that small boundary in a target-specific client
-// source directory while the preview scene and geometry remain shared.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'waypointer-smoke'
+		enableGameTests = false
+		enableClientGameTests = true
+		clearRunDirectory = true
+		username = 'WaypointerTest'
+	}
+}
+
+def retainLaunchLogs = tasks.register('retainLaunchLogs', Sync) {
+	from(layout.buildDirectory.dir('run/clientGameTest')) {
+		include 'logs/**', 'crash-reports/**', 'screenshots/**', 'shader-test.json'
+	}
+	into layout.buildDirectory.dir("reports/${shaderPack.isPresent() ? 'shaders' : 'launch'}/${targetMinecraft}")
+}
+tasks.named('runClientGameTest') {
+	timeout = java.time.Duration.ofMinutes(shaderPack.isPresent() ? 10 : 5)
+
+	args '--width', '1708', '--height', '960'
+	finalizedBy retainLaunchLogs
+	if (providers.gradleProperty('screenGallery').isPresent()) {
+		systemProperty 'waypointer.test.screenGallery', 'true'
+	}
+	if (providers.gradleProperty('perfProbe').isPresent()) {
+		def probeSource = file(providers.gradleProperty('perfProbe').get())
+		def reports = layout.buildDirectory.dir('reports/perf').get().asFile
+		systemProperty 'waypointer.test.perfProbe', reports.absolutePath
+		systemProperty 'waypointer.test.singleplayerZone', 'crystal_hollows'
+		jvmArgs "-XX:StartFlightRecording=filename=${new File(reports, 'waypointer.jfr').absolutePath},settings=profile,jdk.ExecutionSample#period=1ms,dumponexit=true"
+		doFirst {
+			reports.mkdirs()
+			def config = new File(layout.buildDirectory.dir('run/clientGameTest').get().asFile, 'config/waypointer')
+			config.mkdirs()
+			['waypoints.json', 'config.json', 'dungeon_rooms.json'].each { name ->
+				def from = new File(probeSource, name)
+				if (from.isFile()) Files.copy(from.toPath(), new File(config, name).toPath(),
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			}
+		}
+	}
+	if (shaderPack.isPresent()) {
+		systemProperty 'waypointer.test.shaders', 'true'
+		doFirst {
+			def runDir = layout.buildDirectory.dir('run/clientGameTest').get().asFile
+			def packs = new File(runDir, 'shaderpacks')
+			packs.mkdirs()
+
+			def staged = new File(packs, 'waypointer-test.zip')
+			Files.copy(shaderPack.get().toPath(), staged.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			def irisConfig = new File(runDir, 'config/iris.properties')
+			irisConfig.parentFile.mkdirs()
+			irisConfig.setText('enableShaders=true\nshaderPack=waypointer-test.zip\n', 'UTF-8')
+			new File(runDir, 'shader-test.json').setText(JsonOutput.prettyPrint(JsonOutput.toJson([
+					minecraft: targetMinecraft, iris: shaderTestMods[targetMinecraft].iris,
+					sodium: shaderTestMods[targetMinecraft].sodium, shaderPack: shaderPack.get().name,
+					sha256: MessageDigest.getInstance('SHA-256').digest(staged.bytes).encodeHex().toString()
+			])) + '\n', 'UTF-8')
+		}
+		doLast {
+			def log = layout.buildDirectory.file('run/clientGameTest/logs/latest.log').get().asFile
+			if (!log.isFile()) throw new GradleException('Shader smoke test did not produce a client log')
+			def failures = log.readLines('UTF-8').findAll {
+				it =~ /(?i)(Could not (allocate|prepare|render|submit).*(preview|inspector)|Waypointer GPU overlay failed|Iris rejected pipeline|Failed to (compile|link).*shader|Shader compilation failed|Failed to create shader rendering pipeline)/
+			}
+			if (!failures.isEmpty()) throw new GradleException('Shader rendering errors:\n' + failures.join('\n'))
+		}
+	}
+}
+
+def renderPearlImports = [
+	'com.mojang.blaze3d.pipeline.': 'com.mojang.renderpearl.api.pipeline.',
+	'com.mojang.blaze3d.buffers.Gpu': 'com.mojang.renderpearl.api.buffers.Gpu',
+	'com.mojang.blaze3d.textures.': 'com.mojang.renderpearl.api.textures.',
+	'com.mojang.blaze3d.systems.CommandEncoder': 'com.mojang.renderpearl.api.commands.CommandEncoder',
+	'com.mojang.blaze3d.systems.RenderPass': 'com.mojang.renderpearl.api.commands.RenderPass',
+	'com.mojang.blaze3d.platform.CompareOp': 'com.mojang.renderpearl.api.pipeline.CompareOp'
+]
+if (targetMinecraft == '26.3') {
+	['client', 'test', 'gametest'].each { sourceSetName ->
+		def original = file("src/${sourceSetName}/java")
+		def generated = layout.buildDirectory.dir("generated/26.3/${sourceSetName}")
+		def prepare = tasks.register("prepare${sourceSetName.capitalize()}RenderPearlImports", Sync) {
+			from original
+			into generated
+			inputs.property('relocatedImports', renderPearlImports)
+			filter { String line ->
+				if (line.startsWith('import ') && !line.contains('pipeline.RenderTarget;')) {
+					renderPearlImports.each { before, after -> line = line.replace(before, after) }
+				}
+				line
+			}
+		}
+		sourceSets.named(sourceSetName) { java.setSrcDirs([prepare]) }
+	}
+} else {
+	sourceSets.client.java.srcDir('src/client-legacy/java')
+}
 sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
+sourceSets.test.java.srcDir(targetMinecraft == '26.3' ? 'src/test-26.3/java' : 'src/test-legacy/java')
+sourceSets.gametest.java.srcDir(targetMinecraft == '26.3' ? 'src/gametest-26.3/java' : 'src/gametest-legacy/java')
 
 def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')
 def generatedRemoteLocaleResources = layout.buildDirectory.dir('generated/remote-locale-resources')
@@ -166,6 +312,11 @@ dependencies {
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${target.fabricApi}"
 	implementation "net.hypixel:mod-api:${project.hypixel_mod_api_version}"
+	gametestRuntimeOnly 'maven.modrinth:1A2mKfBx:SlqCF6Or'
+	if (shaderPack.isPresent()) {
+		gametestRuntimeOnly "maven.modrinth:iris:${shaderTestMods[targetMinecraft].iris}"
+		gametestRuntimeOnly "maven.modrinth:sodium:${shaderTestMods[targetMinecraft].sodium}"
+	}
 
 	include implementation('org.brotli:dec:0.1.2')
 
@@ -174,24 +325,101 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+def optInTestProperties = ['coleweight.file', 'v10.corpus', 'v10.regen']
+tasks.withType(Test).configureEach {
+
+	optInTestProperties.each { prop ->
+		def value = providers.gradleProperty(prop)
+		if (System.getProperty(prop) != null) systemProperty prop, System.getProperty(prop)
+		else if (value.isPresent()) systemProperty prop, value.get()
+	}
+}
+
 test {
 	useJUnitPlatform()
-	// Let developers feed local fixture paths through to tests that opt in via
-	// @EnabledIfSystemProperty, without inheriting the whole Gradle JVM env.
-	['coleweight.file'].each { prop ->
-		if (System.getProperty(prop)) systemProperty prop, System.getProperty(prop)
-	}
 	finalizedBy tasks.named('jacocoTestReport')
 }
 
+tasks.register('validateV10Corpus', Test) {
+	group = 'verification'
+	description = 'Validates V10 semantic round trips against an external corpus.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching 'com.babbur.waypointer.codec.V10ExternalCorpusRoundTripTest'
+	}
+	testLogging.showStandardStreams = true
+	doFirst {
+		def corpus = System.getProperty('v10.corpus')
+		if (corpus == null) corpus = providers.gradleProperty('v10.corpus').orElse('').get()
+		if (corpus.trim().isEmpty()) {
+			throw new GradleException(
+					'validateV10Corpus requires -Pv10.corpus=<path-to-normalized.jsonl>')
+		}
+	}
+}
+
+tasks.register('buildFlameOfWarPack', Test) {
+	group = 'dungeons'
+	description = 'Builds the FlameOfWar room pack from SecretRoutes fowroutes.json and Skyblocker room secrets.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching 'com.babbur.waypointer.dungeon.data.FlameOfWarPackTest.writePack'
+	}
+	outputs.upToDateWhen { false }
+	testLogging.showStandardStreams = true
+	['fow.routes', 'fow.secrets', 'fow.out', 'fow.snap'].each { name ->
+		def value = providers.gradleProperty(name).orElse('').get()
+		if (!value.isEmpty()) systemProperty name, value
+	}
+	doFirst {
+		if (!providers.gradleProperty('fow.routes').isPresent() || !providers.gradleProperty('fow.secrets').isPresent()
+				|| !providers.gradleProperty('fow.out').isPresent()) {
+			throw new GradleException('buildFlameOfWarPack requires -Pfow.routes=<fowroutes.json> '
+					+ '-Pfow.secrets=<Skyblocker dungeons/catacombs folder> -Pfow.out=<output folder>')
+		}
+	}
+}
+
+tasks.register('benchmarkShares', Test) {
+	group = 'verification'
+	description = 'Prints share sizes for v10 and v11 on a route corpus and the FlameOfWar rooms.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching 'com.babbur.waypointer.codec.ShareSizeBenchmarkTest'
+		includeTestsMatching 'com.babbur.waypointer.codec.ShareTuningTest'
+	}
+	outputs.upToDateWhen { false }
+	testLogging.showStandardStreams = true
+	maxHeapSize = '2g'
+	['share.corpus', 'share.dungeons', 'share.tune', 'share.cv', 'share.train'].each { name ->
+		def value = providers.gradleProperty(name).orElse('').get()
+		if (!value.isEmpty()) systemProperty name, value
+	}
+}
+
 processResources {
+	from(targetAccessWidener)
+	if (targetMinecraft == '26.3') {
+		from('src/client-26.3/resources') { exclude('waypointer.accesswidener') }
+	}
 	dependsOn generateRemoteLocaleManifest
 	inputs.property "version", project.version
 	inputs.property "minecraft_dependency", target.dependency
+	inputs.property "fabric_api_dependency", target.fabricApiDependency
 
 	filesMatching("fabric.mod.json") {
 		expand "version": inputs.properties.version,
-				"minecraft_dependency": inputs.properties.minecraft_dependency
+				"minecraft_dependency": inputs.properties.minecraft_dependency,
+				"fabric_api_dependency": inputs.properties.fabric_api_dependency
 	}
 }
 
@@ -201,24 +429,19 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.register('verifyDocumentationVersion') {
-	inputs.file('README.md')
 	inputs.file('API.md')
 	inputs.property('modVersion', project.mod_version)
 	onlyIf { !allowStaleDocumentation.get() }
 
 	doLast {
 		def expectedVersion = project.mod_version.toString()
-		def readme = file('README.md').getText('UTF-8')
 		def api = file('API.md').getText('UTF-8')
 		def expectedApiSnippets = [
 				"# Waypointer API ${expectedVersion}",
 				"maven.modrinth:waypointer:${expectedVersion}",
-				"libs/waypointer-${expectedVersion}-mc26.1.2.jar"
+				"libs/waypointer-${expectedVersion}-mc26.3.jar"
 		]
 
-		if (!readme.contains("`${expectedVersion}`.")) {
-			throw new GradleException("README.md does not identify Waypointer ${expectedVersion} as the current version")
-		}
 		expectedApiSnippets.each { snippet ->
 			if (!api.contains(snippet)) {
 				throw new GradleException("API.md is missing current-version text: ${snippet}")
@@ -236,9 +459,24 @@ jacocoTestReport {
 	}
 }
 
+def gpuOnlyClasses = [
+		'com/babbur/waypointer/render/gpu/OverlayRenderer*',
+		'com/babbur/waypointer/render/gpu/OverlayPass*',
+		'com/babbur/waypointer/render/gpu/GpuMesh*',
+		'com/babbur/waypointer/render/gpu/DepthSnapshot*',
+		'com/babbur/waypointer/render/gpu/IrisBridge*',
+		'com/babbur/waypointer/render/gpu/RenderPassTextureBinder*',
+		'com/babbur/waypointer/render/gpu/*Compat*'
+]
+
 jacocoTestCoverageVerification {
 	dependsOn tasks.named('test')
 	sourceSets sourceSets.main, sourceSets.client
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: gpuOnlyClasses)
+		}))
+	}
 	violationRules {
 		rule {
 			limit {
@@ -272,6 +510,10 @@ java {
 }
 
 tasks.named('sourcesJar', Jar) {
+	from(targetAccessWidener)
+	if (targetMinecraft == '26.3') {
+		from('src/client-26.3/resources') { exclude('waypointer.accesswidener') }
+	}
 	archiveFileName = "${releaseArchiveBase}-sources.jar"
 }
 

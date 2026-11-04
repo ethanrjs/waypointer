@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
 import org.junit.jupiter.api.Test;
 
@@ -158,7 +159,7 @@ class GroupEditScreenTest {
                         | Waypoint.FLAG_SKIP_ON_INTERACT
                         | Waypoint.FLAG_DEPTH_CHECKED);
 
-        assertEquals("Tiny · Filled · Interact · LOS",
+        assertEquals("Tiny \u00b7 Filled \u00b7 Interact \u00b7 LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, true, true));
         assertEquals("LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, false, false));
@@ -168,8 +169,17 @@ class GroupEditScreenTest {
                 Waypoint.FLAG_DUNGEON_SECRET
                         | Waypoint.FLAG_DUNGEON_ITEM
                         | Waypoint.FLAG_SKIP_ON_STAND);
-        assertEquals("Secret · Item · Stand",
+        assertEquals("Secret \u00b7 Item \u00b7 Stand",
                 GroupEditPolicy.waypointControlSummary(dungeonItem, false, true));
+    }
+
+    @Test
+    void summarySeparatorIsAMiddleDotAndMarksAWaypointWithItsOwnLook() {
+        Waypoint styled = Waypoint.at(0, 70, 0).withFlags(Waypoint.FLAG_DEPTH_CHECKED)
+                .withStyleOverride(WaypointStyle.EMPTY.with("labelScale", 2.0));
+        String summary = GroupEditPolicy.waypointControlSummary(styled, false, false);
+        assertEquals("LOS \u00b7 \u25c6 Own look", summary);
+        assertFalse(summary.contains("\u00c2"), "the separator must not be double-encoded (#153)");
     }
 
     @Test
@@ -233,14 +243,6 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void swatchGestureTooltipTextExplainsColorActions() {
-        assertEquals("Click to edit waypoint color",
-                GroupEditPolicy.swatchGestureTooltipText(false));
-        assertEquals("Shift-click unlocks locked color",
-                GroupEditPolicy.swatchGestureTooltipText(true));
-    }
-
-    @Test
     void waypointRowVisualStateKeepsHeldSubwaypointParentAndChildrenActive() {
         WaypointGroup group = routeWithSubwaypoints();
         group.advancePast(0);
@@ -286,20 +288,26 @@ class GroupEditScreenTest {
 
     @Test
     void dungeonRouteInfoExplainsTriggerAndRadiusSkipBehaviors() {
-        assertEquals(7, GroupEditPolicy.routeInfoLabels(false).size());
-        assertEquals(13, GroupEditPolicy.routeInfoLabels(true).size());
+        assertEquals(11, GroupEditPolicy.routeInfoLabels(false).size());
+        assertTrue(GroupEditPolicy.routeInfoLabels(false).containsAll(
+                List.of("{distance}", "{index}", "{total}", "{route}")));
+        assertEquals(17, GroupEditPolicy.routeInfoLabels(true).size());
         assertTrue(GroupEditPolicy.routeInfoLabels(true).containsAll(
-                java.util.List.of("Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
-        assertEquals(java.util.List.of(
+                List.of("Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
+        assertEquals(List.of(
                 "Select a waypoint row",
                 "Rename that waypoint",
                 "Open the waypoint menu",
                 "Enable or disable the waypoint",
                 "Move in world",
                 "Toggle subwaypoint",
-                "Edit color; Shift-click unlocks"
+                "Edit color; Shift-click unlocks",
+                "Name: distance to waypoint",
+                "Name: waypoint number",
+                "Name: total main waypoints",
+                "Name: route name"
         ), GroupEditPolicy.routeInfoDescriptions(false));
-        assertTrue(GroupEditPolicy.routeInfoDescriptions(true).containsAll(java.util.List.of(
+        assertTrue(GroupEditPolicy.routeInfoDescriptions(true).containsAll(List.of(
                 "Skip when near",
                 "Skip when standing for 0.5 seconds",
                 "Right-click to skip",
@@ -355,31 +363,36 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void waypointControlActionsMatchTheSevenIconAtlasCells() {
-        assertEquals(0, GroupEditScreen.subwaypointStyleIconIndex(
+    void waypointControlActionsHaveTheirOwnIcons() {
+        assertEquals(Icons.Icon.SUB_SMALL, GroupEditScreen.subwaypointStyleIcon(
                 GroupEditPolicy.SUBWAY_STYLE_ACTION_SMALL));
-        assertEquals(1, GroupEditScreen.subwaypointStyleIconIndex(
+        assertEquals(Icons.Icon.SUB_FILLED, GroupEditScreen.subwaypointStyleIcon(
                 GroupEditPolicy.SUBWAY_STYLE_ACTION_FILLED));
-        assertEquals(2, GroupEditScreen.subwaypointStyleIconIndex(
+        assertEquals(Icons.Icon.SUB_HIDE_AFTER_PARENT, GroupEditScreen.subwaypointStyleIcon(
                 GroupEditPolicy.SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT));
-        assertEquals(3, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.SKIP_STAND, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_STAND_SKIP));
-        assertEquals(4, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.SKIP_INTERACT, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_INTERACT_SKIP));
-        assertEquals(5, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.SKIP_MINE, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_MINE_SKIP));
-        assertEquals(6, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.DEPTH_CHECK, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_DEPTH_CHECK));
     }
 
     @Test
-    void waypointControlButtonsUseOneConsistentPitch() {
-        int rightmostX = GroupEditScreen.waypointControlButtonX(500, 0);
-        for (int indexFromRight = 1; indexFromRight < 7; indexFromRight++) {
-            assertEquals(24, GroupEditScreen.waypointControlButtonX(500, indexFromRight - 1)
-                    - GroupEditScreen.waypointControlButtonX(500, indexFromRight));
+    void waypointControlButtonsFitWithoutOverlapAndKeepTheirOrder() {
+        int rowLeft = 16;
+        for (int rowRight : new int[]{300, 500}) {
+            int nextButtonLeft = rowRight;
+            for (int indexFromRight = 0; indexFromRight < 7; indexFromRight++) {
+                int buttonLeft = GroupEditScreen.waypointControlButtonX(rowRight, indexFromRight);
+                assertTrue(buttonLeft >= rowLeft, "controls must stay inside the row");
+                assertTrue(buttonLeft + GuiTokens.BTN_H < nextButtonLeft,
+                        "each button needs a full hit target and separation from its neighbor");
+                nextButtonLeft = buttonLeft;
+            }
         }
-        assertEquals(472, rightmostX, "the right edge keeps its existing 8px row inset");
     }
 
     @Test
@@ -467,6 +480,33 @@ class GroupEditScreenTest {
         assertEquals(1, GroupEditPolicy.moveWaypointSelection(group, movedTo, 1),
                 "a blocked move must keep the selected row unchanged");
         assertEquals(-1, GroupEditPolicy.moveWaypointSelection(group, -1, 1));
+    }
+
+    @Test
+    void waypointDragPreservesBlocksAndRejectsReparenting() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        for (int i = 0; i < 5; i++) group.add(Waypoint.at(i, 70, 0));
+        group.toggleSubwaypoint(1);
+        group.toggleSubwaypoint(2);
+        Waypoint parent = group.get(0);
+        Waypoint firstChild = group.get(1);
+        Waypoint secondChild = group.get(2);
+        assertEquals(-1, GroupEditPolicy.waypointDropSlot(group, 1, 0));
+        assertEquals(-1, GroupEditPolicy.waypointDropSlot(group, 1, 4));
+        assertEquals(2, GroupEditPolicy.dropWaypointSelection(group, 1, 3));
+        assertSame(firstChild, group.get(2));
+        assertSame(secondChild, group.get(1));
+        assertEquals(2, GroupEditPolicy.dropWaypointSelection(group, 0, 5));
+        assertSame(parent, group.get(2));
+        assertSame(secondChild, group.get(3));
+        assertSame(firstChild, group.get(4));
+        assertEquals(2, GroupEditPolicy.dropWaypointSelection(group, 2, 4));
+        assertEquals(0, GroupEditPolicy.dropWaypointSelection(group, 2, 0));
+        assertSame(parent, group.get(0));
+        assertEquals(0, GroupEditPolicy.waypointDropSlot(group, 4, 1));
+        assertEquals(3, GroupEditPolicy.waypointDropSlot(group, 4, 2));
+        assertEquals(0, GroupEditPolicy.dropWaypointSelection(group, 0, -1));
     }
 
     @Test

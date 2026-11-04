@@ -1,5 +1,6 @@
 package com.babbur.waypointer.chat;
 
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -15,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** Replaces share codes in chat with clickable import text. */
 public final class ChatImportDetector {
 
     private static final ChatFormatting PILL_COLOR = ChatFormatting.AQUA;
@@ -35,6 +35,11 @@ public final class ChatImportDetector {
 
     private Component onMessage(Component msg, boolean overlay) {
         if (overlay) return msg;
+        return decorate(msg);
+    }
+
+    public Component decorate(Component msg) {
+        if (msg == null) return Component.empty();
         if (!config.chatCodecDetection()) return msg;
 
         String text = msg.getString();
@@ -56,7 +61,6 @@ public final class ChatImportDetector {
         return runs;
     }
 
-    /** Preserves the original styling outside each matched share code. */
     private MutableComponent spliceMatches(List<StyledRun> runs, List<CodecScanner.Match> matches) {
         MutableComponent out = Component.empty();
         int flatPos = 0;
@@ -96,7 +100,7 @@ public final class ChatImportDetector {
         }
 
         String handle = cache.put(match.text());
-        String command = "/waypointer importchat " + handle;
+        String command = importCommand(match.type(), handle);
 
         Style notUnderlined = Style.EMPTY.withUnderlined(false);
 
@@ -105,7 +109,7 @@ public final class ChatImportDetector {
                         .withStyle(notUnderlined.withColor(ChatFormatting.DARK_AQUA)))
                 .append(Component.literal("\u25C6 ")
                         .withStyle(notUnderlined.withColor(ACCENT)))
-                .append(Component.translatable("waypointer.chat.import.click")
+                .append(Component.translatable(clickTranslationKey(match.type()))
                         .withStyle(Style.EMPTY.withColor(PILL_COLOR).withUnderlined(true)))
                 .append(Component.literal("]")
                         .withStyle(notUnderlined.withColor(ChatFormatting.DARK_AQUA)));
@@ -114,6 +118,24 @@ public final class ChatImportDetector {
                 .withClickEvent(new ClickEvent.RunCommand(command))
                 .withHoverEvent(new HoverEvent.ShowText(hoverText(match)));
         return pill.withStyle(interactive);
+    }
+
+    private static String importCommand(UniversalShareCodec.Type type, String handle) {
+        return switch (type) {
+            case WAYPOINTS -> "/waypointer importchat " + handle;
+            case CONFIG -> "/waypointer importchat config " + handle;
+            case DUNGEON -> "/waypointer importchat dungeon " + handle;
+            case CATALOG -> "/waypointer importchat catalog " + handle;
+        };
+    }
+
+    private static String clickTranslationKey(UniversalShareCodec.Type type) {
+        return switch (type) {
+            case WAYPOINTS -> "waypointer.chat.import.click";
+            case CONFIG -> "waypointer.chat.import.click.config";
+            case DUNGEON -> "waypointer.chat.import.click.dungeon";
+            case CATALOG -> "waypointer.chat.import.click.catalog";
+        };
     }
 
     private static MutableComponent buildInvalidPill(CodecScanner.Match match) {
@@ -141,11 +163,18 @@ public final class ChatImportDetector {
 
     private static Component hoverText(CodecScanner.Match match) {
         MutableComponent c = Component.empty();
-        c.append(Component.translatable("waypointer.chat.import.route")
+        UniversalShareCodec.Type type = match.type();
+        c.append(Component.translatable(switch (type) {
+                    case WAYPOINTS -> "waypointer.chat.import.route";
+                    case CONFIG -> "waypointer.chat.import.config";
+                    case DUNGEON -> "waypointer.chat.import.dungeon";
+                    case CATALOG -> "waypointer.chat.import.catalog";
+                })
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
 
-        // Decode only the label here; the full route is decoded after the click.
-        String label = peekLabelSafely(match.text());
+        String label = type == UniversalShareCodec.Type.WAYPOINTS
+                ? peekLabelSafely(match.text())
+                : "";
         if (!label.isEmpty()) {
             c.append(Component.literal("\n"));
             c.append(Component.literal("\u201C").withStyle(ChatFormatting.GRAY));
@@ -157,7 +186,12 @@ public final class ChatImportDetector {
         c.append(Component.translatable("waypointer.chat.import.size", match.length())
                 .withStyle(ChatFormatting.GRAY));
         c.append(Component.literal("\n\n"));
-        c.append(Component.translatable("waypointer.chat.import.hover")
+        c.append(Component.translatable(switch (type) {
+                    case WAYPOINTS -> "waypointer.chat.import.hover";
+                    case CONFIG -> "waypointer.chat.import.hover.config";
+                    case DUNGEON -> "waypointer.chat.import.hover.dungeon";
+                    case CATALOG -> "waypointer.chat.import.hover.catalog";
+                })
                 .withStyle(ChatFormatting.YELLOW));
         return c;
     }

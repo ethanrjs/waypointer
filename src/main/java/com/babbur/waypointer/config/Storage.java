@@ -8,8 +8,10 @@ import com.google.gson.JsonObject;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.RoutePack;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
@@ -17,10 +19,14 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -28,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 public final class Storage {
 
@@ -42,7 +49,7 @@ public final class Storage {
     private AsyncSaver saver;
     private ActiveGroupManager managerRef;
     private volatile String pendingSnapshotJson;
-    /** Defers snapshot creation so a burst of changes is serialized once per client tick. */
+
     private boolean snapshotStale;
     private int snapshotCount;
     private volatile int writeCount;
@@ -72,7 +79,7 @@ public final class Storage {
                 size = Files.size(file);
                 modifiedAtMillis = Files.getLastModifiedTime(file).toMillis();
             } catch (IOException ignored) {
-                // A concurrent file replacement can make metadata unavailable.
+
             }
         }
         return new DebugSnapshot(file.getFileName().toString(), exists, size, modifiedAtMillis,
@@ -106,7 +113,6 @@ public final class Storage {
             quarantineInvalidFile(e);
             return;
         }
-
         writesBlocked = false;
         pendingCanonicalRewriteGroups = parsedGroups.canonicalizedZoneCount();
         pendingSchemaRewrite = parsedGroups.requiresRewrite();
@@ -144,10 +150,6 @@ public final class Storage {
         if (saver != null) saver.flush();
     }
 
-    /**
-     * Creates a snapshot on the manager's client thread and schedules its write.
-     * Call this once per client tick.
-     */
     public void pumpPendingSnapshot() {
         if (!snapshotStale) return;
         ActiveGroupManager manager = managerRef;
@@ -171,7 +173,7 @@ public final class Storage {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, json);
+            writeDurably(tmp, json);
             try {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException e) {
@@ -180,6 +182,16 @@ public final class Storage {
             writeCount++;
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to save waypoints to " + file, e);
+        }
+    }
+
+    static void writeDurably(Path target, String json) throws IOException {
+        try (FileChannel channel = FileChannel.open(target,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE)) {
+            ByteBuffer bytes = StandardCharsets.UTF_8.encode(json);
+            while (bytes.hasRemaining()) channel.write(bytes);
+            channel.force(true);
         }
     }
 
@@ -215,6 +227,7 @@ public final class Storage {
         root.add("groups", groups);
         JsonArray folders = new JsonArray();
         for (RouteFolder folder : manager.folders()) {
+            if (folder.runtimeOnly()) continue;
             JsonObject encoded = new JsonObject();
             encoded.addProperty("id", folder.id());
             encoded.addProperty("name", folder.name());
@@ -223,7 +236,7 @@ public final class Storage {
             encoded.addProperty("color", folder.color());
             JsonArray groupIds = new JsonArray();
             for (String groupId : manager.groupIdsInFolder(folder.id())) {
-                groupIds.add(groupId);
+                if (persistableFolderMember(manager.get(groupId), folder)) groupIds.add(groupId);
             }
             encoded.add("groupIds", groupIds);
             folders.add(encoded);
@@ -343,9 +356,7 @@ public final class Storage {
                 if (group == null) {
                     throw new IllegalArgumentException("route folder references missing group " + groupId);
                 }
-                if (group.temp() || group.runtimeOnly()
-                        || group.routeKind() != WaypointGroup.RouteKind.REGULAR
-                        || !folder.zoneId().equals(group.zoneId())) {
+                if (!persistableFolderMember(group, folder)) {
                     throw new IllegalArgumentException("invalid route folder member " + groupId);
                 }
                 if (memberships.putIfAbsent(groupId, folder.id()) != null) {
@@ -356,6 +367,12 @@ public final class Storage {
         }
         return new ParsedGroups(List.copyOf(groups), List.copyOf(folders),
                 Map.copyOf(memberships), canonicalizedZoneCount, canonicalizedZoneCount > 0);
+    }
+
+    private static boolean persistableFolderMember(WaypointGroup group, RouteFolder folder) {
+        return group != null && !group.temp() && !group.runtimeOnly()
+                && group.routeKind() == WaypointGroup.RouteKind.REGULAR
+                && folder.zoneId().equals(group.zoneId());
     }
 
     private static int folderColorFromJson(JsonObject encoded) {
@@ -371,7 +388,32 @@ public final class Storage {
         }
     }
 
+    public static JsonObject routeToShareJson(WaypointGroup g) {
+        JsonObject o = groupToJson(g, true);
+        o.remove("id");
+        o.remove("currentIndex");
+        o.remove("enabled");
+        o.remove("catalogSource");
+        o.remove("routePack");
+        o.remove("radiusSource");
+        return o;
+    }
+
+    public static WaypointGroup routeFromShareJson(JsonObject o) {
+        JsonObject copy = o.deepCopy();
+        copy.remove("id");
+        copy.remove("currentIndex");
+        copy.remove("enabled");
+        copy.remove("catalogSource");
+        copy.remove("routePack");
+        return groupFromJson(copy);
+    }
+
         static JsonObject groupToJson(WaypointGroup g) {
+        return groupToJson(g, false);
+    }
+
+    static JsonObject groupToJson(WaypointGroup g, boolean withTemporary) {
         JsonObject o = new JsonObject();
         o.addProperty("id", g.id());
         o.addProperty("name", g.name());
@@ -382,13 +424,25 @@ public final class Storage {
         o.addProperty("loadMode", g.loadMode().name());
         o.addProperty("routeKind", g.routeKind().name());
         o.addProperty("defaultRadius", g.defaultRadius());
+        if (g.radiusSource() != WaypointGroup.RadiusSource.UNKNOWN) {
+            o.addProperty("radiusSource", g.radiusSource().name());
+        }
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
         o.addProperty("staticColor", g.staticColor());
         o.addProperty("gradientStartColor", g.gradientStartColor());
         o.addProperty("gradientEndColor",   g.gradientEndColor());
         o.addProperty("paintEnabled", g.paintEnabled());
+        if (!g.icon().isEmpty()) o.addProperty("icon", g.icon());
+        if (!g.stylePresetId().isEmpty()) o.addProperty("stylePresetId", g.stylePresetId());
+        if (!g.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(g.styleOverride()));
         if (g.catalogProvenance() != null) {
             o.add("catalogSource", catalogProvenanceToJson(g.catalogProvenance()));
+        }
+        if (g.routePack() != null) {
+            JsonObject pack = new JsonObject();
+            pack.addProperty("id", g.routePack().id());
+            pack.addProperty("name", g.routePack().name());
+            o.add("routePack", pack);
         }
         if (g.paint() != null) o.add("paint", paintToJson(g.paint()));
         JsonArray wps = new JsonArray();
@@ -397,7 +451,7 @@ public final class Storage {
         boolean hasHiddenManualColors = false;
         for (int i = 0; i < g.size(); i++) {
             Waypoint w = g.get(i);
-            if (w.isTemp()) continue;
+            if (w.isTemp() && !withTemporary) continue;
             wps.add(waypointToJson(w));
             int manualColor = manualColorSnapshot.get(i);
             manualColors.add(manualColor);
@@ -409,23 +463,38 @@ public final class Storage {
     }
 
         static WaypointGroup groupFromJson(JsonObject o) {
-        String id = o.has("id") ? o.get("id").getAsString() : java.util.UUID.randomUUID().toString();
+        String id = o.has("id") ? o.get("id").getAsString() : UUID.randomUUID().toString();
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
+        if (o.has("icon") && o.get("icon").isJsonPrimitive()) g.setIcon(o.get("icon").getAsString());
+        if (o.has("stylePresetId") && o.get("stylePresetId").isJsonPrimitive())
+            g.setStylePresetId(o.get("stylePresetId").getAsString());
+        g.setStyleOverride(styleFromJson(o.get("styleOverride")));
         if (o.has("catalogSource") && !o.get("catalogSource").isJsonNull()) {
             try {
                 g.setCatalogProvenance(catalogProvenanceFromJson(
                         o.getAsJsonObject("catalogSource")));
             } catch (RuntimeException invalidProvenance) {
-                // Bad optional provenance must not make a route unreadable.
+
                 Waypointer.LOGGER.warn(
                         "Ignoring invalid catalog provenance for group {}", id,
                         invalidProvenance);
             }
         }
+        if (o.has("routePack") && o.get("routePack").isJsonObject()) {
+            try {
+                JsonObject pack = o.getAsJsonObject("routePack");
+                g.setRoutePack(new RoutePack(pack.get("id").getAsString(),
+                        pack.has("name") ? pack.get("name").getAsString() : ""));
+            } catch (RuntimeException invalidPack) {
+                Waypointer.LOGGER.warn("Ignoring invalid route pack for group {}", id, invalidPack);
+            }
+        }
         if (o.has("enabled"))       g.setEnabled(o.get("enabled").getAsBoolean());
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
+        if (o.has("radiusSource") && o.get("radiusSource").isJsonPrimitive()) parseEnum(WaypointGroup.RadiusSource.class,
+                o.get("radiusSource").getAsString()).ifPresent(g::setRadiusSource);
         if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
         if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,
                 o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);
@@ -438,7 +507,7 @@ public final class Storage {
             g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         }
         if (o.has("skipAheadEnabled")) g.setSkipAheadEnabled(o.get("skipAheadEnabled").getAsBoolean());
-        // These fields are optional for files written before gradient endpoints existed.
+
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
         if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
         if (o.has("paintEnabled")) g.setPaintEnabled(o.get("paintEnabled").getAsBoolean());
@@ -446,7 +515,7 @@ public final class Storage {
             try {
                 g.setPaint(paintFromJson(o.getAsJsonObject("paint")));
             } catch (RuntimeException invalidPaint) {
-                // Invalid optional paint data must not quarantine valid routes.
+
                 Waypointer.LOGGER.warn("Ignoring invalid waypoint paint for group {}", id, invalidPaint);
             }
         }
@@ -503,6 +572,7 @@ public final class Storage {
         o.addProperty("x", w.x());
         o.addProperty("y", w.y());
         o.addProperty("z", w.z());
+        if (!w.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(w.styleOverride()));
         if (w.hasName())            o.addProperty("name", w.name());
         o.addProperty("color", w.color());
         if (w.flags() != 0)          o.addProperty("flags", w.flags());
@@ -527,7 +597,24 @@ public final class Storage {
         int preciseX = o.has("preciseX") ? o.get("preciseX").getAsInt() : base.preciseX();
         int preciseY = o.has("preciseY") ? o.get("preciseY").getAsInt() : base.preciseY();
         int preciseZ = o.has("preciseZ") ? o.get("preciseZ").getAsInt() : base.preciseZ();
-        return base.withPreciseSixteenths(preciseX, preciseY, preciseZ);
+        return base.withPreciseSixteenths(preciseX, preciseY, preciseZ)
+                .withStyleOverride(styleFromJson(o.get("styleOverride")));
+    }
+
+    private static JsonObject styleToJson(WaypointStyle style) {
+        JsonObject object = new JsonObject();
+        style.values().forEach(object::addProperty);
+        return object;
+    }
+
+    private static WaypointStyle styleFromJson(JsonElement value) {
+        if (value == null || !value.isJsonObject()) return WaypointStyle.EMPTY;
+        Map<String, String> values = new LinkedHashMap<>();
+        value.getAsJsonObject().entrySet().forEach(entry -> {
+            if (entry.getValue().isJsonPrimitive())
+                values.put(entry.getKey(), entry.getValue().getAsString());
+        });
+        return WaypointStyles.normalizeKeepingUnknown(new WaypointStyle(values));
     }
 
     static JsonObject paintToJson(WaypointPaint paint) {
@@ -540,6 +627,11 @@ public final class Storage {
     }
 
     static WaypointPaint paintFromJson(JsonObject o) {
+        if (o != null && o.has("frames")) {
+            JsonArray frames = o.getAsJsonArray("frames");
+            if (frames.isEmpty()) throw new IllegalArgumentException("waypoint paint has no frames");
+            o = frames.get(0).getAsJsonObject();
+        }
         if (o == null || !o.has("palette") || !o.get("palette").isJsonArray()) {
             throw new IllegalArgumentException("waypoint paint palette is missing");
         }

@@ -18,16 +18,13 @@ public final class AsyncSaver {
     private final Runnable writer;
     private final long delayMs;
     private final String name;
+
     private final Object lock = new Object();
+
+    private final Object writeLock = new Object();
     private ScheduledFuture<?> pending;
     private boolean dirty;
 
-    /**
-     * @param name    log label so error output distinguishes config vs waypoints
-     * @param writer  the actual serialize+write body (runs on the saver thread
-     *                when debounced, on the caller thread when flushing)
-     * @param delayMs quiet window before a dirty marker triggers a write
-     */
     public AsyncSaver(String name, Runnable writer, long delayMs) {
         this.name = name;
         this.writer = writer;
@@ -42,11 +39,12 @@ public final class AsyncSaver {
         }
     }
 
-    /** Writes pending data on the calling thread. A failure remains pending. */
     public void flush() {
-        synchronized (lock) {
-            if (pending != null) { pending.cancel(false); pending = null; }
-            if (dirty) doWrite();
+        synchronized (writeLock) {
+            synchronized (lock) {
+                if (pending != null) { pending.cancel(false); pending = null; }
+            }
+            writeIfDirty();
         }
     }
 
@@ -58,19 +56,25 @@ public final class AsyncSaver {
     }
 
     private void runScheduled() {
-        synchronized (lock) {
-            pending = null;
-            if (!dirty) return;
+        synchronized (writeLock) {
             try {
-                doWrite();
+                writeIfDirty();
             } catch (RuntimeException t) {
                 Waypointer.LOGGER.error("AsyncSaver[{}] write failed", name, t);
             }
         }
     }
 
-    private void doWrite() {
-        writer.run();
-        dirty = false;
+    private void writeIfDirty() {
+        synchronized (lock) {
+            if (!dirty) return;
+            dirty = false;
+        }
+        try {
+            writer.run();
+        } catch (RuntimeException failure) {
+            synchronized (lock) { dirty = true; }
+            throw failure;
+        }
     }
 }

@@ -52,9 +52,7 @@ public final class AddTempScreen extends Screen {
         int y = panelY + 32;
 
         modeBtn = styledButton(inner, y, fieldW, BTN_H, modeLabel(),
-                this::onModeButtonPressed,
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.add_temp.mode.tooltip")));
+                this::onModeButtonPressed, modeTooltip());
         addRenderableWidget(modeBtn);
         y += BTN_H + GAP;
 
@@ -74,7 +72,7 @@ public final class AddTempScreen extends Screen {
                 70, BTN_H, Component.translatable("gui.cancel"),
                 this::onCancelButtonPressed, null));
         addRenderableWidget(styledButton(panelX + PANEL_W - PAD_OUTER - 70, footerY,
-                70, BTN_H, Component.translatable("gui.add"),
+                70, BTN_H, Component.translatable("waypointer.screen.add_temp.add"),
                 this::onAddButtonPressed, null));
     }
     private void onModeButtonPressed(Button button) {
@@ -111,11 +109,20 @@ public final class AddTempScreen extends Screen {
     private void cycleMode() {
         mode = nextTempMode(mode);
         modeBtn.setMessage(modeLabel());
+        modeBtn.setTooltip(modeTooltip());
         updateDurationVisibility();
     }
 
     private Component modeLabel() {
         return Component.translatable("waypointer.screen.add_temp.mode", tempModeComponent(mode));
+    }
+
+    private Tooltip modeTooltip() {
+        return Tooltip.create(Component.translatable(switch (Waypoint.normalizeTempMode(mode)) {
+            case Waypoint.TEMP_UNTIL_REACHED -> "waypointer.screen.add_temp.mode.tooltip.reach";
+            case Waypoint.TEMP_UNTIL_LEAVE -> "waypointer.screen.add_temp.mode.tooltip.leave";
+            default -> "waypointer.screen.add_temp.mode.tooltip.time";
+        }));
     }
 
     private static Component tempModeComponent(int mode) {

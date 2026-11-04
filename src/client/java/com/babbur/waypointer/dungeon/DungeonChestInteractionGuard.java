@@ -10,7 +10,6 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Waits for Hypixel's locked-chest response before completing a chest secret. */
 public final class DungeonChestInteractionGuard {
 
     static final int LOCK_GRACE_TICKS = 5;

@@ -3,11 +3,7 @@ package com.babbur.waypointer.codec;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.google.gson.Strictness;
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
@@ -16,10 +12,10 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 import org.brotli.dec.BrotliInputStream;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -34,35 +30,10 @@ import java.util.zip.GZIPInputStream;
 
 import static com.babbur.waypointer.util.MathUtil.clampByte;
 
-/**
- * Accepts waypoint payloads from several known-good sources and converts them into
- * Waypointer's internal model. The importer tries decoders in order until one
- * produces at least one group; if none do, we report the best error we saw.
- *
- * Supported:
- *
- *   - {@code WPL:} route-library wrappers around native routes and metadata.
- *   - Native {@code WP:} codec payloads (delegated to {@link WaypointCodec}).
- *   - Skyblocker-style: Base64(Gzip(JSON)) where JSON is an array of groups or a
- *     map of {@code {"island": [points...]}}.
- *   - Skytils style: raw JSON or base64(JSON) with either a top-level
- *     array of groups, a {@code categories} array, or a single object with a
- *     {@code waypoints} array.
- *   - Soopy's versioned V1 binary clipboard share format.
- *   - Firmament's Base64 {@code FIRM_WAYPOINTS/} absolute share format.
- *   - SkyHanni / Coleweight-style: a {@code {"waypoints": [...]}} object (or
- *     legacy flat array) where each entry carries {@code x/y/z}, float
- *     {@code r/g/b} in [0,1], and an {@code options} object holding the step
- *     number as {@code name}.
- *
- * Unknown fields are ignored. Missing fields fall back to defaults so a partially
- * malformed payload from a third-party tool still imports the coordinates cleanly.
- */
 public final class WaypointImporter {
 
-    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, FIRMAMENT, COLEWEIGHT, ODIN, JSON }
+    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, FIRMAMENT, COLEWEIGHT, ODIN, JSON, CHUNKLOGGER, SKYSOFT }
 
-    /** Skyblocker's current (V1) share-string prefix. Payload after it is base64(gzip(json)). */
     static final String SKYBLOCKER_V1_PREFIX = "[Skyblocker-Waypoint-Data-V1]";
     static final String SKYTILS_V1_PREFIX = "<Skytils-Waypoint-Data>(V1):";
     static final String SKYTILS_PREFIX = "<Skytils-Waypoint-Data>(V";
@@ -70,45 +41,17 @@ public final class WaypointImporter {
     static final String FIRMAMENT_ENCODED_PREFIX = "RklSTV9XQVlQT0lOVFMv";
     static final int SOOPY_SHARE_VERSION = 1;
     static final int MAX_TEXT_PAYLOAD_CHARS = 8 * 1024 * 1024;
-    static final int MAX_DECODED_JSON_CHARS = 8 * 1024 * 1024;
+    public static final int MAX_DECODED_JSON_CHARS = 8 * 1024 * 1024;
     static final int MAX_GROUPS_PER_IMPORT = 256;
     static final int MAX_WAYPOINTS_PER_GROUP = 20_000;
     static final int MAX_TOTAL_WAYPOINTS_PER_IMPORT = 50_000;
-    // These pre-DOM budgets admit 50,000 minimal {x,y,z} points and 20,000
-    // richer nested points. They reject broad scalar/container inputs first.
-    static final int MAX_JSON_TOKENS = 500_000;
-    static final int MAX_JSON_SCALAR_VALUES = 300_000;
-    static final int MAX_JSON_CONTAINERS = 60_000;
-    static final int MAX_JSON_STRING_CHARS = 1 * 1024 * 1024;
     private static final int MAX_NATIVE_REPAIR_CANDIDATES = 4;
     private static final int MAX_JSON_REPAIR_CANDIDATES = 16;
-    private static final int MAX_JSON_REPAIR_DEPTH = 512;
     private static final String DEFAULT_IMPORTED_ROUTE_NAME = "Imported Route";
     private static final Pattern CATALOG_ZONE_ID = Pattern.compile("[a-z0-9_]{1,64}");
 
-    /**
-     * Skyblocker's deprecated ordered-waypoints prefix. Payload is the same base64(gzip(json))
-     * shape but the inner JSON is a {@code {groupName: {name, enabled, waypoints}}} map
-     * rather than a group array. Still in the wild on older shared routes.
-     */
     static final String SKYBLOCKER_LEGACY_ORDERED_PREFIX = "[Skyblocker::OrderedWaypoints::v1]";
 
-    /**
-     * Skyblocker's island ids come from Hypixel's internal map names and don't line
-     * up with Waypointer's display-driven ids. Aliases here let imports land in the
-     * right zone without the user having to manually retarget.
-     *
-     * Any id not in this table falls through to {@link #normalizeZone}'s generic
-     * lowercase/dash handling and will either match a Waypointer zone verbatim
-     * (e.g. {@code crystal_hollows}, {@code garden}) or end up as a prettified new
-     * zone id the user can rebind.
-     *
-     * {@code "dungeon"} maps to {@link Zone#UNKNOWN} on purpose: Skyblocker's
-     * generic "dungeon" payloads omit the specific floor, and Waypointer's zones
-     * are per-floor, so the retarget step in the import command
-     * ({@code retargetUnknownGroups}) will snap the group to whichever floor the
-     * player is currently on -- the only honest inference we can make.
-     */
     private static final Map<String, String> SKYBLOCKER_ISLAND_ALIASES = Map.ofEntries(
             Map.entry("dynamic",         "private_island"),
             Map.entry("hub",             "hub"),
@@ -128,7 +71,7 @@ public final class WaypointImporter {
             Map.entry("rift",            "rift"),
             Map.entry("crystal_hollows", "crystal_hollows"),
             Map.entry("kuudra",          "kuudra"),
-            Map.entry("mineshaft",       "mineshaft"),
+            Map.entry("mineshaft",       "mineshaft_unknown"),
             Map.entry("garden",          "garden"),
             Map.entry("winter",          "winter"),
             Map.entry("crimson_isle",    "crimson_isle"),
@@ -174,6 +117,7 @@ public final class WaypointImporter {
             return importAnyCore(trimmed, fallbackRouteName);
         } catch (RuntimeException e) {
             originalFailure = normalizedImportFailure(e);
+            if (isSkysoftPayload(trimmed)) throw originalFailure;
         }
 
         IllegalArgumentException repairFailure = null;
@@ -183,6 +127,7 @@ public final class WaypointImporter {
                 return importAnyCore(candidate, fallbackRouteName);
             } catch (RuntimeException e) {
                 repairFailure = normalizedImportFailure(e);
+                if (isSkysoftPayload(candidate)) throw repairFailure;
             }
         }
 
@@ -199,7 +144,30 @@ public final class WaypointImporter {
                 : "malformed waypoint payload: " + detail, failure);
     }
 
+    private static boolean isSkysoftPayload(String text) {
+        if (text.startsWith(SkysoftWaypointImporter.PREFIX)) return true;
+        if (!looksLikeJson(text)) return false;
+        try {
+
+            return SkysoftWaypointImporter.looksLikeLibrary(parseBoundedJson(text));
+        } catch (RuntimeException malformedJson) {
+            return false;
+        }
+    }
+
     private static ImportResult importAnyCore(String trimmed, String defaultImportedRouteName) {
+        if (trimmed.startsWith(SkysoftWaypointImporter.PREFIX)) {
+            return checkedImport(SkysoftWaypointImporter.decodeShare(trimmed));
+        }
+        if (V11Codec.isPayload(trimmed)) {
+            V11Codec.Decoded decoded = V11Codec.decode(trimmed);
+            List<WaypointGroup> groups = decoded.groups();
+            if (!decoded.label().isBlank() && groups.size() == 1) {
+                groups.getFirst().setName(decoded.label());
+            }
+            return checkedImport(new ImportResult(
+                    Source.WAYPOINTER, groups, decoded.label(), decoded.metadata()));
+        }
         if (RouteLibraryCodec.isPayload(trimmed)) {
             RouteLibraryCodec.Decoded decoded = RouteLibraryCodec.decode(trimmed);
             List<WaypointGroup> groups = decoded.groups();
@@ -220,13 +188,13 @@ public final class WaypointImporter {
             if (!d.label().isBlank() && groups.size() == 1) {
                 groups.getFirst().setName(d.label());
             }
-            return checkedImport(new ImportResult(Source.WAYPOINTER, groups, d.label()));
+
+            ImportResult checked = checkedImport(new ImportResult(
+                    Source.WAYPOINTER, groups, d.label(), d.metadata()));
+            checked.libraryMetadata().applyTo(checked.groups());
+            return checked;
         }
 
-        // Skyblocker's prefixed exports must be handled before the raw-base64 path
-        // below: base64 decoding a "[Skyblocker-...]XXX" string would fail on the
-        // bracketed prefix, losing us the useful error context ("this was clearly
-        // meant as a Skyblocker payload, but the body was malformed").
         if (trimmed.startsWith(SKYBLOCKER_V1_PREFIX)) {
             return decodeSkyblockerPrefixed(
                     trimmed, SKYBLOCKER_V1_PREFIX, defaultImportedRouteName);
@@ -246,34 +214,30 @@ public final class WaypointImporter {
             return checkedImport(decodeSoopyShare(trimmed));
         }
 
-        // Prefer JSON if it looks like JSON -- saves us from trying a base64 decode that
-        // would succeed by coincidence on short JSON payloads.
         if (looksLikeJson(trimmed)) {
             return checkedImport(importJson(trimmed, defaultImportedRouteName));
         }
 
-        // Skyblocker exports (and some Skytils strings) are base64(gzip(json)).
         try {
             String decoded = decodeBase64Gzip(trimmed);
             if (looksLikeJson(decoded)) {
                 return checkedImport(importJson(decoded, defaultImportedRouteName));
             }
         } catch (Exception ignore) {
-            // Fall through to error below; preserve the original so the user sees useful feedback.
+
         }
 
-        // Skytils category exports are base64(JSON) with no gzip wrapper.
         try {
             String decoded = decodeBase64Utf8(trimmed);
             if (looksLikeJson(decoded)) {
                 return checkedImport(importJson(decoded, defaultImportedRouteName));
             }
         } catch (Exception ignore) {
-            // Fall through to error below; preserve the original so the user sees useful feedback.
+
         }
 
         throw new IllegalArgumentException(
-                "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, Soopy, Firmament, JSON)");
+                "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, Soopy, Firmament, Skysoft, JSON)");
     }
 
     static void enforceTextPayloadLimit(String text) {
@@ -314,20 +278,12 @@ public final class WaypointImporter {
                 result.label() == null ? "" : result.label(), result.libraryMetadata());
     }
 
-    /** Revalidates an already decoded import before a caller commits it to storage. */
     public static ImportResult validatePreparedImport(
             Source source, List<WaypointGroup> groups, String label) {
         if (source == null) throw new IllegalArgumentException("import source is required");
         return checkedImport(new ImportResult(source, groups, label));
     }
 
-    /**
-     * Rejects embedded zone ids that cannot cross the public catalog boundary.
-     *
-     * <p>The catalog summary and request contracts use lowercase ASCII zone ids
-     * with a 64-character limit. Call this after a strict catalog-only decode.
-     * General clipboard imports remain compatible with third-party zone names.
-     */
     public static void validateCatalogEmbeddedZones(List<WaypointGroup> groups) {
         if (groups == null) {
             throw new IllegalArgumentException("catalog route has no groups");
@@ -433,8 +389,8 @@ public final class WaypointImporter {
     }
 
     private static void addJsonRepairCandidates(List<String> candidates, String text) {
-        char[] stack = new char[MAX_JSON_REPAIR_DEPTH];
-        int[] starts = new int[MAX_JSON_REPAIR_DEPTH];
+        char[] stack = new char[BoundedJson.MAX_DEPTH];
+        int[] starts = new int[BoundedJson.MAX_DEPTH];
         int depth = 0;
         int completedCandidates = 0;
         int rootStart = -1;
@@ -541,15 +497,19 @@ public final class WaypointImporter {
                     "Skyblocker payload decoded but didn't contain JSON");
         }
         ImportResult r = prefix.equals(SKYBLOCKER_V1_PREFIX)
-                ? importSkyblockerV1Json(json)
+                ? importSkyblockerV1Json(json, defaultImportedRouteName)
                 : importJson(json, defaultImportedRouteName);
         return checkedImport(new ImportResult(Source.SKYBLOCKER, r.groups(), ""));
     }
 
-    private static ImportResult importSkyblockerV1Json(String json) {
+    private static ImportResult importSkyblockerV1Json(String json, String defaultImportedRouteName) {
         JsonElement root = parseBoundedJson(json);
         if (!root.isJsonArray()) {
             throw new IllegalArgumentException("Skyblocker V1 payload must contain a group array");
+        }
+
+        if (!looksLikeGroupArray(root.getAsJsonArray())) {
+            return importJson(json, defaultImportedRouteName);
         }
 
         List<WaypointGroup> groups = new ArrayList<>();
@@ -859,20 +819,29 @@ public final class WaypointImporter {
         }
     }
 
-    // --- JSON path ---------------------------------------------------------------------------
-
     private static ImportResult importJson(String json, String defaultImportedRouteName) {
         JsonElement root = parseBoundedJson(json);
+        if (SkysoftWaypointImporter.looksLikeLibrary(root)) {
+            return SkysoftWaypointImporter.decodeJson(root.getAsJsonObject());
+        }
+        if (ChunkLoggerRouteCodec.looksLikeRoute(root)) {
+            WaypointGroup group = ChunkLoggerRouteCodec.decode(root, defaultImportedRouteName);
+            if (group.isEmpty()) {
+                throw new IllegalArgumentException("ChunkLogger route contained no valid waypoints");
+            }
+            return new ImportResult(Source.CHUNKLOGGER, List.of(group), "");
+        }
+
         List<WaypointGroup> groups = new ArrayList<>();
         Source source = Source.JSON;
 
         if (root.isJsonArray()) {
-            // Either a list of groups, a SkyHanni/Coleweight flat route, or a list of loose
-            // waypoints. Distinguish by content shape: groups have nested point arrays,
-            // SkyHanni/Coleweight has an `options` object per point, loose waypoints are
-            // plain {x,y,z,...} dicts.
+
             JsonArray arr = root.getAsJsonArray();
-            if (looksLikeGroupArray(arr)) {
+            if (OdinWaypointImporter.looksLikeExport(arr)) {
+                groups.addAll(OdinWaypointImporter.decode(arr));
+                source = Source.ODIN;
+            } else if (looksLikeGroupArray(arr)) {
                 for (JsonElement el : arr) groups.add(parseGroup(el.getAsJsonObject()));
             } else if (looksLikeColeweightArray(arr)) {
                 WaypointGroup g = parseColeweightRoute(arr, defaultImportedRouteName);
@@ -898,7 +867,7 @@ public final class WaypointImporter {
                 WaypointGroup group = parseColeweightRoute(waypoints, defaultImportedRouteName);
                 if (!group.isEmpty()) groups.add(group);
                 source = hasNullCoordinatePlaceholder(waypoints) ? Source.SOOPY : Source.SKYHANNI;
-            // Soopy/Skytils-esque single-group object.
+
             } else if (obj.has("categories") && obj.get("categories").isJsonArray()) {
                 for (JsonElement el : obj.getAsJsonArray("categories")) {
                     if (el.isJsonObject()) groups.add(parseGroup(el.getAsJsonObject()));
@@ -908,21 +877,13 @@ public final class WaypointImporter {
                 groups.add(parseGroup(obj));
                 source = Source.SKYTILS;
             } else if (obj.has("groups") && obj.get("groups").isJsonArray()) {
-                // Could be a Waypointer JSON export (verbatim storage dump).
+
                 for (JsonElement el : obj.getAsJsonArray("groups")) groups.add(parseGroup(el.getAsJsonObject()));
             } else if (looksLikeOdinDungeonWaypointConfig(obj)) {
                 groups.addAll(parseOdinDungeonWaypointConfig(obj));
                 source = Source.ODIN;
             } else {
-                // Legacy Skyblocker shapes, two variants:
-                //  1. {"island_id": [<waypoints>], ...}
-                //     Each island maps to a flat list of loose points.
-                //  2. {"route_name": {"name":..,"enabled":..,"waypoints":[..]}, ...}
-                //     Skyblocker's deprecated ordered-waypoints format -- each value
-                //     is a full group object, and the map key carries the route name.
-                // Both come through with Source.SKYBLOCKER; the parseGroup path handles
-                // the ordered flag and we stamp AUTO gradient so route direction is
-                // visible even though the sender likely painted every point the same.
+
                 source = Source.SKYBLOCKER;
                 for (var entry : obj.entrySet()) {
                     JsonElement val = entry.getValue();
@@ -939,10 +900,7 @@ public final class WaypointImporter {
                         if (!g.isEmpty()) groups.add(g);
                     } else if (val.isJsonObject() && val.getAsJsonObject().has("waypoints")) {
                         WaypointGroup g = parseGroup(val.getAsJsonObject());
-                        // parseGroup picks up the "name" field from the value object
-                        // when present; when it isn't, the map key is the only name
-                        // we have. Don't clobber a real name that parseGroup already
-                        // resolved -- the sender's explicit group name wins.
+
                         if (g.name().isBlank()) g.setName(entry.getKey());
                         g.setGradientMode(WaypointGroup.GradientMode.AUTO);
                         if (!g.isEmpty()) groups.add(g);
@@ -1161,7 +1119,7 @@ public final class WaypointImporter {
         JsonElement n = opts.get("name");
         if (!n.isJsonPrimitive()) return "";
         JsonPrimitive prim = n.getAsJsonPrimitive();
-        // Integer step numbers arrive as JSON numbers; stringify so the UI can render them.
+
         return prim.isNumber() ? prim.getAsNumber().toString() : prim.getAsString();
     }
 
@@ -1190,9 +1148,6 @@ public final class WaypointImporter {
         String zone = firstString(o, Zone.UNKNOWN.id(), "island", "zone", "world", "category");
         WaypointGroup g = WaypointGroup.create(name.isEmpty() ? zone : name, normalizeZone(zone));
 
-        // Imported groups represent routes by default. Preserve explicit
-        // per-waypoint colors unless the source marks the route as ordered; ordered
-        // routes usually ship with repeated colors, so AUTO makes direction visible.
         boolean ordered = o.has("ordered")
                 && o.get("ordered").isJsonPrimitive()
                 && o.get("ordered").getAsJsonPrimitive().isBoolean()
@@ -1224,10 +1179,7 @@ public final class WaypointImporter {
 
         String name = WaypointCodec.Options.sanitizeLabel(firstString(o, "", "name", "label", "title"));
         int color = parseColor(o);
-        // "r" doubles as a radius in legacy Skytils exports but as the red channel in
-        // Skyblocker/Coleweight exports. Only treat it as a radius when it's a numeric
-        // primitive AND isByteColor is false (no sibling g/b channels) AND we didn't
-        // find a coordinates array (pos/coords) that would mean this is the V1 shape.
+
         double radius = (o.has("r")
                 && o.get("r").isJsonPrimitive()
                 && !isByteColor(o)
@@ -1249,7 +1201,7 @@ public final class WaypointImporter {
                 return null;
             }
         }
-        // Accept common alternate keys ("pos" = Skyblocker, "coords" seen in some dumps).
+
         JsonArray arr = firstArray(o, "pos", "coords", "position", "location");
         if (arr != null && arr.size() >= 3) {
             try {
@@ -1292,7 +1244,7 @@ public final class WaypointImporter {
                     return color < 0 ? Waypoint.DEFAULT_COLOR : color;
                 }
                 try { return Integer.parseInt(s, 16) & 0xFFFFFF; }
-                catch (NumberFormatException ignored) { /* fall through */ }
+                catch (NumberFormatException ignored) {   }
             }
         }
         if (o.has("colorComponents") && o.get("colorComponents").isJsonArray()) {
@@ -1303,7 +1255,7 @@ public final class WaypointImporter {
                             cc.get(0).getAsDouble(),
                             cc.get(1).getAsDouble(),
                             cc.get(2).getAsDouble());
-                } catch (RuntimeException ignored) { /* fall through */ }
+                } catch (RuntimeException ignored) {   }
             }
         }
         if (isByteColor(o)) {
@@ -1316,7 +1268,7 @@ public final class WaypointImporter {
     }
 
     private static int parseSkytilsColor(String s) {
-        // Skytils: "<scale>:<a>:<r>:<g>:<b>" (values hex). Keep rgb bytes.
+
         String[] parts = s.split(":");
         if (parts.length < 5) return -1;
         try {
@@ -1358,105 +1310,13 @@ public final class WaypointImporter {
         return Zone.canonicalId(aliased == null ? s : aliased);
     }
 
-    // --- helpers ------------------------------------------------------------------------------
-
-    private static JsonElement parseBoundedJson(String json) {
-        validateJsonBudget(json);
-        return JsonParser.parseString(json);
-    }
-
-    /**
-     * Streams over untrusted JSON before Gson builds its object tree. This caps
-     * breadth-heavy inputs while preserving the established loose-schema parser.
-     */
-    private static void validateJsonBudget(String json) {
-        int tokens = 0;
-        int scalarValues = 0;
-        int containers = 0;
-        int depth = 0;
-        int stringChars = 0;
-
-        try (JsonReader reader = new JsonReader(new StringReader(json))) {
-            reader.setStrictness(Strictness.STRICT);
-            while (true) {
-                JsonToken token = reader.peek();
-                if (token == JsonToken.END_DOCUMENT) return;
-                tokens++;
-                if (tokens > MAX_JSON_TOKENS) {
-                    throw new IllegalArgumentException("waypoint JSON has too many tokens (max "
-                            + MAX_JSON_TOKENS + ")");
-                }
-
-                switch (token) {
-                    case BEGIN_ARRAY -> {
-                        reader.beginArray();
-                        containers++;
-                        depth++;
-                    }
-                    case BEGIN_OBJECT -> {
-                        reader.beginObject();
-                        containers++;
-                        depth++;
-                    }
-                    case END_ARRAY -> {
-                        reader.endArray();
-                        depth--;
-                    }
-                    case END_OBJECT -> {
-                        reader.endObject();
-                        depth--;
-                    }
-                    case NAME -> stringChars = addJsonStringChars(
-                            stringChars, reader.nextName().length());
-                    case STRING -> {
-                        scalarValues = addJsonScalarValue(scalarValues);
-                        stringChars = addJsonStringChars(
-                                stringChars, reader.nextString().length());
-                    }
-                    case NUMBER -> {
-                        scalarValues = addJsonScalarValue(scalarValues);
-                        reader.nextString();
-                    }
-                    case BOOLEAN -> {
-                        scalarValues = addJsonScalarValue(scalarValues);
-                        reader.nextBoolean();
-                    }
-                    case NULL -> {
-                        scalarValues = addJsonScalarValue(scalarValues);
-                        reader.nextNull();
-                    }
-                    case END_DOCUMENT -> throw new IllegalStateException("unreachable JSON token");
-                }
-
-                if (containers > MAX_JSON_CONTAINERS) {
-                    throw new IllegalArgumentException(
-                            "waypoint JSON has too many arrays or objects (max "
-                                    + MAX_JSON_CONTAINERS + ")");
-                }
-                if (depth > MAX_JSON_REPAIR_DEPTH) {
-                    throw new IllegalArgumentException("waypoint JSON is nested too deeply (max "
-                            + MAX_JSON_REPAIR_DEPTH + ")");
-                }
-            }
-        } catch (IOException e) {
-            throw new IllegalArgumentException("malformed waypoint payload: malformed JSON", e);
+    static JsonElement parseBoundedJson(String json) {
+        try {
+            return BoundedJson.parse(json);
+        } catch (IllegalArgumentException failure) {
+            if (!(failure.getCause() instanceof IOException)) throw failure;
+            throw new IllegalArgumentException("malformed waypoint payload: malformed JSON", failure);
         }
-    }
-
-    private static int addJsonScalarValue(int current) {
-        if (current == MAX_JSON_SCALAR_VALUES) {
-            throw new IllegalArgumentException("waypoint JSON has too many values (max "
-                    + MAX_JSON_SCALAR_VALUES + ")");
-        }
-        return current + 1;
-    }
-
-    private static int addJsonStringChars(int current, int additional) {
-        if (additional > MAX_JSON_STRING_CHARS - current) {
-            throw new IllegalArgumentException("waypoint JSON contains too much text (max "
-                    + MAX_JSON_STRING_CHARS + " chars)");
-        }
-        return current + additional;
     }
 
     private static boolean looksLikeJson(String s) {
@@ -1465,7 +1325,7 @@ public final class WaypointImporter {
         return c == '{' || c == '[';
     }
 
-    private static String decodeBase64Gzip(String s) throws IOException {
+    static String decodeBase64Gzip(String s) throws IOException {
         byte[] data = decodeBase64Bytes(s);
         try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(data))) {
             return readUtf8WithLimit(in);
@@ -1490,7 +1350,7 @@ public final class WaypointImporter {
 
     private static String readUtf8WithLimit(InputStream in) throws IOException {
         byte[] buffer = new byte[8192];
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
         int total = 0;
         int read;
         while ((read = in.read(buffer)) >= 0) {

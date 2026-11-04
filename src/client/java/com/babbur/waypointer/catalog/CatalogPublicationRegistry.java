@@ -9,6 +9,7 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -84,6 +85,44 @@ public final class CatalogPublicationRegistry {
             writeRecords(records);
         }
         return record;
+    }
+
+    public CatalogPublication recordUpdate(
+            String routeId, String publisherId, CatalogRouteSummary route, String payloadSha256) {
+        requireRouteId(routeId);
+        requirePublisherId(publisherId);
+        if (route == null) throw new IllegalArgumentException("Route summary is required");
+        if (!routeId.equals(route.id())) {
+            throw new IllegalArgumentException("The catalog response names a different route");
+        }
+        String title = requireCodePoints(route.title(), "title", 1, 80);
+        String zoneId = requireMatch(route.zoneId(), "zone ID", ZONE_ID);
+        CatalogPublishRequest.Visibility visibility = switch (route.visibility()) {
+            case "public" -> CatalogPublishRequest.Visibility.PUBLIC;
+            case "unlisted" -> CatalogPublishRequest.Visibility.UNLISTED;
+            default -> throw new IllegalArgumentException("Invalid route visibility");
+        };
+        synchronized (IO_LOCK) {
+            List<CatalogPublication> records = new ArrayList<>(readRecords());
+            for (int index = 0; index < records.size(); index++) {
+                CatalogPublication existing = records.get(index);
+                if (!existing.routeId().equals(routeId)
+                        || !existing.publisherId().equals(publisherId)) continue;
+                CatalogPublication updated = new CatalogPublication(
+                        existing.routeId(), existing.publisherId(),
+                        route.authorName() == null || route.authorName().isBlank()
+                                ? existing.publisherName() : route.authorName(),
+                        title, route.description() == null ? "" : route.description(),
+                        visibility, zoneId, route.version(), route.codecVersion(),
+                        existing.serverCreatedAt(), existing.sharePath(), existing.apiRoot(),
+                        payloadSha256 == null ? existing.payloadSha256() : payloadSha256,
+                        existing.recordedAt());
+                records.set(index, updated);
+                writeRecords(records);
+                return updated;
+            }
+            return null;
+        }
     }
 
     public boolean remove(String routeId, String publisherId) {
@@ -182,7 +221,6 @@ public final class CatalogPublicationRegistry {
         String payloadSha256 = requireMatch(
                 string(object, "payloadSha256"), "payload hash", PAYLOAD_HASH);
         Instant recordedAt = Instant.parse(string(object, "recordedAt"));
-        // Optional: records written before descriptions were kept omit the key.
         String description = optionalString(object, "description");
         return new CatalogPublication(
                 routeId, publisherId, publisherName, title, description,
@@ -202,7 +240,7 @@ public final class CatalogPublicationRegistry {
             for (CatalogPublication record : records) array.add(serialize(record));
             root.add("publications", array);
             byte[] json = (root + System.lineSeparator()).getBytes(
-                    java.nio.charset.StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8);
             if (json.length > MAX_FILE_BYTES) throw invalidRegistry(null);
             CatalogAtomicFile.replace(file, json, "publications-");
         } catch (IOException failure) {

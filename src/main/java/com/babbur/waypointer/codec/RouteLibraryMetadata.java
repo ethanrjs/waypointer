@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 public record RouteLibraryMetadata(
         List<ManualColorsEntry> manualColors,
@@ -46,7 +47,6 @@ public record RouteLibraryMetadata(
                 paints, PaintEntry::groupOrdinal, "paint");
     }
 
-    /** Pre-paint shape; callers without painted routes keep this arity. */
     public RouteLibraryMetadata(
             List<ManualColorsEntry> manualColors, List<FolderDefinition> folders) {
         this(manualColors, folders, List.of());
@@ -96,6 +96,7 @@ public record RouteLibraryMetadata(
         List<FolderDefinition> folders = new ArrayList<>();
         if (manager != null) {
             for (RouteFolder folder : manager.folders()) {
+                if (folder.runtimeOnly()) continue;
                 List<Integer> members = new ArrayList<>();
                 for (String groupId : manager.groupIdsInFolder(folder.id())) {
                     Integer ordinal = ordinalById.get(groupId);
@@ -112,6 +113,11 @@ public record RouteLibraryMetadata(
                 new RouteLibraryMetadata(manualColors, folders, paints);
         metadata.validateForGroups(groups);
         return metadata;
+    }
+
+    public static RouteLibraryMetadata captureForExport(
+            ActiveGroupManager manager, List<WaypointGroup> groups, boolean preserveFolders) {
+        return capture(preserveFolders ? manager : null, groups);
     }
 
     public void validateForGroups(List<WaypointGroup> groups) {
@@ -280,7 +286,7 @@ public record RouteLibraryMetadata(
     }
 
     private static <T> void rejectDuplicateGroupOrdinals(
-            List<T> entries, java.util.function.ToIntFunction<T> ordinal,
+            List<T> entries, ToIntFunction<T> ordinal,
             String field) {
         Set<Integer> seen = new HashSet<>();
         for (T entry : entries) {

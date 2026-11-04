@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public final class SettingsSearch {
 
     static final int MIN_SUBSEQUENCE_TOKEN_LENGTH = 4;
+    private static final Pattern WORD_BOUNDARIES = Pattern.compile("[^\\p{L}\\p{N}]+");
 
     public record Match(Setting setting, String categoryId, String categoryLabel,
                         String groupLabel, int tier) {}
@@ -45,24 +47,37 @@ public final class SettingsSearch {
                     String tooltip = setting.tooltip().isEmpty() ? "" : resolve(resolver,
                             setting.tooltipTranslationKey(), setting.tooltip());
                     int tier = entryTier(tokens, label, setting.aliases(), tooltip,
-                            categoryLabel, groupLabel);
+                            categoryLabel, groupLabel, buttonLabels(setting, resolver));
+                    if (tier == 0 && setting.kind() == Setting.Kind.ACTION) tier = 1;
                     if (tier >= 0) {
                         out.add(new Match(setting, category.id(), categoryLabel, groupLabel, tier));
                     }
                 }
             }
         }
-        out.sort(Comparator.comparingInt(Match::tier)); // stable: catalog order breaks ties
+        out.sort(Comparator.comparingInt(Match::tier));
         return out;
+    }
+
+    public static int matchTier(String rawQuery, Setting setting, String categoryLabel,
+                                String groupLabel, TranslationResolver translations) {
+        String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase(Locale.ROOT);
+        if (query.isEmpty()) return 0;
+        TranslationResolver resolver = translations == null ? (key, fallback) -> fallback : translations;
+        String label = resolve(resolver, setting.labelTranslationKey(), setting.label());
+        String tooltip = resolve(resolver, setting.tooltipTranslationKey(), setting.tooltip());
+        return entryTier(query.split("\\s+"), label, setting.aliases(), tooltip,
+                categoryLabel, groupLabel, buttonLabels(setting, resolver));
     }
 
     static int entryTier(String[] tokens, Setting setting, String categoryLabel, String groupLabel) {
         return entryTier(tokens, setting.label(), setting.aliases(), setting.tooltip(),
-                categoryLabel, groupLabel);
+                categoryLabel, groupLabel, List.of());
     }
 
     private static int entryTier(String[] tokens, String settingLabel, List<String> aliases,
-                                 String settingTooltip, String categoryLabel, String groupLabel) {
+                                 String settingTooltip, String categoryLabel, String groupLabel,
+                                 List<String> buttons) {
         String label = settingLabel.toLowerCase(Locale.ROOT);
         String tooltip = settingTooltip.toLowerCase(Locale.ROOT);
         String category = categoryLabel == null ? "" : categoryLabel.toLowerCase(Locale.ROOT);
@@ -72,10 +87,25 @@ public final class SettingsSearch {
         for (String token : tokens) {
             if (token.isEmpty()) continue;
             int tier = tierFor(token, label, aliases, tooltip, category, group);
+            if (tier != 0 && buttons.stream().anyMatch(button -> button.contains(token))) tier = 1;
             if (tier < 0) return -1;
             worst = Math.max(worst, tier);
         }
         return worst;
+    }
+
+    private static List<String> buttonLabels(Setting setting, TranslationResolver resolver) {
+        List<String> labels = new ArrayList<>();
+        setting.buttonLabels().forEach((key, fallback) -> labels.add(resolve(resolver, key, fallback)));
+        for (int i = 0; i < setting.enumOptions().size(); i++) {
+            String fallback = resolve(resolver, setting.legacyEnumOptionTranslationKey(i),
+                    setting.enumOptions().get(i).label());
+            labels.add(resolve(resolver, setting.enumOptionTranslationKey(i), fallback));
+        }
+        if (setting.kind() == Setting.Kind.COLOR) {
+            labels.add(resolve(resolver, "waypointer.screen.settings.color.pick", "Pick color"));
+        }
+        return labels.stream().map(label -> label.toLowerCase(Locale.ROOT)).toList();
     }
 
     private static String resolve(TranslationResolver resolver, String key, String fallback) {
@@ -83,7 +113,6 @@ public final class SettingsSearch {
         return resolved == null ? fallback : resolved;
     }
 
-    /** All inputs must already be lowercase. */
     static int tierFor(String token, String label, List<String> aliases, String tooltip,
                        String categoryLabel, String groupLabel) {
         if (label.contains(token)) return 0;
@@ -93,12 +122,31 @@ public final class SettingsSearch {
         if (categoryLabel.contains(token) || groupLabel.contains(token)) return 2;
         if (tooltip.contains(token)) return 3;
         if (token.length() >= MIN_SUBSEQUENCE_TOKEN_LENGTH) {
-            if (isSubsequence(token, label)) return 4;
+            if (isSubsequence(token, label) || fuzzyWord(token, label)) return 4;
             for (String alias : aliases) {
-                if (isSubsequence(token, alias)) return 4;
+                if (isSubsequence(token, alias) || fuzzyWord(token, alias)) return 4;
             }
+            if (fuzzyWord(token, categoryLabel) || fuzzyWord(token, groupLabel)) return 4;
         }
         return -1;
+    }
+
+    private static boolean fuzzyWord(String token, String text) {
+        for (String word : WORD_BOUNDARIES.split(text)) {
+            if (Math.abs(token.length() - word.length()) > 1) continue;
+            int i = 0;
+            while (i < Math.min(token.length(), word.length()) && token.charAt(i) == word.charAt(i)) i++;
+            if (i == Math.min(token.length(), word.length())) return true;
+            if (token.length() == word.length()) {
+                if (token.regionMatches(i + 1, word, i + 1, token.length() - i - 1)) return true;
+                if (i + 1 < token.length() && token.charAt(i) == word.charAt(i + 1)
+                        && token.charAt(i + 1) == word.charAt(i)
+                        && token.regionMatches(i + 2, word, i + 2, token.length() - i - 2)) return true;
+            } else if (token.length() > word.length()) {
+                if (token.regionMatches(i + 1, word, i, word.length() - i)) return true;
+            } else if (token.regionMatches(i, word, i + 1, token.length() - i)) return true;
+        }
+        return false;
     }
 
     static boolean isSubsequence(String needle, String haystack) {

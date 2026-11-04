@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen.settings;
 
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,16 +44,30 @@ class SettingsPresetsTest {
     }
 
     @Test
+    void minimalPresetDoesNotCountOrChangeLocalSharingOptOut() {
+        WaypointerConfig live = SettingsPresets.minimal(new WaypointerConfig());
+        live.setCrystalHollowsSkyblockerSharing(false);
+        WaypointerConfig preset = SettingsPresets.minimal(live);
+
+        assertEquals(0, SettingsCatalog.countImportedSettings(live, preset));
+        live.replaceWith(preset);
+        assertFalse(live.crystalHollowsSkyblockerSharing());
+        assertEquals(0, SettingsCatalog.countImportedSettings(live, preset));
+    }
+
+    @Test
     void disableAllPresetKeepsStoredValues() {
         WaypointerConfig config = new WaypointerConfig();
         DungeonConfig dungeon = new DungeonConfig();
         config.addChatCoordSenderBlacklist("Notch");
         config.setImportedRouteDefaultColor(0x123456);
+        config.setCrystalHollowsSkyblockerSharing(true);
 
         SettingsPresets.applyDisableAll(config, dungeon);
 
         assertFalse(config.showWaypointNames());
         assertFalse(config.chatCoordDetection());
+        assertFalse(config.crystalHollowsSkyblockerSharing());
         assertFalse(dungeon.enabled());
         assertFalse(dungeon.showDungeonRouteLines());
         assertTrue(config.isChatCoordSenderBlacklisted("Notch"));
@@ -66,8 +81,8 @@ class SettingsPresetsTest {
 
         RecentSettings.record("a");
         RecentSettings.record("b");
-        RecentSettings.record("a"); // re-change moves to front
-        assertEquals(java.util.List.of("a", "b"), RecentSettings.mostRecentFirst());
+        RecentSettings.record("a");
+        assertEquals(List.of("a", "b"), RecentSettings.mostRecentFirst());
 
         for (int i = 0; i < 20; i++) {
             RecentSettings.record("setting" + i);

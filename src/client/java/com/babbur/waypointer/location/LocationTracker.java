@@ -10,8 +10,8 @@ import net.minecraft.client.Minecraft;
 
 import java.util.function.BooleanSupplier;
 
-/** Uses the Hypixel Mod API when available, otherwise the scoreboard fallback. */
 public final class LocationTracker {
+    private static LocationTracker installed;
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -29,10 +29,11 @@ public final class LocationTracker {
     }
 
     public void install() {
+        installed = this;
         boolean hypixelApi = hypixelApiLoaded.getAsBoolean();
         source = createSource(hypixelApi);
         if (source instanceof HypixelApiZoneSource) {
-            Waypointer.LOGGER.info("Location: using Hypixel Mod API source");
+            Waypointer.LOGGER.info("Location: using Hypixel Mod API with scoreboard fallback");
         } else {
             Waypointer.LOGGER.info("Location: using scoreboard fallback (hypixel-mod-api missing)");
         }
@@ -50,13 +51,23 @@ public final class LocationTracker {
                 current, minecraft.level != null, minecraft.getCurrentServer() != null));
     }
 
+    private static final Zone SINGLEPLAYER_ZONE = Zone.fromId(
+            System.getProperty("waypointer.test.singleplayerZone", Zone.PRIVATE_WORLD.id()));
+
     static Zone zoneAfterPrivateWorldCheck(Zone current, boolean worldLoaded, boolean remoteServer) {
         if (!worldLoaded) return null;
-        if (!remoteServer) return Zone.PRIVATE_WORLD;
+        if (!remoteServer) return SINGLEPLAYER_ZONE;
         return Zone.PRIVATE_WORLD.equals(current) ? null : current;
     }
 
     public ZoneSource source() {
         return source;
+    }
+
+    public static String debugLine() {
+        if (installed == null || installed.source == null) return "not installed";
+        return installed.source instanceof HypixelApiZoneSource api ? api.detectionState()
+                : installed.source instanceof ScoreboardZoneResolver sidebar ? sidebar.detectionState()
+                : installed.source.getClass().getSimpleName();
     }
 }

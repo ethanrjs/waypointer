@@ -1,7 +1,9 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.debug.DebugSignals;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
 public final class CatalogPublicationManager {
     private CatalogPublicationManager() {
@@ -33,6 +35,38 @@ public final class CatalogPublicationManager {
                 });
     }
 
+    public static CompletableFuture<CatalogPublication> update(
+            RouteCatalogClient client,
+            PublisherIdentity identity,
+            CatalogPublicationRegistry registry,
+            CatalogPublication publication,
+            CatalogRouteUpdate update,
+            String payloadSha256) {
+        if (client == null || identity == null || registry == null || publication == null
+                || update == null) {
+            throw new IllegalArgumentException("Publication update dependencies are required");
+        }
+        if (!identity.publisherId().equals(publication.publisherId())) {
+            throw new IllegalArgumentException(
+                    "The device identity does not own this publication record");
+        }
+        if (!client.apiRoot().equals(publication.apiRoot())) {
+            throw new IllegalArgumentException(
+                    "The publication belongs to a different catalog service");
+        }
+        return client.updateRoute(publication.routeId(), update, identity)
+                .thenApply(route -> {
+                    try {
+                        CatalogPublication updated = registry.recordUpdate(
+                                publication.routeId(), identity.publisherId(), route, payloadSha256);
+                        return updated == null ? publication : updated;
+                    } catch (RuntimeException failure) {
+                        DebugSignals.recordCatalogFailure("PATCH", 200, "local_record_error");
+                        throw failure;
+                    }
+                });
+    }
+
     static boolean routeAlreadyMissing(Throwable failure) {
         Throwable cause = unwrap(failure);
         return cause instanceof CatalogApiException api
@@ -43,7 +77,7 @@ public final class CatalogPublicationManager {
     private static Throwable unwrap(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
+                || cause instanceof ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }

@@ -1,10 +1,12 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.debug.DebugReportExport;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -30,10 +33,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 import static com.babbur.waypointer.screen.GuiTokens.styledCheckbox;
 
-/**
- * Disclosure confirmation shown before report is copied
- */
-public final class DebugReportConsentScreen extends net.minecraft.client.gui.screens.Screen {
+public final class DebugReportConsentScreen extends Screen {
 
     private static final int PANEL_MAX_W = 460;
     private static final int PANEL_MARGIN = 8;
@@ -41,7 +41,7 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
     private static final int ENTRY_MIN_H = 19;
     private static final int ENTRY_MAX_H = 31;
 
-    private final net.minecraft.client.gui.screens.Screen parent;
+    private final Screen parent;
     private final Consumer<DebugReportExport.Options> onConfirm;
     private final List<DebugReportExport.Category> categories =
             DebugReportExport.Category.userControlledValues();
@@ -56,7 +56,7 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
     private int entriesTop;
     private int entryH;
 
-    public DebugReportConsentScreen(net.minecraft.client.gui.screens.Screen parent,
+    public DebugReportConsentScreen(Screen parent,
                                     Consumer<DebugReportExport.Options> onConfirm) {
         super(Component.translatable("waypointer.screen.debug_consent.title"));
         this.parent = parent;
@@ -166,13 +166,13 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
 
     private static String categoryKey(DebugReportExport.Category category, String suffix) {
         return "waypointer.screen.debug_consent.category."
-                + category.name().toLowerCase(java.util.Locale.ROOT) + "." + suffix;
+                + category.name().toLowerCase(Locale.ROOT) + "." + suffix;
     }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (event.button() != 0
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT
                 || event.x() < panelX + GAP
                 || event.x() > panelX + panelW - GAP
                 || event.y() < entriesTop) {

@@ -1,6 +1,7 @@
 package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -24,7 +25,7 @@ class SkyHanniFixtureImportTest {
         assertEquals("4", group.get(3).name());
         assertEquals(100, group.get(0).x());
         assertEquals(230, group.get(3).z());
-        assertEquals(com.babbur.waypointer.core.Zone.UNKNOWN.id(), group.zoneId());
+        assertEquals(Zone.UNKNOWN.id(), group.zoneId());
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, group.loadMode());
     }
 }

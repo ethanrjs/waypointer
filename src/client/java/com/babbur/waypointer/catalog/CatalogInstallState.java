@@ -40,7 +40,7 @@ public record CatalogInstallState(
         }
         List<String> matchingIds = matches.stream().map(MatchedGroup::groupId).toList();
 
-        if (route.codecVersion() != CatalogProtocol.currentCodecVersion()) {
+        if (!CatalogProtocol.supportsCodecVersion(route.codecVersion())) {
             return new CatalogInstallState(Action.UNSUPPORTED_CODEC, localVersion, matchingIds);
         }
         if (matches.isEmpty()) {

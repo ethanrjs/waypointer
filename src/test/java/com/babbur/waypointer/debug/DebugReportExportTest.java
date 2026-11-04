@@ -2,6 +2,7 @@ package com.babbur.waypointer.debug;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -49,7 +50,7 @@ class DebugReportExportTest {
 
     @Test
     void eachDisclosureCategoryCanBeRedactedIndependently() {
-        List<DebugReportExport.Section> sections = new java.util.ArrayList<>();
+        List<DebugReportExport.Section> sections = new ArrayList<>();
         sections.add(new DebugReportExport.Section("Core", DebugReportExport.Category.CORE,
                 List.of("  core-sentinel")));
         for (DebugReportExport.Category category : DebugReportExport.Category.userControlledValues()) {
