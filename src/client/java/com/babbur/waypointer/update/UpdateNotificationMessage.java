@@ -1,5 +1,6 @@
 package com.babbur.waypointer.update;
 
+import com.babbur.waypointer.i18n.Counts;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -55,7 +56,7 @@ final class UpdateNotificationMessage {
                 .append(Component.literal("\n\n"))
                 .append(Component.translatable(
                                 "waypointer.update.versions_behind",
-                                Component.literal(Integer.toString(update.versionsBehind()))
+                                Counts.of("version", update.versionsBehind())
                                         .withStyle(ChatFormatting.YELLOW))
                         .withStyle(ChatFormatting.GRAY))
                 .append(Component.literal("\n"))

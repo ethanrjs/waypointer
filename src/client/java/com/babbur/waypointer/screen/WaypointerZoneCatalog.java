@@ -3,6 +3,10 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 
@@ -14,11 +18,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Zone names, ordering, and route-target rules used by the main screen. */
-final class WaypointerZoneCatalog {
+public final class WaypointerZoneCatalog {
 
     static final String TEMPORARY_ZONE_ID = "__temporary__";
     static final String DUNGEON_ROOMS_ZONE_ID = "__dungeon_rooms__";
+    private static final String STRUCTURE_BROWSE_PREFIX = "__structure_browse__";
 
     private static final String TEMPORARY_ZONE_LABEL = "Temporary";
     private static final String DUNGEON_ROOMS_LABEL = "Dungeon Rooms";
@@ -44,6 +48,12 @@ final class WaypointerZoneCatalog {
 
     static List<String> islandDropdownIdsForManager(ActiveGroupManager manager,
                                                      boolean includeEmpty) {
+        return islandDropdownIdsForManager(manager, includeEmpty, null);
+    }
+
+    static List<String> islandDropdownIdsForManager(ActiveGroupManager manager,
+                                                     boolean includeEmpty,
+                                                     String currentStructureZoneId) {
         List<String> all = zoneIdsForManager(manager);
         String currentSelection = selectorEntryForZoneId(currentZoneId(manager));
         List<String> out = new ArrayList<>();
@@ -54,6 +64,11 @@ final class WaypointerZoneCatalog {
         if (all.contains(currentSelection) && !isDungeonRoomsZone(currentSelection)
                 && !out.contains(currentSelection)) {
             out.add(currentSelection);
+        }
+        if ("crystal_hollows".equals(currentSelection)
+                && (CrystalHollowsStructureZones.isStructureZone(currentStructureZoneId)
+                    || isStructureBrowseZone(currentStructureZoneId))) {
+            out.add(currentStructureZoneId);
         }
         for (String id : all) {
             if (out.contains(id) || isTemporaryZone(id) || isDungeonRoomsZone(id)) continue;
@@ -68,6 +83,29 @@ final class WaypointerZoneCatalog {
         out.addAll(populated);
         if (includeEmpty) out.addAll(empty);
         return out;
+    }
+
+    static String generatedStructureZoneId(WaypointGroup group) {
+        if (group == null || !group.runtimeOnly()
+                || !group.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX)) return null;
+        String structureId = group.id().substring(CrystalHollowsStructureFolder.GROUP_PREFIX.length())
+                .split(":", 2)[0];
+        if ("nucleus".equals(structureId)) structureId = "crystal_nucleus";
+        for (CrystalHollowsStructure structure : CrystalHollowsStructure.values()) {
+            if (structure.id().equals(structureId)) return structureMenuZoneId(structure);
+        }
+        return null;
+    }
+
+    static String structureMenuZoneId(CrystalHollowsStructure structure) {
+        if (structure == null || structure == CrystalHollowsStructure.WISHING_TARGET) return null;
+        return CrystalHollowsStructureZones.supports(structure)
+                ? CrystalHollowsStructureZones.zoneId(structure)
+                : STRUCTURE_BROWSE_PREFIX + structure.id();
+    }
+
+    static boolean isStructureBrowseZone(String zoneId) {
+        return zoneId != null && zoneId.startsWith(STRUCTURE_BROWSE_PREFIX);
     }
 
     static List<String> zoneIdsForManager(ActiveGroupManager manager) {
@@ -125,6 +163,10 @@ final class WaypointerZoneCatalog {
     }
 
     static int normalGroupCountForZone(ActiveGroupManager manager, String zoneId) {
+        if (isStructureBrowseZone(zoneId)) {
+            return (int) manager.allGroups().stream()
+                    .filter(group -> zoneId.equals(generatedStructureZoneId(group))).count();
+        }
         int count = 0;
         for (WaypointGroup group : manager.groupsForZone(zoneId)) {
             if (!group.temp() && group.routeKind() == WaypointGroup.RouteKind.REGULAR) count++;
@@ -132,12 +174,8 @@ final class WaypointerZoneCatalog {
         return count;
     }
 
-    static int dungeonRoomGroupCount(ActiveGroupManager manager) {
-        int count = 0;
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!group.temp() && group.routeKind() == WaypointGroup.RouteKind.DUNGEON) count++;
-        }
-        return count;
+    static int dungeonSecretRoomCount(ActiveGroupManager manager) {
+        return DungeonRoomRouteLibrary.secretRoomCount(manager.allGroups());
     }
 
     static boolean isTemporaryZone(String zoneId) {
@@ -162,7 +200,12 @@ final class WaypointerZoneCatalog {
         return zoneId != null && isDungeonRoomZone(zoneId) ? DUNGEON_ROOMS_ZONE_ID : zoneId;
     }
 
-    static String displayZoneLabel(String zoneId) {
+    public static String displayZoneLabel(String zoneId) {
+        if (isStructureBrowseZone(zoneId)) {
+            for (CrystalHollowsStructure structure : CrystalHollowsStructure.values()) {
+                if (zoneId.equals(structureMenuZoneId(structure))) return structure.displayName();
+            }
+        }
         if (isTemporaryZone(zoneId)) return TEMPORARY_ZONE_LABEL;
         if (isDungeonRoomsZone(zoneId)) return DUNGEON_ROOMS_LABEL;
         DungeonRoomCatalogEntry catalogEntry = DungeonRoomData.entry(zoneId);
@@ -175,14 +218,17 @@ final class WaypointerZoneCatalog {
                 && group.routeKind() == WaypointGroup.RouteKind.REGULAR;
     }
 
-    static boolean canRetargetRoute(WaypointGroup group, String zoneId) {
+    public static boolean canRetargetRoute(WaypointGroup group, String zoneId) {
         String canonicalTarget = Zone.canonicalId(zoneId);
         if (!canMoveRouteZone(group) || zoneId == null
+                || isStructureBrowseZone(zoneId)
                 || isTemporaryZone(zoneId) || isDungeonRoomsZone(zoneId)
                 || isDungeonRoomZone(zoneId)
                 || isCatacombsOrMasterModeZone(canonicalTarget)
                 || Zone.UNKNOWN.id().equals(canonicalTarget)
-                || Zone.PRIVATE_WORLD.id().equals(canonicalTarget)) {
+                || Zone.PRIVATE_WORLD.id().equals(canonicalTarget)
+                || CrystalHollowsStructureZones.isStructureZone(canonicalTarget)
+                || CrystalHollowsStructureZones.isStructureZone(group.zoneId())) {
             return false;
         }
         return !canonicalTarget.equals(group.zoneId());
@@ -195,7 +241,7 @@ final class WaypointerZoneCatalog {
                 || id.startsWith("dungeon_m");
     }
 
-    static boolean retargetRoute(WaypointGroup group, String zoneId) {
+    public static boolean retargetRoute(WaypointGroup group, String zoneId) {
         if (!canRetargetRoute(group, zoneId)) return false;
         group.setZoneId(Zone.canonicalId(zoneId));
         return true;
@@ -237,9 +283,10 @@ final class WaypointerZoneCatalog {
     }
 
     static void retargetUnknownImportedGroups(List<WaypointGroup> groups, String targetZoneId) {
-        if (groups == null || Zone.UNKNOWN.id().equals(targetZoneId)) return;
+        if (groups == null) return;
         for (WaypointGroup group : groups) {
-            if (group != null && Zone.UNKNOWN.id().equals(group.zoneId())) {
+            if (group != null
+                    && Zone.shouldRetargetImportedZone(group.zoneId(), targetZoneId)) {
                 group.setZoneId(targetZoneId);
             }
         }
@@ -253,7 +300,7 @@ final class WaypointerZoneCatalog {
             return false;
         }
         if (isDungeonRoomsZone(zoneId)) {
-            return dungeonRoomGroupCount(manager) > 0;
+            return dungeonSecretRoomCount(manager) > 0;
         }
         return normalGroupCountForZone(manager, zoneId) > 0;
     }

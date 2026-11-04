@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -106,7 +107,7 @@ class GitHubReleaseClientTest {
                     {"tag_name":"v1.9.0","draft":false,"prerelease":false,
                      "published_at":"2026-12-19T12:00:00Z"}
                     """;
-            return "[" + String.join(",", java.util.Collections.nCopies(100, release)) + "]";
+            return "[" + String.join(",", Collections.nCopies(100, release)) + "]";
         }
 
         private static String currentVersionPage() {

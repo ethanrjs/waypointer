@@ -14,11 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Smoke test against a real coleweight export. Disabled unless the user passes
- * {@code -Dcoleweight.file=<path>} on the Gradle command line so CI does not fail
- * when the fixture is missing; the path is an opaque local asset.
- */
 class ColeweightSmokeTest {
 
     @Test
@@ -36,7 +31,6 @@ class ColeweightSmokeTest {
         assertTrue(g.size() > 0, "group should contain at least one waypoint");
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
 
-        // Names should be stringified step numbers; monotonic if the exporter kept sorted order.
         Set<String> names = new HashSet<>();
         for (int i = 0; i < g.size(); i++) {
             Waypoint w = g.get(i);

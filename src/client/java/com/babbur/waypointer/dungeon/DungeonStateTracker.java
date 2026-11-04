@@ -21,16 +21,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/**
- * Finds the dungeon room the player is currently in.
- *
- * <p>Room-center chunks are scanned once when they load. The core hash identifies
- * the room layout, adjacent segments are joined, and a blue terracotta marker
- * gives the room's rotation and origin.
- *
- * <p>Each tick only looks up the player's segment in the cache. It does not rescan
- * chunks or read the dungeon map.
- */
 public final class DungeonStateTracker {
 
     private static final int ODIN_ROOM_SIZE_SHIFT = 5;

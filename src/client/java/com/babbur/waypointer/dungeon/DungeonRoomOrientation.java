@@ -73,9 +73,6 @@ final class DungeonRoomOrientation {
         List<Long> sorted = sortedSegments(segments);
         if (sorted.isEmpty()) return null;
 
-        // Rooms that fill their rectangle only need the four outer corners checked.
-        // This avoids matching decorative blue terracotta inside the room. L-shaped
-        // rooms can use an inner corner, so check every segment corner instead.
         if (hasFullBoundingBoxCoverage(sorted)) {
             return detectMarkerAtBoundingBoxCorners(sorted, markerY, lookup);
         }

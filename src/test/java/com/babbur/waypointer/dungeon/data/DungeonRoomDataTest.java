@@ -3,6 +3,8 @@ package com.babbur.waypointer.dungeon.data;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -32,6 +34,25 @@ class DungeonRoomDataTest {
         assertEquals(3, entry.secretCount());
         assertEquals(1, entry.cryptCount());
         assertEquals(0, entry.trappedChestCount());
+    }
+
+    @Test
+    void bundledZeroSecretCountsDoNotChangeMissingMetadataSemantics() {
+        Set<String> knownZeroRooms = Set.of(
+                "admin", "blood", "boulder", "creeper-beams", "default", "dragon",
+                "entrance", "fairy", "hall", "ice-fill", "ice-path", "king-midas",
+                "quiz", "shadow-assassin", "teleport-maze", "three-weirdos", "tomioka", "water-board");
+        assertEquals(knownZeroRooms, DungeonRoomData.allEntries().stream()
+                .filter(room -> room.secretCount() == 0)
+                .map(DungeonRoomCatalogEntry::id)
+                .collect(Collectors.toSet()));
+
+        DungeonRoomCatalogEntry unknown = DungeonRoomData.parseEntries(
+                "{\"rooms\":[{\"id\":\"new-room\"}]}").get("new-room");
+        assertNotNull(unknown);
+        assertEquals(DungeonRoomCatalogEntry.UNKNOWN_COUNT, unknown.secretCount());
+        assertEquals(DungeonRoomCatalogEntry.UNKNOWN_COUNT, unknown.cryptCount());
+        assertEquals(DungeonRoomCatalogEntry.UNKNOWN_COUNT, unknown.trappedChestCount());
     }
 
     @Test

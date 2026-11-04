@@ -6,11 +6,14 @@ import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -22,11 +25,10 @@ class CatalogRouteInstallerTest {
     private static final String HASH_B = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
     @Test
-    void decodesCurrentWpPayloadWithoutMutatingLocalRoutes() {
+    void decodesPinnedCatalogV9PayloadWithoutMutatingLocalRoutes() {
         WaypointGroup group = WaypointGroup.create("Museum route", "hub");
         group.add(new Waypoint(12, 70, -4, "Start", 0x44AA66, 0, 0.0));
-        String payload = WaypointCodec.encode(
-                List.of(group), WaypointCodec.Options.FULL_FIDELITY);
+        String payload = WaypointCodec.encodeCatalog(List.of(group));
         CatalogRouteDetails details = new CatalogRouteDetails(summary(1, 1), payload);
 
         List<WaypointGroup> decoded = CatalogRouteInstaller.decodeForPreview(details);
@@ -41,8 +43,7 @@ class CatalogRouteInstallerTest {
     void rejectsPayloadWhenCatalogCountsDoNotMatch() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(new Waypoint(0, 64, 0, "Point", 0xFFFFFF, 0, 0.0));
-        String payload = WaypointCodec.encode(
-                List.of(group), WaypointCodec.Options.FULL_FIDELITY);
+        String payload = WaypointCodec.encodeCatalog(List.of(group));
 
         assertThrows(IllegalArgumentException.class, () ->
                 CatalogRouteInstaller.decodeForPreview(
@@ -78,16 +79,118 @@ class CatalogRouteInstallerTest {
     }
 
     @Test
-    void enforcesCatalogSpecificGroupLimit() {
-        List<WaypointGroup> groups = java.util.stream.IntStream.range(0, 65)
+    void enforcesRegularGroupAndWaypointLimits() {
+        List<WaypointGroup> groups = IntStream.range(0, 65)
                 .mapToObj(index -> route("hub", 1))
                 .toList();
         String payload = WaypointCodec.encodeCatalog(groups);
+        assertThrows(IllegalArgumentException.class, () -> CatalogRouteInstaller.prepare(
+                new CatalogRouteDetails(summary(65, 65), payload)));
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () ->
                 CatalogRouteInstaller.prepare(new CatalogRouteDetails(
-                        summary(65, 65), payload)));
+                        summary(25_001, 2),
+                        WaypointCodec.encodeCatalog(List.of(route("hub", 12_501), route("hub", 12_500))))));
         assertTrue(failure.getMessage().contains("install limits"));
+    }
+
+    @Test
+    void dungeonPackInstallsEditableRoomsWithProvenanceAndUpdatesTogether() {
+        List<WaypointGroup> rooms = IntStream.range(0, 109).mapToObj(index -> {
+            WaypointGroup room = route("room-" + (index % 108), 2);
+            room.setName("Route " + index);
+            room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            room.set(1, room.get(1).withFlags(Waypoint.FLAG_SUBWAYPOINT
+                    | Waypoint.FLAG_SMALL_SUBWAYPOINT | Waypoint.FLAG_FILLED_SUBWAYPOINT));
+            return room;
+        }).toList();
+        CatalogRouteDetails first = new CatalogRouteDetails(summary(218, 109, "dungeon", 2),
+                DungeonRoomShareCodec.encodeCatalog(rooms));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup old = route("room-0", 1);
+        old.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        WaypointGroup unrelated = route("other-room", 1);
+        unrelated.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        manager.addAll(List.of(old, unrelated));
+        AtomicInteger changes = new AtomicInteger();
+        manager.addPersistentDataListener(changes::incrementAndGet);
+
+        var installed = CatalogRouteInstaller.install(manager, API_ROOT, first);
+
+        assertEquals(1, changes.get());
+        assertEquals(109, installed.groupCount());
+        assertEquals(111, manager.allGroups().size());
+        assertEquals(false, old.enabled());
+        assertTrue(unrelated.enabled());
+        for (int index = 0; index < rooms.size(); index++) {
+            WaypointGroup copy = manager.get(installed.groupIds().get(index));
+            assertEquals(WaypointGroup.RouteKind.DUNGEON, copy.routeKind());
+            assertEquals(rooms.get(index).zoneId(), copy.zoneId());
+            assertEquals(rooms.get(index).waypoints(), copy.waypoints());
+            assertEquals(index, copy.catalogProvenance().groupIndex());
+            assertEquals(109, copy.catalogProvenance().groupCount());
+            assertEquals(false, copy.temp());
+            assertEquals(false, copy.runtimeOnly());
+        }
+        assertEquals(CatalogInstallState.Action.INSTALLED,
+                CatalogInstallState.inspect(API_ROOT, first.summary(), manager.allGroups()).action());
+        WaypointGroup edited = manager.get(installed.groupIds().get(1));
+        edited.set(0, edited.get(0).withName("My edit").withColor(0x123456));
+        assertEquals("My edit", edited.get(0).name());
+        edited.setEnabled(false);
+
+        CatalogRouteDetails second = new CatalogRouteDetails(summary(218, 109, "dungeon", 2, 2),
+                first.payload());
+        changes.set(0);
+        var updated = CatalogRouteInstaller.install(manager, API_ROOT, second);
+        assertEquals(1, changes.get());
+        WaypointGroup replacement = manager.get(updated.groupIds().get(1));
+        assertEquals(false, replacement.enabled());
+        assertEquals(2, replacement.catalogProvenance().routeVersion());
+        assertEquals(111, manager.allGroups().size());
+        assertEquals(CatalogInstallState.Action.INSTALLED,
+                CatalogInstallState.inspect(API_ROOT, second.summary(), manager.allGroups()).action());
+        assertThrows(IllegalArgumentException.class, () -> CatalogRouteInstaller.prepare(
+                new CatalogRouteDetails(summary(218, 109, "dungeon", 9), first.payload())));
+    }
+
+    @Test
+    void multiZoneBundleInstallsAndUpdatesEachDestinationAtomically() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        AtomicInteger changes = new AtomicInteger();
+        manager.addPersistentDataListener(changes::incrementAndGet);
+        CatalogRouteDetails first = new CatalogRouteDetails(
+                summary(3, 2, "multiple", 9, 1),
+                WaypointCodec.encodeCatalog(List.of(route("hub", 1), route("garden", 2))));
+
+        var installed = CatalogRouteInstaller.install(manager, API_ROOT, first);
+
+        assertEquals(1, changes.get());
+        assertEquals(2, installed.groupCount());
+        assertEquals(List.of("hub", "garden"), manager.allGroupsList().stream()
+                .map(WaypointGroup::zoneId).toList());
+        WaypointGroup garden = manager.get(installed.groupIds().get(1));
+        garden.setEnabled(false);
+        RouteFolder folder = manager.createFolder("Garden routes", "garden", List.of(garden.id()));
+        assertEquals(CatalogInstallState.Action.INSTALLED,
+                CatalogInstallState.inspect(API_ROOT, first.summary(), manager.allGroups()).action());
+
+        CatalogRouteDetails second = new CatalogRouteDetails(
+                summary(5, 2, "multiple", 9, 2),
+                WaypointCodec.encodeCatalog(List.of(route("hub", 2), route("garden", 3))));
+        changes.set(0);
+        var updated = CatalogRouteInstaller.install(manager, API_ROOT, second);
+
+        assertEquals(1, changes.get());
+        assertEquals(2, manager.allGroups().size());
+        assertEquals(List.of("hub", "garden"), manager.allGroupsList().stream()
+                .map(WaypointGroup::zoneId).toList());
+        WaypointGroup updatedGarden = manager.get(updated.groupIds().get(1));
+        assertEquals(false, updatedGarden.enabled());
+        assertEquals(folder, manager.folderForGroup(updatedGarden.id()));
+        assertEquals(3, updatedGarden.size());
+        assertEquals(CatalogInstallState.Action.INSTALLED,
+                CatalogInstallState.inspect(API_ROOT, second.summary(), manager.allGroups()).action());
     }
 
     @Test
@@ -113,6 +216,9 @@ class CatalogRouteInstallerTest {
                         manager.allGroups()).action());
         oldGroup.setCurrentTargetIndex(oldGroup.size());
         oldGroup.setEnabled(false);
+        oldGroup.setStylePresetId("personal-route");
+        oldGroup.setStyleOverride(WaypointStyle.EMPTY.with("labelOpacity", 0.4));
+        oldGroup.setWaypointStyle(0, WaypointStyle.EMPTY.with("labelOpacity", 0.7));
         RouteFolder folder = manager.createFolder(
                 "Catalog routes", "hub", List.of(oldGroup.id()));
         WaypointGroup localNeighbor = route("hub", 1);
@@ -132,11 +238,49 @@ class CatalogRouteInstallerTest {
         WaypointGroup updatedGroup = manager.get(updated.groupIds().getFirst());
         assertEquals(2, updatedGroup.catalogProvenance().routeVersion());
         assertEquals(false, updatedGroup.enabled());
+        assertEquals(oldGroup.stylePresetId(), updatedGroup.stylePresetId());
+        assertEquals(oldGroup.styleOverride(), updatedGroup.styleOverride());
+        assertEquals(oldGroup.get(0).styleOverride(), updatedGroup.get(0).styleOverride());
+        assertEquals(WaypointStyle.EMPTY, updatedGroup.get(1).styleOverride());
         assertEquals(0, updatedGroup.currentIndex(),
                 "a changed catalog route must restart progress from its new first step");
         assertEquals(folder, manager.folderForGroup(updatedGroup.id()));
         assertEquals(List.of(updatedGroup, localNeighbor), manager.allGroupsList(),
                 "catalog updates must keep the user's route order");
+    }
+
+    @Test
+    void pointStylesFollowUniqueUnchangedWaypointsInsteadOfIndexes() {
+        for (boolean duplicateNewPoint : List.of(false, true)) {
+            ActiveGroupManager manager = new ActiveGroupManager();
+            WaypointGroup original = route("hub", 4);
+            original.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+            original.set(2, original.get(1));
+            CatalogRouteInstaller.install(manager, API_ROOT, new CatalogRouteDetails(
+                    summary(4, 1), WaypointCodec.encodeCatalog(List.of(original))));
+            WaypointGroup previous = manager.allGroupsList().getFirst();
+            for (int index = 0; index < previous.size(); index++) {
+                previous.setWaypointStyle(index,
+                        WaypointStyle.EMPTY.with("labelOpacity", (index + 1) * 0.2));
+            }
+            WaypointGroup next = route("hub", 0);
+            next.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+            next.add(original.get(3));
+            next.add(original.get(0));
+            next.add(original.get(2).withName("Different step"));
+            next.add(original.get(1));
+            if (duplicateNewPoint) next.add(original.get(0));
+            CatalogRouteInstaller.install(manager, API_ROOT, new CatalogRouteDetails(
+                    summary(next.size(), 1, "hub", 9, 2),
+                    WaypointCodec.encodeCatalog(List.of(next))));
+            WaypointGroup updated = manager.allGroupsList().getFirst();
+            assertEquals(previous.get(3).styleOverride(), updated.get(0).styleOverride());
+            assertEquals(duplicateNewPoint ? WaypointStyle.EMPTY : previous.get(0).styleOverride(),
+                    updated.get(1).styleOverride());
+            assertEquals(WaypointStyle.EMPTY, updated.get(2).styleOverride());
+            assertEquals(WaypointStyle.EMPTY, updated.get(3).styleOverride());
+            if (duplicateNewPoint) assertEquals(WaypointStyle.EMPTY, updated.get(4).styleOverride());
+        }
     }
 
     @Test
@@ -150,6 +294,9 @@ class CatalogRouteInstallerTest {
 
         WaypointGroup retainedOrdinal = manager.get(installed.groupIds().get(1));
         retainedOrdinal.setEnabled(false);
+        retainedOrdinal.setStylePresetId("repair-style");
+        retainedOrdinal.setStyleOverride(WaypointStyle.EMPTY.with("labelOpacity", 0.3));
+        retainedOrdinal.setWaypointStyle(0, WaypointStyle.EMPTY.with("labelOpacity", 0.8));
         RouteFolder folder = manager.createFolder(
                 "Repair", "hub", List.of(retainedOrdinal.id()));
         manager.remove(installed.groupIds().getFirst());
@@ -164,6 +311,9 @@ class CatalogRouteInstallerTest {
                 .filter(group -> group.catalogProvenance().groupIndex() == 1)
                 .findFirst().orElseThrow();
         assertEquals(false, repairedOrdinal.enabled());
+        assertEquals(retainedOrdinal.stylePresetId(), repairedOrdinal.stylePresetId());
+        assertEquals(retainedOrdinal.styleOverride(), repairedOrdinal.styleOverride());
+        assertEquals(retainedOrdinal.get(0).styleOverride(), repairedOrdinal.get(0).styleOverride());
         assertEquals(folder, manager.folderForGroup(repairedOrdinal.id()));
     }
 

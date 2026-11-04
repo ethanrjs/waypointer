@@ -14,64 +14,36 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * User-tunable runtime settings for the dungeon-waypoints feature.
- *
- * <p>Lives in its own {@code dungeon.json} file rather than piggy-backing on
- * {@link com.babbur.waypointer.config.WaypointerConfig} for two reasons:
- *
- * <ol>
- *   <li>The dungeons feature lands as a self-contained subsystem -- breaking
- *       it out keeps the merge surface with sibling work on the main config
- *       narrow (zero overlap, just a new file).</li>
- *   <li>Dungeon settings have a different cadence: they're seldom touched
- *       once configured, so co-locating with the much-busier main config's
- *       schema would dilute that file's churn signal in commit history.</li>
- * </ol>
- *
- * <p>Mirrors the persistence pattern of {@code WaypointerConfig}: hand-written
- * Gson, debounced async saves through {@link AsyncSaver}.
- */
 public final class DungeonConfig {
 
     private static final String FILE_NAME = "dungeon.json";
     private static final long SAVE_DEBOUNCE_MS = 500L;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    /** Master switch. Off skips every dungeon tick + render path entirely. */
     private boolean enabled = true;
 
-    /**
-     * When {@code true}, log a one-line message to the in-game chat each time
-     * the detected current room changes. Off by default so it doesn't spam
-     * normal play -- but invaluable when diagnosing why a route isn't
-     * lighting up the way the user expects.
-     */
     private boolean debugLogRoomChanges = false;
 
-    /**
-     * Default direction to assume for newly-detected rooms. Room definitions
-     * can identify a room by block fingerprints, but those fingerprints do not
-     * infer the room's rotation; defaulting to NW gets the common case (rooms
-     * whose canonical frame already matches their world placement) right.
-     * Players in other rotations can rotate the guess via the dungeon command.
-     */
     private String defaultDirection = "NW";
 
     private boolean hideCompletedRooms = true;
 
-    /** Dungeon routes use their own low-noise presentation defaults. */
     private boolean showDungeonRouteLines = true;
     private boolean showDungeonTracers = false;
-    /** Number of current and upcoming secret stages shown at once. */
     private int visibleSecretStages = 1;
     private boolean secretCompletionSound = true;
+    private boolean roomTimes = true;
+    private ConcurrentHashMap<String, Long> roomBestMillis = new ConcurrentHashMap<>();
 
     private transient Path file;
     private transient AsyncSaver saver;
     private transient final List<Runnable> enabledListeners = new ArrayList<>();
     private transient final List<Runnable> changeListeners = new ArrayList<>();
+    private transient IOException writeBlockCause;
 
     public static DungeonConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -80,19 +52,27 @@ public final class DungeonConfig {
 
     static DungeonConfig load(Path file) {
         DungeonConfig cfg;
+        IOException writeBlockCause = null;
         try {
             if (Files.exists(file)) {
                 String raw = Files.readString(file);
+                if (raw.isBlank()) {
+                    throw new IllegalArgumentException("dungeon config JSON is empty");
+                }
                 cfg = GSON.fromJson(raw, DungeonConfig.class);
-                if (cfg == null) cfg = new DungeonConfig();
+                if (cfg == null) {
+                    throw new IllegalArgumentException("dungeon config JSON is null");
+                }
             } else {
                 cfg = new DungeonConfig();
             }
         } catch (Exception e) {
             Waypointer.LOGGER.error("Failed to read dungeon config, using defaults", e);
             cfg = new DungeonConfig();
+            writeBlockCause = quarantineInvalidFile(file, e);
         }
         cfg.file = file;
+        cfg.writeBlockCause = writeBlockCause;
         cfg.saver = new AsyncSaver("dungeon-config", cfg::writeToDisk, SAVE_DEBOUNCE_MS);
         return cfg;
     }
@@ -123,6 +103,16 @@ public final class DungeonConfig {
 
     private void writeToDisk() {
         if (file == null) return;
+        if (writeBlockCause != null) {
+            IOException retryFailure = quarantineInvalidFile(file, writeBlockCause);
+            if (retryFailure != null) {
+                writeBlockCause = retryFailure;
+                throw new UncheckedIOException(
+                        "Cannot save dungeon config until the invalid file is preserved: " + file,
+                        retryFailure);
+            }
+            writeBlockCause = null;
+        }
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -138,7 +128,26 @@ public final class DungeonConfig {
         }
     }
 
-    // ---- accessors -----------------------------------------------------
+    private static IOException quarantineInvalidFile(Path file, Exception cause) {
+        if (file == null || Files.notExists(file)) return null;
+        Path quarantine = file.resolveSibling(file.getFileName() + ".invalid");
+        int suffix = 1;
+        while (Files.exists(quarantine)) {
+            quarantine = file.resolveSibling(file.getFileName() + ".invalid." + suffix++);
+        }
+        try {
+            Files.move(file, quarantine);
+            Waypointer.LOGGER.error("Invalid dungeon config moved from {} to {}", file, quarantine, cause);
+            return null;
+        } catch (IOException quarantineFailure) {
+            if (Files.notExists(file)) return null;
+            Waypointer.LOGGER.error(
+                    "Invalid dungeon config at {} could not be preserved; saves are blocked to prevent data loss",
+                    file, quarantineFailure);
+            return quarantineFailure;
+        }
+    }
+
 
     public boolean enabled()              { return enabled; }
     public boolean debugLogRoomChanges()  { return debugLogRoomChanges; }
@@ -148,6 +157,23 @@ public final class DungeonConfig {
     public boolean showDungeonTracers() { return showDungeonTracers; }
     public int visibleSecretStages() { return Math.max(1, Math.min(5, visibleSecretStages)); }
     public boolean secretCompletionSound() { return secretCompletionSound; }
+    public boolean roomTimes() { return roomTimes; }
+
+    public long roomBestMillis(String routeId) {
+        if (routeId == null || roomBestMillis == null) return 0L;
+        Long best = roomBestMillis.get(routeId);
+        return best == null ? 0L : best;
+    }
+
+    public boolean recordRoomTime(String routeId, long millis) {
+        if (routeId == null || routeId.isBlank() || millis <= 0) return false;
+        if (roomBestMillis == null) roomBestMillis = new ConcurrentHashMap<>();
+        long best = roomBestMillis(routeId);
+        if (best > 0 && best <= millis) return false;
+        roomBestMillis.put(routeId, millis);
+        save();
+        return true;
+    }
 
     public void setEnabled(boolean v) {
         if (enabled == v) return;
@@ -164,7 +190,8 @@ public final class DungeonConfig {
                 || hideCompletedRooms
                 || showDungeonRouteLines
                 || showDungeonTracers
-                || secretCompletionSound;
+                || secretCompletionSound
+                || roomTimes;
         if (!changed) return;
         enabled = false;
         debugLogRoomChanges = false;
@@ -172,6 +199,7 @@ public final class DungeonConfig {
         showDungeonRouteLines = false;
         showDungeonTracers = false;
         secretCompletionSound = false;
+        roomTimes = false;
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
@@ -184,12 +212,13 @@ public final class DungeonConfig {
         boolean notifyEnabledListeners = enabled != defaults.enabled;
         boolean changed = notifyEnabledListeners
                 || debugLogRoomChanges != defaults.debugLogRoomChanges
-                || !java.util.Objects.equals(defaultDirection, defaults.defaultDirection)
+                || !Objects.equals(defaultDirection, defaults.defaultDirection)
                 || hideCompletedRooms != defaults.hideCompletedRooms
                 || showDungeonRouteLines != defaults.showDungeonRouteLines
                 || showDungeonTracers != defaults.showDungeonTracers
                 || visibleSecretStages != defaults.visibleSecretStages
-                || secretCompletionSound != defaults.secretCompletionSound;
+                || secretCompletionSound != defaults.secretCompletionSound
+                || roomTimes != defaults.roomTimes;
         if (!changed) return;
         enabled = defaults.enabled;
         debugLogRoomChanges = defaults.debugLogRoomChanges;
@@ -199,6 +228,7 @@ public final class DungeonConfig {
         showDungeonTracers = defaults.showDungeonTracers;
         visibleSecretStages = defaults.visibleSecretStages;
         secretCompletionSound = defaults.secretCompletionSound;
+        roomTimes = defaults.roomTimes;
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
@@ -243,9 +273,15 @@ public final class DungeonConfig {
         save();
         fireChanged();
     }
+    public void setRoomTimes(boolean v) {
+        if (roomTimes == v) return;
+        roomTimes = v;
+        save();
+        fireChanged();
+    }
     public void setDefaultDirection(String v) {
         if (v == null) return;
-        String upper = v.trim().toUpperCase(java.util.Locale.ROOT);
+        String upper = v.trim().toUpperCase(Locale.ROOT);
         if (upper.equals("NW") || upper.equals("NE") || upper.equals("SW") || upper.equals("SE")) {
             if (upper.equals(defaultDirection)) return;
             defaultDirection = upper;

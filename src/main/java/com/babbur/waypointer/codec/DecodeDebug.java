@@ -26,10 +26,6 @@ public record DecodeDebug(
         long decodeNanos
 ) {
 
-    /**
-     * Group byte counts refer to the body after inflation. Compact v9 records use
-     * {@code -1} for fields that do not have separate coordinate sections.
-     */
     public record GroupDebug(
             int index,
             String name,

@@ -1,4 +1,4 @@
-# Waypointer API 1.9.2
+# Waypointer API 1.13.0
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.9.2"
+    modImplementation "maven.modrinth:waypointer:1.13.0"
 }
 ```
 
@@ -34,11 +34,12 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.9.2-mc26.1.2.jar")
+    modImplementation files("libs/waypointer-1.13.0-mc26.3.jar")
 }
 ```
 
-Use the `mc26.2` jar when compiling for Minecraft 26.2.
+Use the `mc26.1.2`, `mc26.2`, or `mc26.3` jar when compiling for Minecraft 26.1.x,
+26.2, or 26.3, respectively.
 
 Register both the integration entrypoint and runtime dependency in your
 `fabric.mod.json`:
@@ -183,8 +184,6 @@ WaypointerHandle burrow = waypointer.showTempWaypoint(
                 .name("Burrow")
                 .color(0xFFD166)
                 .build());
-
-// Later; closing twice is also safe.
 burrow.close();
 ```
 
@@ -249,7 +248,10 @@ String routeId = waypointer.createRoute(
                 .build());
 ```
 
-Use `dwarven_mines` for routes in Dwarven Mines, Glacite Tunnels, Dwarven Base Camp, and Great Glacite Lake. The retired zone IDs `glacite_tunnels`, `dwarven_base_camp`, and `great_glacite_lake` are accepted as input aliases and canonicalize to `dwarven_mines`.
+Use `dwarven_mines` for routes in Dwarven Mines, Glacite Tunnels, Dwarven Base
+Camp, and Great Glacite Lake. The retired zone IDs `glacite_tunnels`,
+`dwarven_base_camp`, and `great_glacite_lake` are accepted as input aliases and
+canonicalize to `dwarven_mines`.
 
 The returned id identifies persisted user data. The user may edit or delete the
 route at any time. `removeRoute(routeId)` is destructive: call it only for a
@@ -277,7 +279,6 @@ boolean updated = waypointer.updateWaypoint(
                 .name("Updated Titanium Stop"));
 
 if (!updated) {
-    // The route or waypoint changed. Re-read; do not retry blindly.
 }
 ```
 
@@ -346,8 +347,11 @@ try {
 ```
 
 Supported input families are Waypointer `WP:` and `WPL:` payloads, Skyblocker,
-Skytils, SkyHanni/Coleweight, Soopy V1, Firmament, Odin, and recognized JSON
-shapes.
+Skytils, SkyHanni/Coleweight, ChunkLogger RouteSkipper, Soopy V1, Firmament, Skysoft,
+Odin, and recognized JSON shapes. A `WP:` catalog reference (kind 6 subtype 2)
+or a `waypointermod.com/r/` link is rejected here with a message naming the
+route id, because resolving it needs the network; the in-game importers open
+the catalog preview for those.
 `ImportSummary.source()` returns the API-owned `ImportSource` enum.
 
 Malformed, unsupported, or oversized input throws `IllegalArgumentException`
@@ -369,11 +373,15 @@ String shareText = waypointer.exportRoutes(
 Exports are read-only. Ids are processed in supplied order; missing and `null`
 ids are skipped. `exportRoutes(ids)` uses full-fidelity Waypointer defaults.
 
-Supported targets are Waypointer, Skyblocker, Skytils, and SkyHanni.
+Supported targets are Waypointer, Skyblocker, Skytils, SkyHanni, SkySoft, and Odin.
+`SKYSOFT` creates native `SKYSOFT:` codes from existing route data and compatible
+appearance settings. Names, colors, radii, and route metadata can be omitted;
+SkySoft requires a supported island in every route. `ODIN` exports island
+waypoints and dungeon room packs.
 Third-party formats cannot represent every Waypointer field, so use
-`WAYPOINTER` for lossless round trips. When selected routes have route-library
-metadata, the Waypointer target uses a `WPL:` wrapper to preserve folder
-membership, folder colors, and hidden manual colors.
+`WAYPOINTER` for lossless round trips. Full-fidelity exports use V11 `WP:`
+shares to preserve customization, folder membership, folder colors, and hidden
+manual colors. Coordinate-only exports may use V10's compact bare forms.
 
 ## Change Notifications
 
@@ -420,7 +428,7 @@ non-finite values. Routes and overlays default to the `unknown` zone and
   against the next major Waypointer API.
 - Snapshot types are API outputs; do not implement `WaypointerApi` or construct
   `DefaultWaypointerApi` yourself.
-- Existing flag bits will not be renumbered within the 1.8.x API line.
+- Existing flag bits will not be renumbered within the 1.x API line.
 - Add a `default` branch when switching over API enums so a future value does
   not crash your integration.
 - Treat group ids and waypoint references as opaque runtime values.

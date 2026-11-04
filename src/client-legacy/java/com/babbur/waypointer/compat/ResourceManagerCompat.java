@@ -1,0 +1,19 @@
+package com.babbur.waypointer.compat;
+
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+import java.util.List;
+import java.util.Map;
+
+public abstract class ResourceManagerCompat implements ResourceManager {
+    protected abstract ResourceManager delegate();
+
+    @Override public Map<Identifier, Resource> listResources(String path, java.util.function.Predicate<Identifier> selector) {
+        return delegate().listResources(path, selector);
+    }
+
+    @Override public Map<Identifier, List<Resource>> listResourceStacks(String path, java.util.function.Predicate<Identifier> selector) {
+        return delegate().listResourceStacks(path, selector);
+    }
+}

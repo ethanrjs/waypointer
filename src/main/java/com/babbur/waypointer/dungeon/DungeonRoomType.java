@@ -1,6 +1,5 @@
 package com.babbur.waypointer.dungeon;
 
-/** Coarse room type read from the dungeon map color. */
 public enum DungeonRoomType {
     ENTRANCE(30),
     ROOM(63),

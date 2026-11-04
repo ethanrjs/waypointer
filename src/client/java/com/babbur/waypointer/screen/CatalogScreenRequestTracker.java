@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen;
 
-// Tickets prevent stale async completions from mutating the current view.
 final class CatalogScreenRequestTracker {
     private int listGeneration;
     private int detailGeneration;

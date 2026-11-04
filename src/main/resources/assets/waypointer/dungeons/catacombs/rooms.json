@@ -12,6 +12,7 @@
       "name": "Admin",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "crypts": 34,
       "coreHashes": [
         518379920
@@ -171,6 +172,7 @@
       "name": "Blood",
       "type": "BLOOD",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         1898104308,
         698844034
@@ -196,6 +198,7 @@
       "name": "Boulder",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -1129249963,
         1047612794,
@@ -362,6 +365,7 @@
       "name": "Creeper Beams",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         1264110624,
         866773091,
@@ -417,6 +421,7 @@
       "name": "Default",
       "type": "MINIBOSS",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -1637527174,
         -1199831932
@@ -512,6 +517,7 @@
       "name": "Dragon",
       "type": "MINIBOSS",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -1334473473
       ],
@@ -575,6 +581,7 @@
       "name": "Entrance",
       "type": "ENTRANCE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -16485885,
         -47045487,
@@ -588,6 +595,7 @@
       "name": "Fairy",
       "type": "FAIRY",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -645035252
       ],
@@ -699,6 +707,7 @@
       "name": "Hall",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -442394410
       ],
@@ -739,6 +748,7 @@
       "name": "Ice Fill",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -1871216735,
         72131612,
@@ -752,6 +762,7 @@
       "name": "Ice Path",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -145184586
       ],
@@ -775,6 +786,7 @@
       "name": "King Midas",
       "type": "MINIBOSS",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "crypts": 1,
       "coreHashes": [
         -1916395486
@@ -1283,6 +1295,7 @@
       "name": "Quiz",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -1517679865,
         127714189
@@ -1499,6 +1512,7 @@
       "name": "Shadow Assassin",
       "type": "MINIBOSS",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "crypts": 2,
       "coreHashes": [
         397211721
@@ -1704,6 +1718,7 @@
       "name": "Teleport Maze",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         799715466
       ],
@@ -1739,6 +1754,7 @@
       "name": "Three Weirdos",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -2056613688
       ],
@@ -1775,6 +1791,7 @@
       "name": "Tomioka",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         -1191537425
       ],
@@ -1810,6 +1827,7 @@
       "name": "Water Board",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 0,
       "coreHashes": [
         379499781,
         -1229365170,

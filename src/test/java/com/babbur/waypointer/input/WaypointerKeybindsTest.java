@@ -15,7 +15,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import org.lwjgl.glfw.GLFW;
+import com.babbur.waypointer.compat.InputCompat;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -27,7 +27,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerKeybindsTest {
@@ -57,9 +56,10 @@ class WaypointerKeybindsTest {
                 WaypointerKeybinds.ENTER_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.EXIT_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY),
+                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
+                WaypointerKeybinds.TOGGLE_WAYPOINTS_TRANSLATION_KEY),
                 WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS);
-        assertEquals(10, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
+        assertEquals(11, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
         for (String translationKey : WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS) {
             assertLanguageEntry(english, translationKey);
         }
@@ -73,11 +73,11 @@ class WaypointerKeybindsTest {
     void keybindDefaultsLeaveAllOptionalKeybindsUnbound() {
         assertEquals(WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size(),
                 WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.size());
-        assertEquals(GLFW.GLFW_KEY_U, WaypointerKeybinds.OPEN_EDITOR_DEFAULT_KEY);
+        assertEquals(InputCompat.KEY_U, WaypointerKeybinds.OPEN_EDITOR_DEFAULT_KEY);
         assertEquals(InputConstants.UNKNOWN.getValue(), WaypointerKeybinds.UNBOUND_DEFAULT_KEY);
-        assertEquals(GLFW.GLFW_KEY_U, WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.get(0));
+        assertEquals(InputCompat.KEY_U, WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.get(0));
 
-        for (int index = 1; index < 10; index++) {
+        for (int index = 1; index < WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size(); index++) {
             int keyIndex = index;
             String message = WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.get(keyIndex)
                     + " should be unbound by default";
@@ -90,9 +90,9 @@ class WaypointerKeybindsTest {
     @Test
     void screenKeyFallbackMatchesDefaultOpenEditorKey() {
         assertTrue(WaypointerKeybinds.isOpenEditorKey(
-                new KeyEvent(GLFW.GLFW_KEY_U, 0, 0)));
+                new KeyEvent(InputCompat.KEY_U, 0, 0)));
         assertFalse(WaypointerKeybinds.isOpenEditorKey(
-                new KeyEvent(GLFW.GLFW_KEY_Y, 0, 0)));
+                new KeyEvent(InputCompat.KEY_Y, 0, 0)));
     }
 
     @Test
@@ -116,16 +116,10 @@ class WaypointerKeybindsTest {
 
         assertEquals(0, manager.activeGroups().size());
 
-        // The completed stored route is still reachable through the retreat
-        // fallback and moves its persisted progress...
         assertEquals(1, WaypointerKeybinds.retreatPreviousWaypointTargets(manager));
         manager.fireDataChanged();
         assertEquals(1, group.currentIndex());
 
-        // ...but stored dungeon-room routes hold room-local coordinates, so
-        // they never render directly: DungeonRoomRouteSync projects them into
-        // a runtime mirror while the player is in the room (covered by
-        // DungeonRoomRouteSyncTest).
         assertEquals(0, manager.activeGroups().size());
     }
 

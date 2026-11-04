@@ -1,6 +1,5 @@
 package com.babbur.waypointer.catalog;
 
-/** Test-only access to the package-private {@link CatalogApiException} constructor. */
 public final class CatalogApiExceptions {
     private CatalogApiExceptions() {
     }

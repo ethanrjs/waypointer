@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,7 +38,7 @@ class SoopyFirmamentCompatibilityTest {
     @Test
     void rejectsTrailingBytesInSoopyShare() throws IOException {
         byte[] original = Base64.getDecoder().decode(fixture("soopy-current-share.txt"));
-        byte[] withTrailingByte = java.util.Arrays.copyOf(original, original.length + 1);
+        byte[] withTrailingByte = Arrays.copyOf(original, original.length + 1);
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny(Base64.getEncoder().encodeToString(withTrailingByte)));

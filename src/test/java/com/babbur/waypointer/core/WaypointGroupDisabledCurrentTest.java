@@ -6,10 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * The current waypoint must never rest on a disabled waypoint, no matter which
- * mutation produced the state (issue #113).
- */
 class WaypointGroupDisabledCurrentTest {
 
     private static WaypointGroup route(int size) {

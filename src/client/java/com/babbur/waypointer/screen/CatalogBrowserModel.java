@@ -6,14 +6,53 @@ import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.util.MathUtil;
 
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 final class CatalogBrowserModel {
+
+    enum Sort {
+        RECOMMENDED("recommended"),
+        POPULAR("popular"), NEWEST("newest"), UPDATED("updated"), WAYPOINTS("waypoints"), NAME("name");
+
+        final String id;
+
+        Sort(String id) { this.id = id; }
+
+        Comparator<CatalogRouteSummary> comparator() {
+            Comparator<CatalogRouteSummary> byTitle = Comparator.comparing(
+                    route -> route.title().toLowerCase(Locale.ROOT));
+            return switch (this) {
+                case RECOMMENDED -> (a, b) -> 0;
+                case POPULAR -> Comparator.comparingLong(CatalogRouteSummary::downloads).reversed()
+                        .thenComparing(CatalogRouteSummary::updatedAt, Comparator.reverseOrder())
+                        .thenComparing(byTitle);
+                case NEWEST -> Comparator.comparing(CatalogRouteSummary::createdAt, Comparator.reverseOrder())
+                        .thenComparing(byTitle);
+                case UPDATED -> Comparator.comparing(CatalogRouteSummary::updatedAt, Comparator.reverseOrder())
+                        .thenComparing(byTitle);
+                case WAYPOINTS -> Comparator.comparingInt(CatalogRouteSummary::waypointCount).reversed()
+                        .thenComparing(byTitle);
+                case NAME -> byTitle;
+            };
+        }
+    }
+
     private List<CatalogRouteSummary> routes = List.of();
+    private Sort sort = Sort.RECOMMENDED;
+    private String tagFilter;
+    private List<CatalogRouteSummary> loadedRoutes = List.of();
+    private boolean filteringInstalled;
     private String query = "";
     private String zoneFilter;
+    private List<String> here = List.of();
     private String nextCursor;
     private String selectedRouteId;
     private int scrollOffset;
@@ -47,7 +86,6 @@ final class CatalogBrowserModel {
         return searchPending;
     }
 
-    /** Server-side zone filter; {@code null} means every zone. */
     String zoneFilter() {
         return zoneFilter;
     }
@@ -56,7 +94,7 @@ final class CatalogBrowserModel {
         String next = zoneId == null || zoneId.isBlank() ? null : zoneId;
         if (Objects.equals(next, zoneFilter)) return false;
         zoneFilter = next;
-        routes = List.of();
+        loadedRoutes = routes = List.of();
         nextCursor = null;
         selectedRouteId = null;
         scrollOffset = 0;
@@ -68,7 +106,7 @@ final class CatalogBrowserModel {
         if (next.equals(query)) return false;
         query = next;
         searchPending = true;
-        routes = List.of();
+        loadedRoutes = routes = List.of();
         nextCursor = null;
         selectedRouteId = null;
         scrollOffset = 0;
@@ -83,7 +121,7 @@ final class CatalogBrowserModel {
 
     void beginRefresh() {
         searchPending = false;
-        routes = List.of();
+        loadedRoutes = routes = List.of();
         nextCursor = null;
         selectedRouteId = null;
         scrollOffset = 0;
@@ -93,7 +131,7 @@ final class CatalogBrowserModel {
         Objects.requireNonNull(page, "page");
         if (append) {
             LinkedHashMap<String, CatalogRouteSummary> combined = new LinkedHashMap<>();
-            for (CatalogRouteSummary route : routes) combined.put(route.id(), route);
+            for (CatalogRouteSummary route : loadedRoutes) combined.put(route.id(), route);
             for (CatalogRouteSummary route : page.routes()) combined.put(route.id(), route);
             routes = List.copyOf(combined.values());
         } else {
@@ -101,11 +139,66 @@ final class CatalogBrowserModel {
         }
         nextCursor = page.hasMore() && page.nextCursor() != null
                 && !page.nextCursor().isBlank() ? page.nextCursor() : null;
+        loadedRoutes = routes;
+        reconcileSelection();
+    }
+
+    Sort sort() {
+        return sort;
+    }
+
+    boolean setSort(Sort next) {
+        if (next == null || next == sort) return false;
+        sort = next;
+        scrollOffset = 0;
+        return true;
+    }
+
+    String tagFilter() {
+        return tagFilter;
+    }
+
+    boolean setTagFilter(String tag) {
+        if (Objects.equals(tag, tagFilter)) return false;
+        tagFilter = tag;
+        scrollOffset = 0;
+        return true;
+    }
+
+    boolean anyLoadedRouteHas(String tag) {
+        return loadedRoutes.stream().anyMatch(route -> route.hasTag(tag));
+    }
+
+    void setHere(List<String> zones) {
+        here = zones == null ? List.of() : List.copyOf(zones);
+    }
+
+    void filterInstalled(String apiRoot, ActiveGroupManager manager, boolean onlyNotInstalled) {
+        if (filteringInstalled != onlyNotInstalled) scrollOffset = 0;
+        filteringInstalled = onlyNotInstalled;
+        Map<String, CatalogInstallState.Action> actions = new HashMap<>();
+        Function<CatalogRouteSummary, CatalogInstallState.Action> action =
+                route -> actions.computeIfAbsent(route.id(),
+                        id -> manager == null ? null : installState(apiRoot, manager, route).action());
+        List<CatalogRouteSummary> filtered = loadedRoutes.stream()
+                .filter(route -> tagFilter == null || route.hasTag(tagFilter))
+                .filter(route -> {
+                    if (!onlyNotInstalled) return true;
+                    CatalogInstallState.Action state = action.apply(route);
+                    return state != CatalogInstallState.Action.INSTALLED
+                            && state != CatalogInstallState.Action.LOCAL_NEWER;
+                })
+                .toList();
+        List<CatalogRouteSummary> visible = sort == Sort.RECOMMENDED
+                ? CatalogRecommendation.recommended(filtered, action, here, !query.isBlank(), Instant.now())
+                : CatalogRecommendation.installedLast(filtered.stream().sorted(sort.comparator()).toList(), action);
+        if (routes.equals(visible)) return;
+        routes = visible;
         reconcileSelection();
     }
 
     void markLoadFailed(boolean append) {
-        if (!append) routes = List.of();
+        if (!append) loadedRoutes = routes = List.of();
         reconcileSelection();
     }
 

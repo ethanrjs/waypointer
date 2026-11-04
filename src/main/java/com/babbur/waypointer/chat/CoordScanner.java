@@ -6,15 +6,12 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Finds likely Minecraft coordinate triples in chat while rejecting common number formats. */
 public final class CoordScanner {
 
-    // Boundaries keep versions, hostnames, and decimals from matching.
     private static final Pattern COORD = Pattern.compile(
             "(?<![\\w.\\-])(-?\\d{1,5})([\\s,;/]+)(-?\\d{1,4})([\\s,;/]+)(-?\\d{1,5})(?![\\w.\\-])"
     );
 
-    // Labeled coordinates require commas between the three integer axes.
     private static final Pattern COORD_LABELED = Pattern.compile(
             "(?<![\\w.\\-])[xX]\\s*:\\s*(-?\\d{1,5})\\s*,\\s*[yY]\\s*:\\s*(-?\\d{1,4})\\s*,\\s*[zZ]\\s*:\\s*(-?\\d{1,5})(?![\\w.\\-])"
     );
@@ -39,11 +36,9 @@ public final class CoordScanner {
         return out;
     }
 
-    /** Returns coordinates and their character ranges in the source text. */
     public static List<Match> scanWithPositions(String text) {
         if (text == null || text.isEmpty()) return List.of();
 
-        // The patterns cannot overlap, so merge their matches by source position.
         List<Match> out = new ArrayList<>();
         collectBareMatches(text, out);
         collectLabeledMatches(text, out);
@@ -90,14 +85,12 @@ public final class CoordScanner {
         }
     }
 
-    /** Rejects values such as {@code 1,145,926} that look like coordinates. */
     private static boolean looksLikeThousandsSeparator(String middleRaw, String sep1, String sep2) {
         if (!",".equals(sep1) || !",".equals(sep2)) return false;
         if (middleRaw.length() != 3) return false;
         return middleRaw.charAt(0) != '-';
     }
 
-    /** Rejects mixed slash separators such as {@code 3 99/100}. */
     private static boolean looksLikeFractionSeparator(String sep1, String sep2) {
         boolean slash1 = sep1.indexOf('/') >= 0;
         boolean slash2 = sep2.indexOf('/') >= 0;

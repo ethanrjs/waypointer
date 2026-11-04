@@ -1,5 +1,6 @@
 package com.babbur.waypointer.debug;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.Direction;
@@ -7,6 +8,12 @@ import com.babbur.waypointer.dungeon.DungeonDetectionConfidence;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
+import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.crystal.CrystalHollowsPosition;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.WishingCompassController;
+import com.babbur.waypointer.crystal.StructureSighting;
+import com.babbur.waypointer.crystal.compass.WishingCompassSolver;
 import com.babbur.waypointer.location.HypixelApiZoneSource;
 import com.babbur.waypointer.location.SidebarTexts;
 import net.minecraft.client.Minecraft;
@@ -19,6 +26,19 @@ import java.util.List;
 public final class DebugSignals {
 
     private DebugSignals() {}
+
+    private static volatile String catalogFailure = "None";
+
+    public static String catalogFailureLine() {
+        return catalogFailure;
+    }
+
+    public static void recordCatalogFailure(String method, int status, String code) {
+        String safeMethod = List.of("GET", "POST", "PATCH", "DELETE").contains(method) ? method : "REQUEST";
+        String safeCode = code != null && code.matches("[a-z_]{1,80}") ? code : "unknown";
+        catalogFailure = safeMethod + " / HTTP " + status + " / " + safeCode;
+        Waypointer.LOGGER.warn("Catalog request failed: {}", catalogFailure);
+    }
 
     public static DungeonDebugSnapshot dungeonDebugSnapshot() {
         DungeonStateTracker tracker = WaypointerClient.dungeonTracker();
@@ -87,10 +107,6 @@ public final class DebugSignals {
         };
     }
 
-    public static String dungeonBridgeLine() {
-        return DungeonRoomZoneBridge.debugSnapshot().line;
-    }
-
     public static String dungeonConfigLine() {
         boolean legacyFeatureFlag = WaypointerClient.config() != null
                 && WaypointerClient.config().dungeonWaypointsFeatureEnabled();
@@ -106,11 +122,64 @@ public final class DebugSignals {
         if (snapshot == null) return "no packet/refine snapshot yet";
 
         return "serverType=" + valueOrMissing(snapshot.serverType())
+                + ", serverName=" + valueOrMissing(snapshot.serverName())
                 + ", map=" + valueOrMissing(snapshot.map())
                 + ", mode=" + valueOrMissing(snapshot.mode())
                 + ", raw=" + describeZone(snapshot.rawZone())
                 + ", refined=" + describeZone(snapshot.refinedZone())
+                + ", packetAt=" + (snapshot.packetReceivedAt() == null ? "none" : snapshot.packetReceivedAt())
                 + ", at=" + snapshot.capturedAt();
+    }
+
+    public static String crystalHollowsLine() {
+        CrystalHollowsTracker tracker = WaypointerClient.crystalHollowsTracker();
+        WishingCompassController compass = WaypointerClient.crystalHollowsCompass();
+        CrystalHollowsTracker.DebugSnapshot snapshot = tracker == null
+                ? null
+                : tracker.debugSnapshot();
+        return crystalHollowsLine(
+                snapshot != null && snapshot.active(),
+                snapshot == null ? null : snapshot.serverId(),
+                snapshot == null ? -1 : snapshot.day(),
+                snapshot == null ? 0 : snapshot.sightings(),
+                snapshot == null ? null : snapshot.sidebarStructure(),
+                tracker == null || tracker.lobby() == null ? null : tracker.lobby().divanCentre(),
+                compass == null ? "not installed" : compass.solver().state().name(),
+                compass == null ? 0 : compass.solver().completedRays().size(),
+                compass == null ? "none" : compass.lastEvent());
+    }
+
+    static String crystalHollowsLine(boolean active, String serverId, int day, int sightings,
+                                     CrystalHollowsStructure sidebarStructure, CrystalHollowsPosition divanCentre,
+                                     String compassState, int rays, String lastEvent) {
+        return "active=" + active
+                + ", serverId=" + valueOrMissing(serverId)
+                + ", day=" + (day < 0 ? "unknown" : day)
+                + ", sightings=" + sightings
+                + ", sidebarStructure=" + valueOrMissing(sidebarStructure)
+                + ", divanCentre=" + valueOrMissing(divanCentre)
+                + ", compass=" + valueOrMissing(compassState)
+                + ", rays=" + rays
+                + ", lastEvent=" + valueOrMissing(lastEvent);
+    }
+
+    public static String crystalDetectorLine(CrystalHollowsTracker.DebugSnapshot snapshot) {
+        if (snapshot == null) return "not installed";
+        return "delayTicks=" + snapshot.delayTicks() + ", processedEntities=" + snapshot.processedEntities()
+                + ", kingsScent=" + snapshot.kingsScent() + ", tabCrystalStates=" + snapshot.tabCrystalStates();
+    }
+
+    public static String compassSolutionLine(WishingCompassSolver.SolveResult result) {
+        if (result == null) return "No solution captured.";
+        return "position=" + result.solution() + ", rayGapBlocks=" + result.gap()
+                + ", confidence=" + result.confidence() + ", targets=" + result.targets();
+    }
+
+    public static String structureEvidenceLine(StructureSighting sighting) {
+        if (sighting == null) return "(none)";
+        return "structure=" + sighting.structure() + ", position=" + sighting.position()
+                + ", confidence=" + sighting.confidence() + ", remoteEvidence=" + sighting.remoteEvidence()
+                + ", candidates=" + sighting.candidates();
     }
 
     public static String scoreboardLine() {

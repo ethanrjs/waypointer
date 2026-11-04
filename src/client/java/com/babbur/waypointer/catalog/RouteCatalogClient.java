@@ -1,21 +1,21 @@
 package com.babbur.waypointer.catalog;
 
-import java.io.ByteArrayOutputStream;
+import com.babbur.waypointer.debug.DebugSignals;
+import com.babbur.waypointer.util.BoundedBody;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.OptionalLong;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Flow;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -72,16 +72,38 @@ public final class RouteCatalogClient {
 
     public CompletableFuture<CatalogPage> listRoutes(
             String query, String zone, String cursor) {
+        return listRoutes(query, zone, null, null, cursor);
+    }
+
+    public CompletableFuture<CatalogPage> listRoutes(
+            String query, String zone, String tag, String sort, String cursor) {
         StringBuilder relative = new StringBuilder("routes?limit=50");
         appendQuery(relative, "q", normalizeSearch(query));
         appendQuery(relative, "zone", normalizeZone(zone));
+        appendQuery(relative, "tag", normalizeTag(tag));
+        appendQuery(relative, "sort", normalizeSort(sort));
         appendQuery(relative, "cursor", normalizeCursor(cursor));
         HttpRequest request = request(relative.toString()).GET().build();
         return sendJson(request, MAX_LIST_BYTES, 200).thenApply(CatalogJson::parsePage);
     }
 
+    public static final List<String> SORTS =
+            List.of("recommended", "popular", "newest", "updated", "waypoints", "name");
+
+    public CompletableFuture<CatalogRoutePreviewData> getRoutePreview(String routeId) {
+        if (!isValidRouteId(routeId)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Invalid catalog route ID"));
+        }
+        HttpRequest request = request("routes/" + routeId + "/preview").GET().build();
+        return sendJson(request, MAX_LIST_BYTES, 200).thenApply(CatalogJson::parsePreview);
+    }
+
     public CompletableFuture<CatalogRouteDetails> getRoute(String routeId) {
-        requireRouteId(routeId);
+        if (!isValidRouteId(routeId)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Invalid catalog route ID"));
+        }
         HttpRequest request = request("routes/" + routeId).GET().build();
         return sendJson(request, MAX_ROUTE_BYTES, 200).thenApply(json -> {
             CatalogRouteDetails details = CatalogJson.parseDetails(json);
@@ -95,14 +117,25 @@ public final class RouteCatalogClient {
 
     CompletableFuture<CatalogPublishReceipt> publishRoute(
             CatalogPublishRequest publish, PublisherIdentity identity) {
-        if (publish == null) {
-            throw new IllegalArgumentException("Publish request is required");
-        }
-        if (identity == null) {
-            throw new IllegalArgumentException("Publisher identity is required");
-        }
-        CatalogProtocol.PublishExpectation expectation =
-                CatalogProtocol.validatePublishRequest(publish, identity);
+        requirePublishArguments(publish, identity);
+        return publishValidated(publish, identity,
+                CatalogProtocol.validatePublishRequest(publish, identity));
+    }
+
+    CompletableFuture<CatalogPublishReceipt> publishPreparedRoute(
+            CatalogPublishRequest publish,
+            PublisherIdentity identity,
+            CatalogProtocol.PreparedCatalogPayload prepared) {
+        requirePublishArguments(publish, identity);
+        return publishValidated(publish, identity,
+                CatalogProtocol.validatePreparedPublishRequest(
+                        publish, identity, prepared));
+    }
+
+    private CompletableFuture<CatalogPublishReceipt> publishValidated(
+            CatalogPublishRequest publish,
+            PublisherIdentity identity,
+            CatalogProtocol.PublishExpectation expectation) {
         String json = CatalogJson.publishBody(publish);
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
         HttpRequest.Builder builder = request("routes")
@@ -116,6 +149,16 @@ public final class RouteCatalogClient {
                 .thenApply(CatalogJson::parsePublishResult)
                 .thenApply(result -> CatalogProtocol.validatePublishResponse(
                         result, publish, identity, expectation));
+    }
+
+    private static void requirePublishArguments(
+            CatalogPublishRequest publish, PublisherIdentity identity) {
+        if (publish == null) {
+            throw new IllegalArgumentException("Publish request is required");
+        }
+        if (identity == null) {
+            throw new IllegalArgumentException("Publisher identity is required");
+        }
     }
 
     public String apiRoot() {
@@ -135,6 +178,42 @@ public final class RouteCatalogClient {
         return sendEmpty(builder.build(), MAX_LIST_BYTES, 204);
     }
 
+    public CompletableFuture<CatalogRouteSummary> updateRoute(
+            String routeId, CatalogRouteUpdate update, PublisherIdentity identity) {
+        requireRouteId(routeId);
+        if (identity == null) {
+            throw new IllegalArgumentException("Publisher identity is required");
+        }
+        if (update == null || update.isEmpty()) {
+            throw new IllegalArgumentException("Route update has no changes");
+        }
+        byte[] body = CatalogJson.updateBody(update).getBytes(StandardCharsets.UTF_8);
+        String path = "/api/routes/" + routeId;
+        HttpRequest.Builder builder = request("routes/" + routeId)
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofByteArray(body));
+        addSignature(builder, identity, "PATCH", path, body);
+        return sendJson(builder.build(), MAX_LIST_BYTES, 200)
+                .thenApply(json -> {
+                    try {
+                        CatalogRouteSummary route = CatalogJson.parseRouteResponse(json);
+                        if (!routeId.equals(route.id())) {
+                            throw new CatalogApiException(200, "invalid_response",
+                                    "The catalog confirmed a different route.");
+                        }
+                        if (!identity.publisherId().equals(route.publisherId())) {
+                            throw new CatalogApiException(200, "invalid_response",
+                                    "The catalog confirmed a different publisher.");
+                        }
+                        return route;
+                    } catch (RuntimeException failure) {
+                        DebugSignals.recordCatalogFailure("PATCH", 200, "invalid_response");
+                        if (failure instanceof CatalogApiException) throw failure;
+                        throw new CatalogApiException(200, "invalid_response", "The catalog returned an invalid route.");
+                    }
+                });
+    }
+
     public CompletableFuture<Void> recordInstall(String routeId) {
         return recordInstall(routeId, null, null);
     }
@@ -152,7 +231,6 @@ public final class RouteCatalogClient {
         HttpRequest.Builder builder = request("routes/" + routeId + "/install")
                 .POST(HttpRequest.BodyPublishers.noBody());
         if (installToken != null && !installToken.isBlank()) {
-            // Anonymous per-route dedupe mark; the server counts each token once.
             builder.header("x-waypointer-install-token", installToken);
         }
         if (identity != null) {
@@ -183,16 +261,16 @@ public final class RouteCatalogClient {
             }
             return json;
         }).orTimeout(12, TimeUnit.SECONDS);
-        result.whenComplete((ignored, failure) -> {
-            if (failure instanceof java.util.concurrent.TimeoutException) network.cancel(true);
+        return result.whenComplete((ignored, failure) -> {
+            recordFailure(request, failure);
+            if (failure instanceof TimeoutException) network.cancel(true);
         });
-        return result;
     }
 
     private static boolean isJsonMediaType(String contentType) {
         int separator = contentType.indexOf(';');
         String mediaType = (separator < 0 ? contentType : contentType.substring(0, separator))
-                .trim().toLowerCase(java.util.Locale.ROOT);
+                .trim().toLowerCase(Locale.ROOT);
         return mediaType.equals("application/json")
                 || (mediaType.startsWith("application/") && mediaType.endsWith("+json"));
     }
@@ -207,10 +285,22 @@ public final class RouteCatalogClient {
             }
             return (Void) null;
         }).orTimeout(12, TimeUnit.SECONDS);
-        result.whenComplete((ignored, failure) -> {
-            if (failure instanceof java.util.concurrent.TimeoutException) network.cancel(true);
+        return result.whenComplete((ignored, failure) -> {
+            recordFailure(request, failure);
+            if (failure instanceof TimeoutException) network.cancel(true);
         });
-        return result;
+    }
+
+    private static void recordFailure(HttpRequest request, Throwable failure) {
+        if (failure == null) return;
+        while ((failure instanceof CompletionException
+                || failure instanceof ExecutionException) && failure.getCause() != null) {
+            failure = failure.getCause();
+        }
+        int status = failure instanceof CatalogApiException api ? api.status() : 0;
+        String code = failure instanceof CatalogApiException api ? api.code()
+                : failure instanceof TimeoutException ? "timeout" : "transport_error";
+        DebugSignals.recordCatalogFailure(request.method(), status, code);
     }
 
     private void addSignature(
@@ -239,11 +329,26 @@ public final class RouteCatalogClient {
 
     private static String normalizeZone(String value) {
         if (value == null || value.isBlank()) return null;
-        String trimmed = value.trim().toLowerCase(java.util.Locale.ROOT);
+        String trimmed = value.trim().toLowerCase(Locale.ROOT);
         if (!ZONE_ID.matcher(trimmed).matches()) {
             throw new IllegalArgumentException("Invalid catalog zone ID");
         }
         return trimmed;
+    }
+
+    private static String normalizeTag(String value) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim().toLowerCase(Locale.ROOT);
+        if (!trimmed.matches("[a-z0-9][a-z0-9-]{0,31}")) {
+            throw new IllegalArgumentException("Invalid catalog tag");
+        }
+        return trimmed;
+    }
+
+    private static String normalizeSort(String value) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim().toLowerCase(Locale.ROOT);
+        return SORTS.contains(trimmed) && !trimmed.equals("recommended") ? trimmed : null;
     }
 
     private static String normalizeCursor(String value) {
@@ -272,8 +377,12 @@ public final class RouteCatalogClient {
         return audience;
     }
 
+    public static boolean isValidRouteId(String routeId) {
+        return routeId != null && ROUTE_ID.matcher(routeId).matches();
+    }
+
     private static void requireRouteId(String routeId) {
-        if (routeId == null || !ROUTE_ID.matcher(routeId).matches()) {
+        if (!isValidRouteId(routeId)) {
             throw new IllegalArgumentException("Invalid catalog route ID");
         }
     }
@@ -286,99 +395,12 @@ public final class RouteCatalogClient {
 
         @Override
         public CompletableFuture<Response> send(HttpRequest request, int maximumBytes) {
-            return client.sendAsync(request, info -> {
-                OptionalLong contentLength = info.headers().firstValueAsLong("Content-Length");
-                if (contentLength.isPresent() && contentLength.getAsLong() > maximumBytes) {
-                    return new RejectingBodySubscriber("Catalog response is too large");
-                }
-                return new BoundedBodySubscriber(maximumBytes);
-            }).thenApply(response -> new Response(
-                    response.statusCode(),
-                    response.headers().firstValue("Content-Type").orElse(""),
-                    response.body()));
-        }
-    }
-
-    private static final class RejectingBodySubscriber
-            implements HttpResponse.BodySubscriber<byte[]>, Flow.Subscriber<List<ByteBuffer>> {
-        private final CompletableFuture<byte[]> body = new CompletableFuture<>();
-        private final String message;
-
-        private RejectingBodySubscriber(String message) {
-            this.message = message;
-        }
-
-        @Override
-        public CompletionStage<byte[]> getBody() {
-            return body;
-        }
-
-        @Override
-        public void onSubscribe(Flow.Subscription subscription) {
-            subscription.cancel();
-            body.completeExceptionally(new IllegalStateException(message));
-        }
-
-        @Override public void onNext(List<ByteBuffer> item) { }
-        @Override public void onError(Throwable failure) { body.completeExceptionally(failure); }
-        @Override public void onComplete() { }
-    }
-
-    static final class BoundedBodySubscriber
-            implements HttpResponse.BodySubscriber<byte[]>, Flow.Subscriber<List<ByteBuffer>> {
-        private final int maximumBytes;
-        private final CompletableFuture<byte[]> body = new CompletableFuture<>();
-        private final ByteArrayOutputStream output = new ByteArrayOutputStream();
-        private Flow.Subscription subscription;
-        private int received;
-
-        BoundedBodySubscriber(int maximumBytes) {
-            this.maximumBytes = maximumBytes;
-        }
-
-        @Override
-        public CompletionStage<byte[]> getBody() {
-            return body;
-        }
-
-        @Override
-        public void onSubscribe(Flow.Subscription next) {
-            if (subscription != null) {
-                next.cancel();
-                return;
-            }
-            subscription = next;
-            subscription.request(1);
-        }
-
-        @Override
-        public void onNext(List<ByteBuffer> buffers) {
-            try {
-                for (ByteBuffer buffer : buffers) {
-                    int size = buffer.remaining();
-                    if (size > maximumBytes - received) {
-                        throw new IllegalStateException("Catalog response is too large");
-                    }
-                    byte[] chunk = new byte[size];
-                    buffer.get(chunk);
-                    output.writeBytes(chunk);
-                    received += size;
-                }
-                subscription.request(1);
-            } catch (RuntimeException failure) {
-                subscription.cancel();
-                body.completeExceptionally(failure);
-            }
-        }
-
-        @Override
-        public void onError(Throwable failure) {
-            body.completeExceptionally(failure);
-        }
-
-        @Override
-        public void onComplete() {
-            body.complete(output.toByteArray());
+            return client.sendAsync(request, BoundedBody.handler(maximumBytes,
+                            () -> new IllegalStateException("Catalog response is too large")))
+                    .thenApply(response -> new Response(
+                            response.statusCode(),
+                            response.headers().firstValue("Content-Type").orElse(""),
+                            response.body()));
         }
     }
 }

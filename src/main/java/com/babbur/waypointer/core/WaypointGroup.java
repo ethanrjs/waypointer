@@ -4,6 +4,7 @@ import com.babbur.waypointer.color.GradientColorizer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,8 +12,9 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 
-/** Mutable route state. Mutate it only on the client thread. */
 public final class WaypointGroup {
 
     private static final int PROXIMITY_CELL_SIZE = 16;
@@ -34,10 +36,16 @@ public final class WaypointGroup {
         DUNGEON
     }
 
+    public enum RadiusSource {
+        UNKNOWN,
+        DEFAULT,
+        CUSTOM
+    }
+
     private final String id;
     private String name;
     private String zoneId;
-    private final List<Waypoint> waypoints;
+    private final VersionedList waypoints;
     private final List<Integer> manualColors;
     private int currentIndex;
     private boolean enabled;
@@ -45,16 +53,24 @@ public final class WaypointGroup {
     private LoadMode loadMode;
     private RouteKind routeKind;
     private double defaultRadius;
+    private RadiusSource radiusSource = RadiusSource.UNKNOWN;
     private boolean skipAheadEnabled = true;
     private boolean temp = false;
     private boolean runtimeOnly = false;
     private int staticColor = Waypoint.DEFAULT_COLOR;
     private int gradientStartColor = 0x00BFFF;
     private int gradientEndColor   = 0xFF3040;
+    private String stylePresetId = "";
+    private String icon = RouteIcon.NONE;
+    private WaypointStyle styleOverride = WaypointStyle.EMPTY;
     private WaypointPaint paint;
     private boolean paintEnabled = true;
     private CatalogRouteProvenance catalogProvenance;
+    private RoutePack routePack;
     private transient boolean[] staticReached;
+    private transient boolean[] stepDone;
+    private transient boolean showAllWaypoints;
+    private transient Boolean floorSteps;
     private transient int proximitySuppressedIndex = -1;
     private transient Integer focusedVisibleIndex;
     private transient int activeSubwaypointParentIndex = -1;
@@ -64,12 +80,16 @@ public final class WaypointGroup {
     private transient long standSkipHoldStartedAtMillis;
     private transient boolean staticCycleJustCompleted;
     private transient ProximityIndex proximityIndex;
+    private transient MainIndex mainIndex;
+    private transient int reachedVersion;
+    private transient Object resolvedStyleCache;
+    private transient Object fadeState;
 
         public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
         this.name = name == null ? "" : name;
         this.zoneId = Zone.canonicalId(Objects.requireNonNull(zoneId));
-        this.waypoints = new ArrayList<>();
+        this.waypoints = new VersionedList();
         this.manualColors = new ArrayList<>();
         this.currentIndex = 0;
         this.enabled = true;
@@ -98,10 +118,24 @@ public final class WaypointGroup {
         copy.gradientStartColor = gradientStartColor;
         copy.gradientEndColor = gradientEndColor;
         copy.defaultRadius = defaultRadius;
+        copy.radiusSource = radiusSource;
         copy.skipAheadEnabled = skipAheadEnabled;
+        copy.enabled = enabled;
+        copy.stylePresetId = stylePresetId;
+        copy.icon = icon;
+        copy.styleOverride = styleOverride;
         copy.waypoints.addAll(waypoints);
         copy.manualColors.addAll(manualColors);
         return copy;
+    }
+
+    public String icon() { return icon; }
+    public void setIcon(String spec) { icon = RouteIcon.normalize(spec); }
+    public String stylePresetId() { return stylePresetId; }
+    public void setStylePresetId(String id) { stylePresetId = id == null ? "" : id.strip(); }
+    public WaypointStyle styleOverride() { return styleOverride; }
+    public void setStyleOverride(WaypointStyle style) {
+        styleOverride = style == null ? WaypointStyle.EMPTY : style;
     }
 
     public String id()            { return id; }
@@ -113,6 +147,7 @@ public final class WaypointGroup {
     public LoadMode loadMode()    { return loadMode; }
     public RouteKind routeKind()  { return routeKind; }
     public double defaultRadius() { return defaultRadius; }
+    public RadiusSource radiusSource() { return radiusSource; }
         public int staticColor()      { return staticColor; }
     public int gradientStartColor() { return gradientStartColor; }
     public int gradientEndColor()   { return gradientEndColor; }
@@ -122,6 +157,7 @@ public final class WaypointGroup {
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
     public CatalogRouteProvenance catalogProvenance() { return catalogProvenance; }
+    public RoutePack routePack()    { return routePack; }
     public int visibleMainSteps()   { return visibleMainSteps; }
     public String runtimeSourceGroupId() { return runtimeSourceGroupId; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
@@ -130,9 +166,12 @@ public final class WaypointGroup {
     public boolean isEmpty()      { return waypoints.isEmpty(); }
     public boolean isComplete()   { return currentIndex >= waypoints.size(); }
 
-    /** Catalog provenance stays local and is omitted from exports. */
     public void setCatalogProvenance(CatalogRouteProvenance provenance) {
         this.catalogProvenance = provenance;
+    }
+
+    public void setRoutePack(RoutePack pack) {
+        this.routePack = pack;
     }
 
     public boolean isSubwaypoint(int index) {
@@ -148,18 +187,47 @@ public final class WaypointGroup {
     }
 
     public boolean hasSubwaypoints() {
-        for (Waypoint waypoint : waypoints) {
-            if (waypoint.isSubwaypoint()) return true;
-        }
-        return false;
+        return mainIndex().mainCount < waypoints.size();
+    }
+
+    public boolean hasWaypointStyleOverrides() {
+        return mainIndex().anyStyleOverride;
+    }
+
+    public boolean anySubwaypointHasFlag(int flag) {
+        return (mainIndex().subwaypointFlags & flag) != 0;
+    }
+
+    public boolean anyWaypointHasFlag(int flag) {
+        return (mainIndex().anyFlags & flag) != 0;
+    }
+
+    public boolean everyWaypointHasFlag(int flag) {
+        return (mainIndex().everyFlags & flag) == flag;
+    }
+
+    public long contentVersion() {
+        return ((long) waypoints.version << 32) | (reachedVersion & 0xFFFFFFFFL);
+    }
+
+    public Object resolvedStyleCache() {
+        return resolvedStyleCache;
+    }
+
+    public void setResolvedStyleCache(Object cache) {
+        resolvedStyleCache = cache;
+    }
+
+    public Object fadeState() {
+        return fadeState;
+    }
+
+    public void setFadeState(Object state) {
+        fadeState = state;
     }
 
     public int mainWaypointCount() {
-        int count = 0;
-        for (Waypoint waypoint : waypoints) {
-            if (!waypoint.isSubwaypoint()) count++;
-        }
-        return count;
+        return mainIndex().mainCount;
     }
 
     public int enabledMainWaypointCount() {
@@ -171,12 +239,14 @@ public final class WaypointGroup {
     }
 
     public int currentMainIndex() {
-        if (waypoints.isEmpty() || currentIndex >= waypoints.size()) return -1;
-        if (!isSubwaypoint(currentIndex)) return currentIndex;
+        return mainIndexAt(currentIndex);
+    }
 
-        int parent = parentMainIndex(currentIndex);
-        if (parent >= 0) return parent;
-        return nextMainIndexAtOrAfter(currentIndex);
+    private int mainIndexAt(int index) {
+        if (waypoints.isEmpty() || index < 0 || index >= waypoints.size()) return -1;
+        if (!isSubwaypoint(index)) return index;
+        int parent = parentMainIndex(index);
+        return parent >= 0 ? parent : nextMainIndexAtOrAfter(index);
     }
 
     public int currentMainOrdinal() {
@@ -193,12 +263,7 @@ public final class WaypointGroup {
     public int mainOrdinal(int index) {
         int mainIndex = isSubwaypoint(index) ? parentMainIndex(index) : index;
         if (mainIndex < 0 || mainIndex >= waypoints.size()) return 0;
-
-        int ordinal = 0;
-        for (int i = 0; i <= mainIndex; i++) {
-            if (!isSubwaypoint(i)) ordinal++;
-        }
-        return ordinal;
+        return mainIndex().mainsThrough[mainIndex];
     }
 
     public int childOrdinal(int index) {
@@ -228,10 +293,8 @@ public final class WaypointGroup {
     }
 
     public int previousMainIndexBefore(int index) {
-        for (int i = Math.min(index - 1, waypoints.size() - 1); i >= 0; i--) {
-            if (!isSubwaypoint(i)) return i;
-        }
-        return -1;
+        int before = Math.min(index - 1, waypoints.size() - 1);
+        return before < 0 ? -1 : mainIndex().lastMainThrough[before];
     }
 
     public int previousEnabledMainIndexBefore(int index) {
@@ -285,15 +348,32 @@ public final class WaypointGroup {
     }
 
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
-        public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); }
+        public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); floorSteps = null; }
     public void setEnabled(boolean on)                  {
         this.enabled = on;
     }
     public void setDefaultRadius(double r)              { this.defaultRadius = Waypoint.normalizeDefaultRadius(r); invalidateProximityIndex(); }
+    public void setRadiusSource(RadiusSource source)    { this.radiusSource = Objects.requireNonNull(source); }
+    public void setCustomRadius(double r)               { setDefaultRadius(r); radiusSource = RadiusSource.CUSTOM; }
+
+    public boolean followDefaultRadius(double previousDefault, double newDefault) {
+        if (radiusSource == RadiusSource.CUSTOM) return false;
+        if (radiusSource == RadiusSource.UNKNOWN
+                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0) {
+            return false;
+        }
+        boolean adopted = radiusSource != RadiusSource.DEFAULT;
+        radiusSource = RadiusSource.DEFAULT;
+        if (Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(newDefault)) == 0) return adopted;
+        setDefaultRadius(newDefault);
+        return true;
+    }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
     public void setVisibleMainSteps(int count)           { this.visibleMainSteps = Math.max(0, count); }
+    public boolean showAllWaypoints()                    { return showAllWaypoints; }
+    public void setShowAllWaypoints(boolean on)          { this.showAllWaypoints = on; }
     public void setRuntimeSourceGroupId(String id)       { this.runtimeSourceGroupId = id; }
     public void setRouteKind(RouteKind kind)              { this.routeKind = Objects.requireNonNull(kind); }
     public void setPaint(WaypointPaint paint)            { this.paint = paint; }
@@ -368,6 +448,13 @@ public final class WaypointGroup {
     public void forEachVisibleIndex(SequenceVisibility visibility,
                                     boolean keepSubwaypointsVisibleUntilNextWaypoint,
                                     IntConsumer action) {
+        forEachVisibleIndexAt(visibility, keepSubwaypointsVisibleUntilNextWaypoint,
+                currentIndex, activeSubwaypointParentIndex(), action);
+    }
+
+    public void forEachVisibleIndexAt(SequenceVisibility visibility,
+                                      boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                      int cursor, int activeParent, IntConsumer action) {
         Objects.requireNonNull(visibility, "visibility");
         Objects.requireNonNull(action, "action");
         int n = waypoints.size();
@@ -379,35 +466,36 @@ public final class WaypointGroup {
             return;
         }
 
-        if (loadMode == LoadMode.STATIC) {
+        if (loadMode == LoadMode.STATIC || showAllWaypoints) {
             for (int i = 0; i < n; i++) {
                 if (isWaypointEnabled(i)) action.accept(i);
             }
             return;
         }
 
-        if (isComplete()) {
-            int activeParent = activeSubwaypointParentIndex();
+        if (cursor >= n) {
+            if (routeKind != RouteKind.DUNGEON && usesDungeonSteps()) return;
             int lastMain = activeParent >= 0 ? activeParent : lastMainIndex();
             emitPreviousMainContext(lastMain, visibility.previousLimit(n), activeParent,
                     keepSubwaypointsVisibleUntilNextWaypoint, action, true);
             return;
         }
 
-        int cur = currentMainIndex();
+        int cur = mainIndexAt(cursor);
         if (cur < 0) return;
 
-        int activeParent = activeSubwaypointParentIndex();
-        if (isDungeonRoomRoute()) {
-            if (visibleMainSteps > 0) {
-                int exactCurrent = currentIndex;
+        if (usesDungeonSteps()) {
+            int steps = visibleStepCount();
+            if (steps > 0) {
+                int exactCurrent = cursor;
                 if (exactCurrent >= 0 && exactCurrent < n
                         && !waypoints.get(exactCurrent).hasFlag(
                         Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
                     if (isWaypointEnabled(exactCurrent)) action.accept(exactCurrent);
                 }
-                int stage = currentMainIndex();
-                for (int remaining = visibleMainSteps - 1; remaining > 0 && stage >= 0; remaining--) {
+                emitRestOfStep(cur, exactCurrent, action);
+                int stage = mainIndexAt(cursor);
+                for (int remaining = steps - 1; remaining > 0 && stage >= 0; remaining--) {
                     stage = nextMainIndexAfter(stage);
                     if (stage >= 0 && isWaypointEnabled(stage)) action.accept(stage);
                 }
@@ -441,6 +529,22 @@ public final class WaypointGroup {
             if (next < 0) break;
             if (activeParentAlreadyEmitted && next == activeParent) continue;
             action.accept(next);
+        }
+    }
+
+    private void emitRestOfStep(int main, int cursor, IntConsumer action) {
+        int end = childEndExclusive(main);
+        for (int i = Math.max(main, cursor) + 1; i < end; i++) {
+            if (!isWaypointEnabled(i) || isStepMemberDone(i)) continue;
+            Waypoint waypoint = waypoints.get(i);
+            if (!hasDungeonCompletion(waypoint)
+                    || waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) continue;
+            action.accept(i);
+        }
+        for (int i = main + 1; i < Math.min(end, cursor); i++) {
+            if (isAnyOrderStepMember(i) && isWaypointEnabled(i) && !isStepMemberDone(i)) {
+                action.accept(i);
+            }
         }
     }
 
@@ -503,8 +607,27 @@ public final class WaypointGroup {
         return routeKind == RouteKind.DUNGEON;
     }
 
-    private boolean isDungeonRoomRoute() {
-        return routeKind == RouteKind.DUNGEON;
+    public boolean usesDungeonSteps() {
+        if (routeKind == RouteKind.DUNGEON) return true;
+        if (temp) return false;
+        Boolean cached = floorSteps;
+        if (cached == null) {
+            cached = Zone.isCatacombsFloor(zoneId) && hasDungeonActions();
+            floorSteps = cached;
+        }
+        return cached;
+    }
+
+    private boolean hasDungeonActions() {
+        for (Waypoint waypoint : waypoints) {
+            if (hasDungeonCompletion(waypoint)) return true;
+        }
+        return false;
+    }
+
+    public int visibleStepCount() {
+        if (routeKind == RouteKind.DUNGEON) return visibleMainSteps;
+        return usesDungeonSteps() ? Math.max(1, visibleMainSteps) : 0;
     }
 
     public Waypoint get(int index) {
@@ -527,6 +650,7 @@ public final class WaypointGroup {
         waypoints.set(index, current.withFlags(flags));
         if (!disabled && staticReached != null && index < staticReached.length) {
             staticReached[index] = false;
+            reachedVersion++;
         }
         normalizeCurrentIndexToEnabledTarget();
         if (focusedVisibleIndex != null && !isWaypointEnabled(focusedVisibleIndex)) {
@@ -546,7 +670,35 @@ public final class WaypointGroup {
                 && setWaypointDisabled(index, !isWaypointDisabled(index));
     }
 
+    public void setWaypointStyle(int index, WaypointStyle style) {
+        Waypoint current = waypoints.get(index);
+        if (!current.styleOverride().equals(style)) waypoints.set(index, current.withStyleOverride(style));
+    }
+
+    public void lockWaypointColor(int index, int rgb) {
+        if (gradientMode == GradientMode.STATIC) {
+
+            List<Integer> current = new ArrayList<>(waypoints.size());
+            for (Waypoint waypoint : waypoints) current.add(waypoint.color());
+            gradientMode = GradientMode.MANUAL;
+            setManualColorSnapshot(current);
+            applyColorMode();
+        }
+        int color = rgb & 0xFFFFFF;
+        Waypoint waypoint = waypoints.get(index);
+        set(index, waypoint.withColor(color).withFlags(waypoint.flags() | Waypoint.FLAG_LOCKED_COLOR));
+        if (manualColors.size() == waypoints.size()) manualColors.set(index, color);
+    }
+
+    public void unlockWaypointColor(int index) {
+        Waypoint waypoint = waypoints.get(index);
+        if (!waypoint.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) return;
+        set(index, waypoint.withFlags(waypoint.flags() & ~Waypoint.FLAG_LOCKED_COLOR));
+        applyColorMode();
+    }
+
         public void set(int index, Waypoint replacement) {
+        Waypoint previous = waypoints.get(index);
         Waypoint normalized = normalizeWaypointForIndex(index, replacement);
         if (gradientMode == GradientMode.STATIC) {
             normalized = normalized.withColor(staticColor);
@@ -555,7 +707,9 @@ public final class WaypointGroup {
         if (gradientMode == GradientMode.MANUAL) {
             manualColors.set(index, normalized.color() & 0xFFFFFF);
         }
-        afterWaypointStructureChanged();
+        boolean onlyAppearanceChanged = previous.withName(normalized.name())
+                .withColor(normalized.color()).withStyleOverride(normalized.styleOverride()).equals(normalized);
+        if (!onlyAppearanceChanged) afterWaypointStructureChanged();
     }
 
     public void moveWaypointTo(int index, int x, int y, int z) {
@@ -705,6 +859,11 @@ public final class WaypointGroup {
     }
 
     public void advancePast(int reachedIndex) {
+        advancePastOnce(reachedIndex);
+        skipDoneDungeonTargets();
+    }
+
+    private void advancePastOnce(int reachedIndex) {
         if (isSubwaypoint(reachedIndex)) {
             int next = nextCompletableChildAfter(reachedIndex);
             if (next >= 0) {
@@ -743,7 +902,7 @@ public final class WaypointGroup {
         }
         int end = childEndExclusive(parentIndex);
         for (int i = parentIndex + 1; i < end; i++) {
-            if (isWaypointEnabled(i) && hasDungeonCompletion(waypoints.get(i))) return i;
+            if (isOrderedTarget(i)) return i;
         }
         return -1;
     }
@@ -753,9 +912,79 @@ public final class WaypointGroup {
         if (parent < 0) return -1;
         int end = childEndExclusive(parent);
         for (int i = childIndex + 1; i < end; i++) {
-            if (isWaypointEnabled(i) && hasDungeonCompletion(waypoints.get(i))) return i;
+            if (isOrderedTarget(i)) return i;
         }
         return -1;
+    }
+
+    private boolean isOrderedTarget(int index) {
+        if (!isWaypointEnabled(index) || !hasDungeonCompletion(waypoints.get(index))) return false;
+        if (!usesDungeonSteps()) return true;
+        return !isAnyOrderStepMember(index) && !isStepMemberDone(index);
+    }
+
+    public boolean isAnyOrderStepMember(int index) {
+        return index > 0 && index < waypoints.size()
+                && usesDungeonSteps()
+                && isSubwaypoint(index)
+                && waypoints.get(index).hasFlag(Waypoint.FLAG_STEP_ANY_ORDER);
+    }
+
+    public int currentStepStart() {
+        if (currentIndex < 0 || currentIndex >= waypoints.size()) return -1;
+        return mainIndexAt(currentIndex);
+    }
+
+    public boolean isStepMemberDone(int index) {
+        return stepDone != null && index >= 0 && index < stepDone.length && stepDone[index];
+    }
+
+    public boolean markStepMemberDone(int index) {
+        if (index < 0 || index >= waypoints.size() || isStepMemberDone(index)) return false;
+        if (stepDone == null || stepDone.length != waypoints.size()) {
+            stepDone = new boolean[waypoints.size()];
+        }
+        stepDone[index] = true;
+        return true;
+    }
+
+    public boolean[] stepDoneSnapshot() {
+        return stepDone == null ? new boolean[0] : stepDone.clone();
+    }
+
+    public void restoreStepDone(boolean[] snapshot) {
+        stepDone = snapshot == null || snapshot.length != waypoints.size()
+                ? null : snapshot.clone();
+    }
+
+    private void skipDoneDungeonTargets() {
+        if (stepDone == null || !usesDungeonSteps()) return;
+        while (currentIndex >= 0 && currentIndex < waypoints.size()) {
+            int before = currentIndex;
+            if (isStepMemberDone(currentIndex)) {
+                advancePastOnce(currentIndex);
+            } else if (!isSubwaypoint(currentIndex) && stepSecretsDone(currentIndex)) {
+                int next = nextMainIndexAfter(currentIndex);
+                currentIndex = next >= 0 ? next : waypoints.size();
+                activeSubwaypointParentIndex = -1;
+            } else {
+                return;
+            }
+            if (currentIndex <= before) return;
+        }
+    }
+
+    private boolean stepSecretsDone(int main) {
+        int end = childEndExclusive(main);
+        boolean any = false;
+        for (int i = main + 1; i < end; i++) {
+            if (!isWaypointEnabled(i) || !waypoints.get(i).hasFlag(Waypoint.FLAG_DUNGEON_SECRET)) {
+                continue;
+            }
+            if (!isStepMemberDone(i)) return false;
+            any = true;
+        }
+        return any;
     }
 
     private static boolean hasDungeonCompletion(Waypoint waypoint) {
@@ -796,9 +1025,9 @@ public final class WaypointGroup {
     private int previousEnabledTargetAtOrBefore(int index) {
         for (int i = Math.min(index, waypoints.size() - 1); i >= 0; i--) {
             if (!isWaypointEnabled(i)) continue;
-            if (routeKind != RouteKind.DUNGEON
+            if (!usesDungeonSteps()
                     || !isSubwaypoint(i)
-                    || hasDungeonCompletion(waypoints.get(i))) {
+                    || hasDungeonCompletion(waypoints.get(i)) && !isAnyOrderStepMember(i)) {
                 return i;
             }
         }
@@ -820,6 +1049,7 @@ public final class WaypointGroup {
         int firstMain = nextMainIndexAtOrAfter(0);
         currentIndex = firstMain >= 0 ? firstMain : waypoints.size();
         activeSubwaypointParentIndex = -1;
+        stepDone = null;
         resetStaticReachState();
         clearProximitySuppression();
     }
@@ -843,6 +1073,7 @@ public final class WaypointGroup {
         if (staticReached[index]) return false;
 
         staticReached[index] = true;
+        reachedVersion++;
         if (allStaticWaypointsReached()) {
             resetStaticReachState();
             staticCycleJustCompleted = true;
@@ -859,6 +1090,7 @@ public final class WaypointGroup {
     public void resetStaticReachState() {
         staticCycleJustCompleted = false;
         staticReached = null;
+        reachedVersion++;
     }
 
     public void focusNewWaypoint(int index) {
@@ -936,11 +1168,16 @@ public final class WaypointGroup {
         }
         currentIndex = normalizedMainIndexFor(index);
         activeSubwaypointParentIndex = -1;
+        forgetStepDoneFrom(currentIndex);
         clearProximitySuppression();
         clearStandSkipHold();
     }
 
-    /** Jumping to a disabled waypoint resets the route instead of warping past it. */
+    private void forgetStepDoneFrom(int index) {
+        if (stepDone == null) return;
+        for (int i = Math.max(0, index); i < stepDone.length; i++) stepDone[i] = false;
+    }
+
     private boolean isDisabledJumpTarget(int index) {
         return index >= 0 && index < waypoints.size() && isWaypointDisabled(index);
     }
@@ -1062,6 +1299,8 @@ public final class WaypointGroup {
         }
         clearStandSkipHold();
         staticReached = null;
+        reachedVersion++;
+        stepDone = null;
         invalidateProximityIndex();
     }
 
@@ -1269,8 +1508,95 @@ public final class WaypointGroup {
         staticReached = next;
     }
 
+    private MainIndex mainIndex() {
+        MainIndex index = mainIndex;
+        if (index == null || index.version != waypoints.version) {
+            index = MainIndex.build(waypoints);
+            mainIndex = index;
+        }
+        return index;
+    }
+
+    private static final class MainIndex {
+        final int version;
+        final int mainCount;
+        final boolean anyStyleOverride;
+
+        final int subwaypointFlags;
+
+        final int anyFlags;
+        final int everyFlags;
+
+        final int[] mainsThrough;
+
+        final int[] lastMainThrough;
+
+        private MainIndex(int version, int mainCount, boolean anyStyleOverride, int subwaypointFlags,
+                          int anyFlags, int everyFlags, int[] mainsThrough, int[] lastMainThrough) {
+            this.version = version;
+            this.mainCount = mainCount;
+            this.anyStyleOverride = anyStyleOverride;
+            this.subwaypointFlags = subwaypointFlags;
+            this.anyFlags = anyFlags;
+            this.everyFlags = everyFlags;
+            this.mainsThrough = mainsThrough;
+            this.lastMainThrough = lastMainThrough;
+        }
+
+        static MainIndex build(VersionedList waypoints) {
+            int size = waypoints.size();
+            int[] mainsThrough = new int[size];
+            int[] lastMainThrough = new int[size];
+            int mains = 0;
+            int lastMain = -1;
+            boolean anyStyleOverride = false;
+            int subwaypointFlags = 0;
+            int anyFlags = 0;
+            int everyFlags = ~0;
+            for (int i = 0; i < size; i++) {
+                Waypoint waypoint = waypoints.get(i);
+                anyFlags |= waypoint.flags();
+                everyFlags &= waypoint.flags();
+                if (!waypoint.isSubwaypoint()) {
+                    mains++;
+                    lastMain = i;
+                } else {
+                    subwaypointFlags |= waypoint.flags();
+                }
+                anyStyleOverride |= !waypoint.styleOverride().isEmpty();
+                mainsThrough[i] = mains;
+                lastMainThrough[i] = lastMain;
+            }
+            return new MainIndex(waypoints.version, mains, anyStyleOverride, subwaypointFlags,
+                    anyFlags, everyFlags, mainsThrough, lastMainThrough);
+        }
+    }
+
+    private static final class VersionedList extends ArrayList<Waypoint> {
+        int version;
+
+        @Override public Waypoint set(int index, Waypoint element) { version++; return super.set(index, element); }
+        @Override public boolean add(Waypoint element) { version++; return super.add(element); }
+        @Override public void add(int index, Waypoint element) { version++; super.add(index, element); }
+        @Override public boolean addAll(Collection<? extends Waypoint> elements) { version++; return super.addAll(elements); }
+        @Override public boolean addAll(int index, Collection<? extends Waypoint> elements) {
+            version++;
+            return super.addAll(index, elements);
+        }
+        @Override public Waypoint remove(int index) { version++; return super.remove(index); }
+        @Override public boolean remove(Object element) { version++; return super.remove(element); }
+        @Override public boolean removeIf(Predicate<? super Waypoint> filter) { version++; return super.removeIf(filter); }
+        @Override public boolean removeAll(Collection<?> elements) { version++; return super.removeAll(elements); }
+        @Override public boolean retainAll(Collection<?> elements) { version++; return super.retainAll(elements); }
+        @Override public void clear() { version++; super.clear(); }
+        @Override protected void removeRange(int from, int to) { version++; super.removeRange(from, to); }
+        @Override public void replaceAll(UnaryOperator<Waypoint> operator) { version++; super.replaceAll(operator); }
+        @Override public void sort(Comparator<? super Waypoint> comparator) { version++; super.sort(comparator); }
+    }
+
     private void invalidateProximityIndex() {
         proximityIndex = null;
+        floorSteps = null;
     }
 
     private ProximityIndex proximityIndex() {

@@ -19,10 +19,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Predicate;
+import com.babbur.waypointer.compat.ResourceManagerCompat;
 import java.util.stream.Stream;
 
-public final class RemoteLocaleResourceManager implements ResourceManager {
+public final class RemoteLocaleResourceManager extends ResourceManagerCompat {
     private static final String PREFIX = "lang/";
     private static final String SUFFIX = ".json";
     private static final PackResources SYNTHETIC_PACK = new PackResources() {
@@ -67,8 +67,7 @@ public final class RemoteLocaleResourceManager implements ResourceManager {
         return List.copyOf(combined);
     }
 
-    @Override public Map<Identifier, Resource> listResources(String path, Predicate<Identifier> filter) { return delegate.listResources(path, filter); }
-    @Override public Map<Identifier, List<Resource>> listResourceStacks(String path, Predicate<Identifier> filter) { return delegate.listResourceStacks(path, filter); }
+    @Override protected ResourceManager delegate() { return delegate; }
     @Override public Stream<PackResources> listPacks() { return delegate.listPacks(); }
 
     private static String locale(Identifier id) {

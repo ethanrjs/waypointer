@@ -12,6 +12,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsSearchTest {
 
     @Test
+    void feedbackCanBeFoundByItsLabelAndSupportAliases() {
+        for (String query : List.of("send feedback", "bug", "report", "support", "anonymous")) {
+            assertTrue(SettingsSearch.search(query, SettingsCatalog.categories()).stream()
+                    .anyMatch(match -> match.setting().id().equals(SettingsCatalog.ACTION_FEEDBACK)
+                            && match.categoryId().equals("feedback")), query);
+        }
+    }
+
+    @Test
+    void fuzzySearchHandlesTyposAndAppearanceKeywords() {
+        for (String query : List.of("trcaer", "tracerr", "tracer", "tracer opcity")) {
+            assertTrue(SettingsSearch.search(query, SettingsCatalog.categories()).stream()
+                    .anyMatch(match -> match.setting().id().equals("tracerOpacity")), query);
+        }
+        assertTrue(SettingsSearch.matchTier("painter", SettingsCatalog.byId("waypointPaint"),
+                "Extras", "Painter", null) >= 0);
+        assertEquals(-1, SettingsSearch.matchTier("zzzz", SettingsCatalog.byId("boxStyle"),
+                "Appearance", "Marker", null));
+    }
+
+    @Test
     void blankQueryReturnsNothing() {
         assertTrue(SettingsSearch.search(null, SettingsCatalog.categories()).isEmpty());
         assertTrue(SettingsSearch.search("", SettingsCatalog.categories()).isEmpty());
@@ -130,5 +151,50 @@ class SettingsSearchTest {
                 .findFirst().orElseThrow();
         assertEquals("Apparence", groupMatch.categoryLabel());
         assertEquals("Traceurs", groupMatch.groupLabel());
+    }
+
+    @Test
+    void actionButtonsAreSearchableByTheirTranslatedText() {
+        Map<String, String> french = Map.of(
+                "waypointer.screen.settings.config.copy", "Copier le code",
+                "waypointer.screen.settings.config.import", "Importer le code",
+                "waypointer.screen.settings.preset.nothing", "Tout désactiver");
+        SettingsSearch.TranslationResolver resolver =
+                (key, fallback) -> french.getOrDefault(key, fallback);
+
+        for (String query : List.of("copier", "importer")) {
+            assertEquals(SettingsCatalog.ACTION_CONFIG_CODE,
+                    SettingsSearch.search(query, SettingsCatalog.categories(), resolver)
+                            .getFirst().setting().id());
+        }
+        assertEquals(SettingsCatalog.ACTION_PRESETS,
+                SettingsSearch.search("tout désactiver", SettingsCatalog.categories(), resolver)
+                        .getFirst().setting().id());
+    }
+
+    @Test
+    void settingNamesRankBeforeActionNamesAndButtonText() {
+        Setting action = Setting.action("action", "Smooth action", "")
+                .buttons(Map.of("button", "Smooth button"));
+        Setting option = Setting.enumCycle("option", Setting.Store.MAIN, "Style", "",
+                List.of(new Setting.EnumOption("smooth", "Smooth", "smooth")), null, null);
+        Setting named = Setting.bool("named", Setting.Store.MAIN, "Smooth lines", "", null, null);
+        List<SettingsCatalog.Category> categories = List.of(SettingsCatalog.Category.of(
+                "test", "Test", SettingsCatalog.Group.plain(action, option, named)));
+
+        assertEquals(List.of("named", "action", "option"), SettingsSearch.search("smooth", categories)
+                .stream().map(match -> match.setting().id()).toList());
+    }
+
+    @Test
+    void enumButtonLabelsUseCurrentAndLegacyTranslations() {
+        Setting style = SettingsCatalog.byId("boxStyle");
+        for (String key : List.of(style.enumOptionTranslationKey(0), style.legacyEnumOptionTranslationKey(0))) {
+            List<SettingsSearch.Match> matches = SettingsSearch.search("kontur",
+                    SettingsCatalog.categories(),
+                    (translationKey, fallback) -> translationKey.equals(key) ? "Kontur" : fallback);
+            assertEquals("boxStyle", matches.getFirst().setting().id());
+            assertEquals(1, matches.getFirst().tier());
+        }
     }
 }

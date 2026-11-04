@@ -1,16 +1,15 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.WaypointerClient;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +31,7 @@ public final class GuiTokens {
 
     public static final int SURFACE        = 0xC0101216;
     public static final int SURFACE_SUBTLE = 0x60000000;
-    public static final int OVERLAY        = 0xF0101216;
+    public static final int OVERLAY        = 0xFF101216;
     public static final int BORDER         = 0x30FFFFFF;
     public static final int HOVER          = 0x18FFFFFF;
     public static final int SELECTED       = 0x30FFFFFF;
@@ -46,7 +45,49 @@ public final class GuiTokens {
     public static final int WARNING = 0xFFFFB060;
     public static final int DANGER  = 0xFFE47B7B;
 
-    /** Message tinted with a token color, e.g. {@code colored(label, ACCENT)}. */
+    static void drawDragOutline(GuiGraphicsExtractor graphics, int left, int top,
+                                int right, int bottom, int color, boolean dashed) {
+        int dash = dashed ? 4 : Math.max(right - left, bottom - top);
+        if (dash <= 0) return;
+        int step = dashed ? 7 : dash;
+        for (int x = left; x < right; x += step) {
+            graphics.fill(x, top, Math.min(x + dash, right), top + 1, color);
+            graphics.fill(x, bottom - 1, Math.min(x + dash, right), bottom, color);
+        }
+        for (int y = top; y < bottom; y += step) {
+            graphics.fill(left, y, left + 1, Math.min(y + dash, bottom), color);
+            graphics.fill(right - 1, y, right, Math.min(y + dash, bottom), color);
+        }
+    }
+
+    public static float menuOpacity() {
+        var config = WaypointerClient.config();
+        return config == null ? 1.0f : (float) config.menuOpacity();
+    }
+
+    public static int panel(int argb) {
+        float opacity = menuOpacity();
+        if (opacity >= 1.0f) return argb;
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * opacity);
+        return (alpha << 24) | (argb & 0xFFFFFF);
+    }
+
+    static boolean extractSeeThroughBackground(GuiGraphicsExtractor g, int width, int height) {
+        float opacity = menuOpacity();
+        var minecraft = Minecraft.getInstance();
+        if (opacity >= 1.0f || minecraft.level == null) return false;
+        g.fill(0, 0, width, height, Math.round(0x50 * opacity) << 24);
+        return true;
+    }
+
+    public static String ellipsize(Font font, String text, int maxWidth) {
+        if (font.width(text) <= maxWidth) return text;
+        String dots = "...";
+        int room = maxWidth - font.width(dots);
+        if (room <= 0) return font.plainSubstrByWidth(text, maxWidth);
+        return font.plainSubstrByWidth(text, room).stripTrailing() + dots;
+    }
+
     public static MutableComponent colored(Component message, int argb) {
         return message.copy().withStyle(
                 style -> style.withColor(TextColor.fromRgb(argb & 0xFFFFFF)));
@@ -54,10 +95,33 @@ public final class GuiTokens {
 
     public static class StyledButton extends Button {
         private static final int VISIBLE_GLYPH_HEIGHT = 8;
+        static final int ICON_GAP = 4;
+
+        private Icons.Icon icon;
+        private boolean iconOnly;
 
         public StyledButton(int x, int y, int width, int height,
                             Component message, OnPress onPress) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
+        }
+
+        public StyledButton icon(Icons.Icon icon) {
+            this.icon = icon;
+            return this;
+        }
+
+        public Icons.Icon icon() {
+            return icon;
+        }
+
+        public void setIconOnly(boolean iconOnly) {
+            this.iconOnly = iconOnly && icon != null;
+        }
+
+        boolean showsIcon(Font font, String label) {
+            if (icon == null || getHeight() < Icons.SIZE) return false;
+            int needed = Icons.SIZE + (label.isEmpty() ? 0 : ICON_GAP + font.width(label));
+            return needed <= getWidth() - 10;
         }
 
         public void extractOverPanel(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
@@ -72,13 +136,22 @@ public final class GuiTokens {
             drawControlFrame(g, x1, y1, getWidth(), getHeight(), active, highlighted, isFocused());
 
             var font = Minecraft.getInstance().font;
-            String clipped = font.plainSubstrByWidth(getMessage().getString(), getWidth() - 10);
-            int textX = x1 + (getWidth() - font.width(clipped)) / 2;
-            int textY = opticalTextY(y1, getHeight());
             int styledText = getMessage().getStyle().getColor() == null
                     ? TEXT
                     : 0xFF000000 | getMessage().getStyle().getColor().getValue();
-            g.text(font, clipped, textX, textY, active ? styledText : TEXT_MUTED, false);
+            int color = active ? styledText : TEXT_MUTED;
+            String label = iconOnly ? "" : getMessage().getString();
+            boolean showIcon = iconOnly || showsIcon(font, label);
+            int iconW = showIcon ? Icons.SIZE : 0;
+            int gap = showIcon && !label.isEmpty() ? ICON_GAP : 0;
+            String clipped = font.plainSubstrByWidth(label, Math.max(0, getWidth() - 10 - iconW - gap));
+            int contentW = iconW + gap + font.width(clipped);
+            int contentX = x1 + (getWidth() - contentW) / 2;
+            if (showIcon) {
+                int iconColor = !active ? TEXT_MUTED : highlighted ? ACCENT : styledText;
+                Icons.draw(g, icon, contentX, y1 + (getHeight() - Icons.SIZE) / 2, iconColor);
+            }
+            g.text(font, clipped, contentX + iconW + gap, opticalTextY(y1, getHeight()), color, false);
         }
     }
 
@@ -113,10 +186,6 @@ public final class GuiTokens {
     }
 
     public static final class StyledCheckbox extends Checkbox {
-        private static final int CHECKMARK_TEXTURE_SIZE = 16;
-        private static final Identifier CHECKMARK = Identifier.fromNamespaceAndPath(
-                Waypointer.MOD_ID, "textures/gui/checkmark.png");
-
         private StyledCheckbox(int x, int y, int size, Component label, boolean selected,
                                Consumer<Boolean> onValueChange) {
             super(x, y, size, label, Minecraft.getInstance().font, selected,
@@ -133,17 +202,8 @@ public final class GuiTokens {
             drawControlFrame(g, x, y, getWidth(), getHeight(), active, highlighted, isFocused());
             if (!selected()) return;
 
-            int checkX = x + (getWidth() - CHECKMARK_TEXTURE_SIZE) / 2;
-            int checkY = y + (getHeight() - CHECKMARK_TEXTURE_SIZE) / 2;
-            g.blit(RenderPipelines.GUI_TEXTURED, CHECKMARK,
-                    checkX, checkY, 0.0f, 0.0f,
-                    CHECKMARK_TEXTURE_SIZE, CHECKMARK_TEXTURE_SIZE,
-                    CHECKMARK_TEXTURE_SIZE, CHECKMARK_TEXTURE_SIZE);
-            if (!active) {
-                g.fill(checkX, checkY,
-                        checkX + CHECKMARK_TEXTURE_SIZE,
-                        checkY + CHECKMARK_TEXTURE_SIZE, 0x80000000);
-            }
+            Icons.drawCentered(g, Icons.Icon.CHECK, x, y, getWidth(), getHeight(),
+                    active ? ACCENT : TEXT_MUTED);
         }
     }
 
@@ -169,8 +229,20 @@ public final class GuiTokens {
         }
     }
 
-    /** Minecraft's visible pixel glyphs are 8px tall even though the font line box is 9px. */
-    static int opticalTextY(int controlY, int controlHeight) {
+    public static final int MINI_CHECK = 9;
+
+    public static void drawMiniCheck(GuiGraphicsExtractor g, int x, int y, boolean on, boolean available) {
+        int border = !available ? TEXT_MUTED & 0x80FFFFFF : on ? ACCENT : TEXT_MUTED;
+        g.fill(x, y, x + MINI_CHECK, y + MINI_CHECK, border);
+        g.fill(x + 1, y + 1, x + MINI_CHECK - 1, y + MINI_CHECK - 1, 0xFF0C0E11);
+        if (!available) {
+            g.fill(x + 2, y + 4, x + MINI_CHECK - 2, y + 5, TEXT_MUTED);
+        } else if (on) {
+            g.fill(x + 2, y + 2, x + MINI_CHECK - 2, y + MINI_CHECK - 2, ACCENT);
+        }
+    }
+
+    public static int opticalTextY(int controlY, int controlHeight) {
         return controlY + (controlHeight - StyledButton.VISIBLE_GLYPH_HEIGHT) / 2;
     }
 
@@ -187,6 +259,20 @@ public final class GuiTokens {
                 : new DirectionButton(x, y, width, height, message, direction, onPress);
         if (tooltip != null) button.setTooltip(tooltip);
         return button;
+    }
+
+    public static Button styledButton(int x, int y, int width, int height,
+                                      Component message, Button.OnPress onPress,
+                                      Tooltip tooltip, Icons.Icon icon) {
+        StyledButton button = new StyledButton(x, y, width, height, message, onPress).icon(icon);
+        if (tooltip != null) button.setTooltip(tooltip);
+        return button;
+    }
+
+    public static int iconButtonWidth(Font font, Component label, Icons.Icon icon) {
+        int text = font.width(label);
+        if (icon == null) return text + 16;
+        return Icons.SIZE + (text > 0 ? StyledButton.ICON_GAP + text : 0) + 16;
     }
 
     static Direction directionForLabel(String label) {
@@ -221,7 +307,6 @@ public final class GuiTokens {
     private static final int INFO_FILL_HOVER = 0xFF26343A;
     private static final int TOOLTIP_SEPARATOR = 0x55FFFFFF;
 
-    /** Floating panel used by tooltips, dropdowns, and pickers: OVERLAY fill, BORDER frame. */
     public static void drawTooltipPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, OVERLAY);
         g.fill(x1, y1, x2, y1 + 1, BORDER);
@@ -230,17 +315,17 @@ public final class GuiTokens {
         g.fill(x2 - 1, y1, x2, y2, BORDER);
     }
 
-    public static void drawInfoButton(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
+    public static void drawInfoButton(GuiGraphicsExtractor g, Font font,
                                       int x, int y, int size, boolean hovered) {
         g.fill(x, y, x + size, y + size, hovered ? 0xB0FFFFFF : BORDER);
         g.fill(x + 1, y + 1, x + size - 1, y + size - 1,
                 hovered ? INFO_FILL_HOVER : INFO_FILL);
-        int glyphX = x + (size - font.width("i")) / 2;
-        g.text(font, "i", glyphX, y + (size - StyledButton.VISIBLE_GLYPH_HEIGHT) / 2,
+        int glyphX = x + (size - (font.width("i") - 1)) / 2;
+        g.text(font, "i", glyphX, y + (size - 7) / 2,
                 hovered ? ACCENT : TEXT_DIM, false);
     }
 
-    public static void drawInfoTooltip(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
+    public static void drawInfoTooltip(GuiGraphicsExtractor g, Font font,
                                        String title, String[] labels, String[] descriptions,
                                        int[] labelColors, int mouseX, int mouseY,
                                        int maxRight, int maxBottom) {
@@ -260,8 +345,14 @@ public final class GuiTokens {
         int w = maxLineWidth + pad * 2;
         int h = pad * 2 + font.lineHeight + 5
                 + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
-        int x = Math.max(PAD_OUTER, Math.min(mouseX + 12, Math.max(PAD_OUTER, maxRight - w)));
-        int y = Math.max(PAD_OUTER, Math.min(mouseY + 12, Math.max(PAD_OUTER, maxBottom - h)));
+        float scale = infoTooltipScale(w, h, maxRight, maxBottom);
+        int x = Math.max(PAD_OUTER, Math.min(mouseX + 12, (int) (maxRight - w * scale)));
+        int y = Math.max(PAD_OUTER, Math.min(mouseY + 12, (int) (maxBottom - h * scale)));
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(scale, scale);
+        x = 0;
+        y = 0;
         drawTooltipPanel(g, x, y, x + w, y + h);
 
         int textX = x + pad;
@@ -277,6 +368,13 @@ public final class GuiTokens {
             g.text(font, descriptions[i], textX + maxLabelWidth + GAP, rowY, TEXT_DIM, false);
             rowY += font.lineHeight + lineGap;
         }
+        g.pose().popMatrix();
+    }
+
+    static float infoTooltipScale(int width, int height, int maxRight, int maxBottom) {
+        return Math.min(1.0f, Math.min(
+                Math.max(1, maxRight - PAD_OUTER) / (float) width,
+                Math.max(1, maxBottom - PAD_OUTER) / (float) height));
     }
 
     public static StyledCheckbox styledCheckbox(int x, int y, int size, Component label,
@@ -287,12 +385,18 @@ public final class GuiTokens {
         return checkbox;
     }
 
-    public record ButtonSpec(String label, int width, Runnable onClick, Tooltip tooltip) {
+    public record ButtonSpec(String label, int width, Runnable onClick, Tooltip tooltip, Icons.Icon icon) {
+        public ButtonSpec(String label, int width, Runnable onClick, Tooltip tooltip) {
+            this(label, width, onClick, tooltip, null);
+        }
         public ButtonSpec(String label, Runnable onClick) {
-            this(label, -1, onClick, null);
+            this(label, -1, onClick, null, null);
         }
         public ButtonSpec(String label, int width, Runnable onClick) {
-            this(label, width, onClick, null);
+            this(label, width, onClick, null, null);
+        }
+        public ButtonSpec withIcon(Icons.Icon icon) {
+            return new ButtonSpec(label, width, onClick, tooltip, icon);
         }
     }
 
@@ -302,18 +406,19 @@ public final class GuiTokens {
     public static void layoutFooter(int screenW, int footerY,
                                     List<ButtonSpec> left, ButtonSpec right,
                                     Consumer<Button> sink,
-                                    net.minecraft.client.gui.Font font) {
+                                    Font font) {
         layoutFooter(screenW, footerY, left, right, sink, font, PAD_OUTER, GAP_SECTION);
     }
 
     public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                   net.minecraft.client.gui.Font font) {
+                                   Font font) {
         return footerHeight(screenW, left, right, font, PAD_OUTER, GAP_SECTION);
     }
 
     public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                   net.minecraft.client.gui.Font font,
+                                   Font font,
                                    int startX, int rightInset) {
+        left = fittedSpecs(screenW, left, right, font, startX, rightInset);
         return needsFooterWrap(screenW, left, right, font, startX, rightInset)
                 ? FOOTER_H + BTN_H + GAP
                 : FOOTER_H;
@@ -322,7 +427,7 @@ public final class GuiTokens {
     public static void layoutFooter(int screenW, int footerY,
                                     List<ButtonSpec> left, ButtonSpec right,
                                     Consumer<Button> sink,
-                                    net.minecraft.client.gui.Font font,
+                                    Font font,
                                     int startX, int rightInset) {
         for (FooterPlacement placement : footerPlacements(
                 screenW, footerY, left, right, font, startX, rightInset)) {
@@ -332,8 +437,9 @@ public final class GuiTokens {
 
     static List<FooterPlacement> footerPlacements(int screenW, int footerY,
                                                   List<ButtonSpec> left, ButtonSpec right,
-                                                  net.minecraft.client.gui.Font font,
+                                                  Font font,
                                                   int startX, int rightInset) {
+        left = fittedSpecs(screenW, left, right, font, startX, rightInset);
         int rightW = right == null ? 0 : measureWidth(right, font);
         int rightX = right == null ? screenW - rightInset : screenW - rightInset - rightW;
         int leftLimit = right == null ? screenW - rightInset : rightX - GAP_SECTION;
@@ -356,7 +462,7 @@ public final class GuiTokens {
             while (cut > 0 && running > leftLimit - startX) {
                 cut--;
                 running -= widths[cut];
-                if (cut < left.size()) running -= GAP; // removed separator
+                if (cut < left.size()) running -= GAP;
             }
             primary = new ArrayList<>(left.subList(0, cut));
             wrapped = new ArrayList<>(left.subList(cut, left.size()));
@@ -388,8 +494,22 @@ public final class GuiTokens {
         return placements;
     }
 
+    static List<ButtonSpec> fittedSpecs(int screenW, List<ButtonSpec> left, ButtonSpec right,
+                                        Font font,
+                                        int startX, int rightInset) {
+        if (!needsFooterWrap(screenW, left, right, font, startX, rightInset)) return left;
+        List<ButtonSpec> plain = left.stream()
+                .map(spec -> spec.icon() == null ? spec : spec.withIcon(null)).toList();
+        if (!needsFooterWrap(screenW, plain, right, font, startX, rightInset)) return plain;
+        return plain.stream().map(spec -> spec.width() > 0 ? spec : new ButtonSpec(spec.label(),
+                Math.max(TIGHT_BUTTON_MIN_W, font.width(spec.label()) + 16),
+                spec.onClick(), spec.tooltip(), null)).toList();
+    }
+
+    private static final int TIGHT_BUTTON_MIN_W = 36;
+
     private static boolean needsFooterWrap(int screenW, List<ButtonSpec> left, ButtonSpec right,
-                                           net.minecraft.client.gui.Font font,
+                                           Font font,
                                            int startX, int rightInset) {
         int rightW = right == null ? 0 : measureWidth(right, font);
         int rightX = right == null ? screenW - rightInset : screenW - rightInset - rightW;
@@ -400,12 +520,17 @@ public final class GuiTokens {
         return needed > leftLimit - startX;
     }
 
-    private static int measureWidth(ButtonSpec spec, net.minecraft.client.gui.Font font) {
+    private static int measureWidth(ButtonSpec spec, Font font) {
         if (spec.width > 0) return spec.width;
-        return Math.max(60, font.width(spec.label) + 16);
+        int icon = spec.icon == null ? 0 : Icons.SIZE + (spec.label.isEmpty() ? 0 : StyledButton.ICON_GAP);
+        return Math.max(60, font.width(spec.label) + icon + 16);
     }
 
     private static Button buildButton(ButtonSpec spec, int x, int y, int w) {
+        if (spec.icon != null) {
+            return styledButton(x, y, w, BTN_H, Component.literal(spec.label),
+                    b -> spec.onClick.run(), spec.tooltip, spec.icon);
+        }
         return styledButton(x, y, w, BTN_H,
                 Component.literal(spec.label), b -> spec.onClick.run(), spec.tooltip);
     }

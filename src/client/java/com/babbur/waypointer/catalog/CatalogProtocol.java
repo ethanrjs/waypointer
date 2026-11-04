@@ -1,34 +1,49 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.codec.CatalogCodec;
+import com.babbur.waypointer.codec.V11Codec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Validates catalog data before it reaches local route state. */
 public final class CatalogProtocol {
+    private static final int CATALOG_CODEC_VERSION = 9;
+    private static final int MAX_REGULAR_GROUPS = 64;
+    static final int MAX_DUNGEON_GROUPS = 256;
+    private static final int MAX_WAYPOINTS = 25_000;
+    static final int MAX_PAYLOAD_CHARS = 256 * 1024;
+
     private CatalogProtocol() {
     }
 
     public static int currentCodecVersion() {
-        return WaypointCodec.currentWireVersion();
+        return CATALOG_CODEC_VERSION;
+    }
+
+    public static boolean supportsCodecVersion(int version) {
+        return version == CATALOG_CODEC_VERSION
+                || version == CatalogCodec.V11_CODEC_VERSION
+                || version == DungeonRoomShareCodec.CATALOG_CODEC_VERSION;
     }
 
     public static void requireInstallable(CatalogRouteSummary summary) {
         Objects.requireNonNull(summary, "summary");
-        if (summary.codecVersion() != currentCodecVersion()) {
-            throw new IllegalArgumentException(
-                    "Catalog route needs an unsupported codec version");
+        if (!supportsCodecVersion(summary.codecVersion())) {
+            throw new CatalogRouteTooNewException(summary);
         }
     }
 
@@ -46,23 +61,80 @@ public final class CatalogProtocol {
     }
 
     static PayloadManifest inspectPayload(String payload) {
+        requirePayloadSize(payload);
+        if (payload.startsWith(DungeonRoomShareCodec.MAGIC)) {
+            List<WaypointGroup> groups = DungeonRoomShareCodec.decodeCatalog(payload).routes();
+            PublishManifest manifest = publishManifest(groups, payload);
+            return new PayloadManifest(groups, "", manifest.groupCount(),
+                    manifest.waypointCount(), manifest.zoneId(), manifest.codecVersion(),
+                    manifest.payloadSha256());
+        }
+        if (CatalogCodec.isV11(payload)) {
+            V11Codec.Decoded decoded = CatalogCodec.decodeV11(payload);
+            List<WaypointGroup> groups = List.copyOf(decoded.groups());
+            if (!hasDungeonRoutes(groups)) WaypointImporter.validateCatalogEmbeddedZones(groups);
+            PublishManifest manifest = publishManifest(groups, payload);
+            return new PayloadManifest(groups, decoded.label(), manifest.groupCount(),
+                    manifest.waypointCount(), manifest.zoneId(), manifest.codecVersion(),
+                    manifest.payloadSha256());
+        }
         WaypointCodec.Decoded decoded = WaypointCodec.decodeCanonicalV9(payload);
         WaypointImporter.validateCatalogEmbeddedZones(decoded.groups());
         List<WaypointGroup> groups = List.copyOf(decoded.groups());
-        int waypointCount = groups.stream().mapToInt(WaypointGroup::size).sum();
-        Set<String> zones = new LinkedHashSet<>();
-        for (WaypointGroup group : groups) zones.add(group.zoneId());
-        String zoneId = zones.size() == 1 ? zones.iterator().next() : "multiple";
+        PublishManifest publishManifest = publishManifest(groups, payload);
         return new PayloadManifest(
-                groups, decoded.label(), groups.size(), waypointCount, zoneId,
-                currentCodecVersion(), payloadHash(payload));
+                groups, decoded.label(), publishManifest.groupCount(),
+                publishManifest.waypointCount(), publishManifest.zoneId(),
+                publishManifest.codecVersion(), publishManifest.payloadSha256());
+    }
+
+    public static PreparedCatalogPayload prepareCatalogPayload(
+            List<WaypointGroup> groups) {
+        Objects.requireNonNull(groups, "groups");
+        List<WaypointGroup> snapshots = new ArrayList<>(groups.size());
+        for (WaypointGroup group : groups) {
+            snapshots.add(Objects.requireNonNull(group, "group").exportSnapshot());
+        }
+        List<WaypointGroup> immutableSnapshots = List.copyOf(snapshots);
+        requireGroupCounts(immutableSnapshots);
+        String payload;
+        if (hasDungeonRoutes(immutableSnapshots)) {
+            payload = DungeonRoomShareCodec.encodeCatalog(immutableSnapshots);
+        } else {
+            WaypointImporter.validateCatalogEmbeddedZones(immutableSnapshots);
+            payload = CatalogCodec.encode(immutableSnapshots);
+        }
+        requirePayloadSize(payload);
+        return new PreparedCatalogPayload(
+                payload, publishManifest(immutableSnapshots, payload));
     }
 
     static PublishExpectation validatePublishRequest(
             CatalogPublishRequest request, PublisherIdentity identity) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(identity, "identity");
-        PayloadManifest manifest = inspectPayload(request.payload());
+        return publishExpectation(
+                request, identity, inspectPayload(request.payload()).publishManifest());
+    }
+
+    static PublishExpectation validatePreparedPublishRequest(
+            CatalogPublishRequest request,
+            PublisherIdentity identity,
+            PreparedCatalogPayload prepared) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(prepared, "prepared");
+        if (!prepared.payload.equals(request.payload())) {
+            throw new IllegalArgumentException(
+                    "Prepared catalog payload does not match the publish request");
+        }
+        return publishExpectation(request, identity, prepared.manifest);
+    }
+
+    private static PublishExpectation publishExpectation(
+            CatalogPublishRequest request,
+            PublisherIdentity identity,
+            PublishManifest manifest) {
         if (request.zoneId() != null && !request.zoneId().isBlank()
                 && !manifest.zoneId().equals(request.zoneId())) {
             throw new IllegalArgumentException(
@@ -97,7 +169,7 @@ public final class CatalogProtocol {
         if (!expected.visibility().wireName().equals(route.visibility())) {
             throw invalidPublishResponse("The catalog returned a different route visibility.");
         }
-        PayloadManifest manifest = expected.manifest();
+        PublishManifest manifest = expected.manifest();
         if (!expected.zoneId().equals(route.zoneId())
                 || manifest.groupCount() != route.groupCount()
                 || manifest.waypointCount() != route.waypointCount()
@@ -142,8 +214,48 @@ public final class CatalogProtocol {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(
                     payload.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (java.security.NoSuchAlgorithmException impossible) {
+        } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
+    }
+
+    private static PublishManifest publishManifest(
+            List<WaypointGroup> groups, String payload) {
+        requireGroupCounts(groups);
+        int waypointCount = groups.stream().mapToInt(WaypointGroup::size).sum();
+        boolean v11 = CatalogCodec.isV11(payload);
+        if (hasDungeonRoutes(groups)) {
+            return new PublishManifest(groups.size(), waypointCount, "dungeon",
+                    v11 ? CatalogCodec.V11_CODEC_VERSION : DungeonRoomShareCodec.CATALOG_CODEC_VERSION,
+                    payloadHash(payload));
+        }
+        Set<String> zones = new LinkedHashSet<>();
+        for (WaypointGroup group : groups) zones.add(group.zoneId());
+        String zoneId = zones.size() == 1 ? zones.iterator().next() : "multiple";
+        return new PublishManifest(
+                groups.size(), waypointCount, zoneId,
+                v11 ? CatalogCodec.V11_CODEC_VERSION : currentCodecVersion(), payloadHash(payload));
+    }
+
+    private static boolean hasDungeonRoutes(List<WaypointGroup> groups) {
+        return groups.stream().anyMatch(group ->
+                group.routeKind() == WaypointGroup.RouteKind.DUNGEON);
+    }
+
+    private static void requireGroupCounts(List<WaypointGroup> groups) {
+        long waypoints = groups.stream().mapToLong(WaypointGroup::size).sum();
+        if (groups.isEmpty() || waypoints == 0) {
+            throw new IllegalArgumentException("Catalog route has no waypoints");
+        }
+        int maxGroups = hasDungeonRoutes(groups) ? MAX_DUNGEON_GROUPS : MAX_REGULAR_GROUPS;
+        if (groups.size() > maxGroups || waypoints > MAX_WAYPOINTS) {
+            throw new IllegalArgumentException("Catalog route exceeds install limits");
+        }
+    }
+
+    private static void requirePayloadSize(String payload) {
+        if (payload == null || payload.isEmpty() || payload.length() > MAX_PAYLOAD_CHARS) {
+            throw new IllegalArgumentException("Catalog route code has an invalid size");
         }
     }
 
@@ -181,15 +293,45 @@ public final class CatalogProtocol {
             String zoneId,
             int codecVersion,
             String payloadSha256) {
+        PublishManifest publishManifest() {
+            return new PublishManifest(
+                    groupCount, waypointCount, zoneId, codecVersion, payloadSha256);
+        }
+    }
+
+    record PublishManifest(
+            int groupCount,
+            int waypointCount,
+            String zoneId,
+            int codecVersion,
+            String payloadSha256) {
     }
 
     record PublishExpectation(
-            PayloadManifest manifest,
+            PublishManifest manifest,
             String publisherName,
             String title,
             String description,
             CatalogPublishRequest.Visibility visibility,
             String zoneId) {
+    }
+
+    public static final class PreparedCatalogPayload {
+        private final String payload;
+        private final PublishManifest manifest;
+
+        private PreparedCatalogPayload(String payload, PublishManifest manifest) {
+            this.payload = payload;
+            this.manifest = manifest;
+        }
+
+        public String payload() {
+            return payload;
+        }
+
+        public String payloadSha256() {
+            return manifest.payloadSha256();
+        }
     }
 
     private record SelectedRouteMetadata(

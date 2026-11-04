@@ -6,10 +6,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Exports the debug report using only the categories the user approved.
- * Excluded sections are marked as redacted rather than silently omitted.
- */
 public final class DebugReportExport {
 
     public static final String REDACTED = "[User redacted]";
@@ -67,7 +63,6 @@ public final class DebugReportExport {
         }
     }
 
-    /** Core data is included even when it is absent from {@code included}. */
     public record Options(Set<Category> included) {
         public Options {
             EnumSet<Category> copy = included == null || included.isEmpty()

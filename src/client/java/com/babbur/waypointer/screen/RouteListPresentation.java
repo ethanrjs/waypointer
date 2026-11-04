@@ -2,10 +2,14 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.i18n.Counts;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -17,7 +21,40 @@ import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static com.babbur.waypointer.screen.GuiTokens.HOVER;
 import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
 
-final class RouteListPresentation {
+public final class RouteListPresentation {
+
+    static int folderBackgroundTint(RouteFolder folder) {
+        boolean structures = folder.runtimeOnly()
+                && CrystalHollowsStructureFolder.FOLDER_ID.equals(folder.id());
+        return (structures ? 0x50000000 : 0x24000000) | folder.color();
+    }
+
+    static Component waypointCount(int count) {
+        return Counts.of("waypoint", count);
+    }
+
+    static String joinParts(List<String> parts) {
+        return String.join(Component.translatable("waypointer.screen.main.route.separator").getString(), parts);
+    }
+
+    static int folderIconTint(RouteFolder folder) {
+        return readableOnDark(folder.color());
+    }
+
+    static int readableOnDark(int rgb) {
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
+        double luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+        double floor = 0.45;
+        if (luma < floor) {
+            double t = (floor - luma) / (1.0 - luma);
+            r = (int) Math.round(r + (255 - r) * t);
+            g = (int) Math.round(g + (255 - g) * t);
+            b = (int) Math.round(b + (255 - b) * t);
+        }
+        return 0xFF000000 | r << 16 | g << 8 | b;
+    }
 
     static final int CURRENT_DUNGEON_ROOM_ACCENT = 0xFF58C878;
 
@@ -67,7 +104,7 @@ final class RouteListPresentation {
         return changed;
     }
 
-    static String nextRouteName(Iterable<WaypointGroup> zoneGroups) {
+    public static String nextRouteName(Iterable<WaypointGroup> zoneGroups) {
         Set<String> taken = new HashSet<>();
         if (zoneGroups != null) {
             for (WaypointGroup group : zoneGroups) {
@@ -124,6 +161,12 @@ final class RouteListPresentation {
         return doubleClick ? FolderHeaderAction.NONE : FolderHeaderAction.TOGGLE;
     }
 
+    static boolean rowControlHit(boolean routeRow, boolean folderRow, double mouseX, int rowRight) {
+        if (routeRow) return mouseX >= routeToggleHitLeft(rowRight) && mouseX <= rowRight;
+        return folderRow && (isFolderEditControlHit(mouseX, rowRight)
+                || isFolderSelectControlHit(mouseX, rowRight));
+    }
+
     static boolean canStartRouteDrag(
             WaypointGroup group, String query, boolean shiftDown, boolean controlDown) {
         return group != null && !group.temp() && !group.runtimeOnly()
@@ -137,19 +180,19 @@ final class RouteListPresentation {
         NONE
     }
 
-    static Map<String, Integer> routeCommandIndices(List<WaypointGroup> groups) {
+    static Map<String, Integer> routeCommandIndices(List<WaypointGroup> zoneRoutes) {
         Map<String, Integer> indices = new HashMap<>();
-        if (groups == null) return indices;
-        for (int i = 0; i < groups.size(); i++) {
-            WaypointGroup group = groups.get(i);
-            if (group != null) indices.put(group.id(), i);
+        if (zoneRoutes == null) return indices;
+        for (int i = 0; i < zoneRoutes.size(); i++) {
+            WaypointGroup group = zoneRoutes.get(i);
+            if (group != null) indices.put(group.id(), i + 1);
         }
         return indices;
     }
 
-    static String routeRowName(WaypointGroup group, int routeIndex, boolean showRouteIndex) {
+    static String routeRowName(WaypointGroup group, int routeNumber, boolean showRouteNumber) {
         String name = displayGroupName(group);
-        return showRouteIndex && routeIndex >= 0 ? "[" + routeIndex + "] " + name : name;
+        return showRouteNumber && routeNumber > 0 ? routeNumber + ". " + name : name;
     }
 
     static String routeToggleLabel(boolean enabled) {
@@ -193,6 +236,31 @@ final class RouteListPresentation {
             return selected ? CURRENT_DUNGEON_ROOM_SELECTED_BG : CURRENT_DUNGEON_ROOM_BG;
         }
         return selected ? SELECTED : hovered ? HOVER : 0;
+    }
+
+    static int secretWaypointCount(WaypointGroup group) {
+        int count = 0;
+        for (var waypoint : group.waypoints()) {
+            if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_SECRET)) count++;
+        }
+        return count;
+    }
+
+    static String roomRouteSubtitle(String routeName, int secretCount, boolean currentRoom) {
+        List<String> parts = new ArrayList<>();
+        if (routeName != null && !routeName.isBlank()) parts.add(routeName);
+        if (secretCount > 0) {
+            parts.add(secretCount == 1
+                    ? Component.translatableWithFallback(
+                            "waypointer.screen.main.room.secrets.one", "%1$s secret", secretCount).getString()
+                    : Component.translatableWithFallback(
+                            "waypointer.screen.main.room.secrets.many", "%1$s secrets", secretCount).getString());
+        }
+        if (currentRoom) {
+            parts.add(Component.translatableWithFallback(
+                    "waypointer.screen.main.room.current", "current").getString());
+        }
+        return joinParts(parts);
     }
 
     static String roomHeaderSubtitle(

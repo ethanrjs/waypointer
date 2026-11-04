@@ -3,12 +3,6 @@ package com.babbur.waypointer.api;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Waypoint;
 
-/**
- * Immutable input for creating a Waypointer waypoint through the public API.
- *
- * <p>Use {@link #at(int, int, int)} for concise call sites, or
- * {@link #builder()} when a mod fills values from its own data model.
- */
 public record WaypointSpec(
         int x,
         int y,
@@ -48,17 +42,6 @@ public record WaypointSpec(
         return builder().precisePositionSixteenths(preciseX, preciseY, preciseZ).build();
     }
 
-    /**
-     * Start building a waypoint input.
-     *
-     * <pre>{@code
-     * WaypointSpec waypoint = WaypointSpec.builder()
-     *         .position(125, 72, -34)
-     *         .name("Burrow")
-     *         .color(0xFFD166)
-     *         .build();
-     * }</pre>
-     */
     public static Builder builder() {
         return new Builder();
     }
@@ -131,7 +114,6 @@ public record WaypointSpec(
             return this;
         }
 
-        /** Set exact coordinates in sixteenths of a block. */
         public Builder precisePositionSixteenths(int preciseX, int preciseY, int preciseZ) {
             this.preciseX = preciseX;
             this.preciseY = preciseY;
@@ -142,37 +124,26 @@ public record WaypointSpec(
             return this;
         }
 
-        /** Label shown by Waypointer. Empty or {@code null} means no label. */
         public Builder name(String name) {
             this.name = name;
             return this;
         }
 
-        /** RGB color as {@code 0xRRGGBB}. Alpha is handled by Waypointer. */
         public Builder color(int color) {
             this.color = color;
             return this;
         }
 
-        /**
-         * Waypoint render and behavior flags. Combine constants from
-         * {@link WaypointFlags} rather than hardcoding bit values.
-         */
         public Builder flags(int flags) {
             this.flags = flags;
             return this;
         }
 
-        /** Custom reach radius in blocks. Zero uses the route default. */
         public Builder radius(double radius) {
             this.radius = radius;
             return this;
         }
 
-        /**
-         * Short source name for temp waypoints, used to label markers such as
-         * {@code "Example Mod"} or {@code "Party Chat"}.
-         */
         public Builder source(String source) {
             this.source = source;
             return this;

@@ -76,5 +76,13 @@ final class PublisherNameLayout {
         int contentRight() {
             return contentX + contentWidth;
         }
+
+        int errorY() {
+            return entryDetailsVisible ? panelY + 34 : fieldLabelY;
+        }
+
+        int errorRows() {
+            return entryDetailsVisible ? 2 : 1;
+        }
     }
 }

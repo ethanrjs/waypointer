@@ -2,15 +2,20 @@ package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.ArgumentBuilder;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.tree.CommandNode;
 import com.babbur.waypointer.Waypointer;
+import com.mojang.brigadier.tree.LiteralCommandNode;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 
-/** Keeps /wp suggestions available when the server registers its own /wp command. */
 public final class WaypointerCommandSuggestionOverride {
 
     private static final String ROOT = "wp";
@@ -40,10 +45,6 @@ public final class WaypointerCommandSuggestionOverride {
         CommandDispatcher<ClientSuggestionProvider> target = connection.getCommands();
         CommandNode<ClientSuggestionProvider> targetRoot = target.getRoot().getChild(ROOT);
         if (isInstalledFor(connection, target, targetRoot)) return;
-        if (isWaypointerRoot(targetRoot)) {
-            rememberInstalledState(connection, target, targetRoot);
-            return;
-        }
 
         CommandNode<FabricClientCommandSource> clientRoot = this.clientRoot;
         if (clientRoot == null) return;
@@ -77,18 +78,57 @@ public final class WaypointerCommandSuggestionOverride {
 
     static boolean isWaypointerRoot(CommandNode<?> node) {
         if (node == null) return false;
-        // These two children distinguish Waypointer from common server-side /wp trees.
         return node.getChild("importchat") != null && node.getChild("importfile") != null;
     }
 
     boolean installWpSuggestionRoot(CommandNode<ClientSuggestionProvider> targetRoot,
                                     CommandNode<FabricClientCommandSource> clientRoot) {
         try {
-            targetRoot.addChild(copyAsSuggestionNode(clientRoot));
+            CommandNode<ClientSuggestionProvider> root = installRoot(targetRoot, ROOT, copyAsSuggestionNode(clientRoot));
+            for (String alias : ALIASES) {
+                CommandNode<ClientSuggestionProvider> aliasNode = targetRoot.getChild(alias);
+                if (aliasNode != null && aliasNode.getRedirect() == root && aliasNode.getChildren().isEmpty()) continue;
+                removeChild(targetRoot, alias);
+                targetRoot.addChild(LiteralArgumentBuilder
+                        .<ClientSuggestionProvider>literal(alias)
+                        .executes(ctx -> 0)
+                        .redirect(root)
+                        .build());
+            }
             return isWaypointerRoot(targetRoot.getChild(ROOT));
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | ReflectiveOperationException e) {
             warnInstallFailure(e);
             return false;
+        }
+    }
+
+    private static final List<String> ALIASES = List.of("waypointer", "wptr");
+
+    private static CommandNode<ClientSuggestionProvider> installRoot(
+            CommandNode<ClientSuggestionProvider> targetRoot, String name,
+            CommandNode<ClientSuggestionProvider> ours) throws ReflectiveOperationException {
+        CommandNode<ClientSuggestionProvider> existing = targetRoot.getChild(name);
+        List<CommandNode<ClientSuggestionProvider>> serverWords = new ArrayList<>();
+        if (existing != null) {
+            for (CommandNode<ClientSuggestionProvider> child : existing.getChildren()) {
+                if (child instanceof LiteralCommandNode<ClientSuggestionProvider>
+                        && ours.getChild(child.getName()) == null) {
+                    serverWords.add(child);
+                }
+            }
+            removeChild(targetRoot, name);
+        }
+        targetRoot.addChild(ours);
+        CommandNode<ClientSuggestionProvider> installed = targetRoot.getChild(name);
+        for (CommandNode<ClientSuggestionProvider> word : serverWords) installed.addChild(word);
+        return installed;
+    }
+
+    private static void removeChild(CommandNode<?> parent, String name) throws ReflectiveOperationException {
+        for (String field : new String[]{"children", "literals", "arguments"}) {
+            Field map = CommandNode.class.getDeclaredField(field);
+            map.setAccessible(true);
+            ((Map<?, ?>) map.get(parent)).remove(name);
         }
     }
 

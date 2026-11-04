@@ -1,19 +1,45 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogPublication;
+import com.babbur.waypointer.core.Zone;
 
 import java.util.List;
+import java.util.Locale;
 
 final class PublishedRoutesModel {
+    private List<CatalogPublication> allPublications = List.of();
     private List<CatalogPublication> publications = List.of();
+    private String query = "";
     private String selectedRouteId;
     private int page;
     private int rowsPerPage = 1;
 
     void replace(List<CatalogPublication> replacement) {
-        publications = List.copyOf(replacement);
+        allPublications = List.copyOf(replacement);
+        filter();
         clampPage();
         clearSelectionUnlessVisible();
+    }
+
+    String query() {
+        return query;
+    }
+
+    void setQuery(String value) {
+        query = value == null ? "" : value;
+        filter();
+        page = 0;
+        clearSelectionUnlessVisible();
+    }
+
+    private void filter() {
+        String needle = query.trim().toLowerCase(Locale.ROOT);
+        publications = needle.isEmpty() ? allPublications : allPublications.stream()
+                .filter(publication -> (publication.title() + " " + publication.description()
+                        + " " + publication.zoneId() + " "
+                        + Zone.fromId(publication.zoneId()).displayName())
+                        .toLowerCase(Locale.ROOT).contains(needle))
+                .toList();
     }
 
     void setRowsPerPage(int value) {

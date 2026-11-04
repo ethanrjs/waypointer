@@ -5,14 +5,15 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import com.babbur.waypointer.input.WaypointRepositionMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Saved room routes take priority over generated routes. */
 public final class DungeonRoomRouteSync {
 
     private final ActiveGroupManager manager;
@@ -84,7 +85,7 @@ public final class DungeonRoomRouteSync {
 
     private void onRoomChanged(DungeonRoom room) {
         String physicalKey = room == null ? null : room.identityKey();
-        if (!java.util.Objects.equals(selectedPhysicalRoomKey, physicalKey)) {
+        if (!Objects.equals(selectedPhysicalRoomKey, physicalKey)) {
             selectedPhysicalRoomKey = physicalKey;
             selectedSourceGroupId = null;
         }
@@ -118,9 +119,11 @@ public final class DungeonRoomRouteSync {
         WaypointGroup userRoute = firstUserRouteGroup(room);
         if (userRoute != null) {
             WaypointGroup existing = manager.get(generatedId);
-            replaceGeneratedGroup(generatedId,
-                    DungeonRoomRouteProjection.transformedRouteGroupForRoom(
-                            room, userRoute, visibleSecretStages()));
+            WaypointGroup next = DungeonRoomRouteProjection.transformedRouteGroupForRoom(
+                    room, userRoute, visibleSecretStages());
+            next.setShowAllWaypoints(
+                    WaypointRepositionMode.isEditModeEnabled());
+            replaceGeneratedGroup(generatedId, next);
             return;
         }
 
@@ -130,7 +133,7 @@ public final class DungeonRoomRouteSync {
     private void replaceGeneratedGroup(String generatedId, WaypointGroup next) {
         WaypointGroup previous = manager.get(generatedId);
         if (previous == null
-                || java.util.Objects.equals(
+                || Objects.equals(
                 previous.runtimeSourceGroupId(), next.runtimeSourceGroupId())) {
             carryOverProgress(previous, next);
         }
@@ -140,10 +143,12 @@ public final class DungeonRoomRouteSync {
     static void carryOverProgress(WaypointGroup previous, WaypointGroup next) {
         if (previous == null || next == null) return;
         if (next.activeSubwaypointParentIndex() >= 0 || next.isComplete()) return;
-        if (previous.isComplete() && sameWaypointSequence(previous, next)) {
+        boolean sameSequence = sameWaypointSequence(previous, next);
+        if (previous.isComplete() && sameSequence) {
             next.setCurrentTargetIndex(next.size());
             return;
         }
+        if (sameSequence) next.restoreStepDone(previous.stepDoneSnapshot());
 
         int previousActiveParent = previous.activeSubwaypointParentIndex();
         if (previousActiveParent >= 0) {
@@ -203,6 +208,12 @@ public final class DungeonRoomRouteSync {
         if (eligible.isEmpty()) {
             selectedSourceGroupId = null;
             return null;
+        }
+
+        WaypointGroup edited = manager.lastEditedRoute(room.roomId());
+        if (edited != null && eligible.contains(edited)) {
+            selectedSourceGroupId = edited.id();
+            return edited;
         }
         if (selectedSourceGroupId != null) {
             for (WaypointGroup group : eligible) {

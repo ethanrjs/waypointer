@@ -4,22 +4,16 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.util.MathUtil;
 
-/**
- * Applies an HSL gradient along a route using the shortest path around the hue
- * wheel. Locked colors stay unchanged.
- */
 public final class GradientColorizer {
 
     private GradientColorizer() {}
 
-    /** Subwaypoints inherit their parent color and do not consume a gradient step. */
     public static void apply(WaypointGroup group) {
         int n = group.size();
         if (n == 0) return;
         int mainCount = group.mainWaypointCount();
         if (mainCount == 0) return;
 
-        // Avoid allocating HSL arrays whenever a route changes.
         int startRgb = group.gradientStartColor();
         int endRgb   = group.gradientEndColor();
         float sh = hueOf(startRgb),  ss = satOf(startRgb),  sl = lightOf(startRgb);
@@ -79,7 +73,6 @@ public final class GradientColorizer {
         return a + (b - a) * t;
     }
 
-    /** Interpolates hues in {@code [0, 360)} along the shorter arc. */
     private static float lerpHueShortWay(float a, float b, float t) {
         float diff = b - a;
         if (diff > 180f)  diff -= 360f;
@@ -108,31 +101,6 @@ public final class GradientColorizer {
         return (MathUtil.clampByte(ri) << 16)
                 | (MathUtil.clampByte(gi) << 8)
                 | MathUtil.clampByte(bi);
-    }
-
-    /** Converts {@code 0xRRGGBB} to hue, saturation, and lightness. */
-    public static float[] rgbToHsl(int rgb) {
-        float r = ((rgb >> 16) & 0xFF) / 255f;
-        float g = ((rgb >>  8) & 0xFF) / 255f;
-        float b = ( rgb        & 0xFF) / 255f;
-
-        float max = Math.max(r, Math.max(g, b));
-        float min = Math.min(r, Math.min(g, b));
-        float l = (max + min) * 0.5f;
-        float delta = max - min;
-
-        float h, s;
-        if (delta < 1e-6f) {
-            h = 0f;
-            s = 0f;
-        } else {
-            s = l > 0.5f ? delta / (2f - max - min) : delta / (max + min);
-            if (max == r)      h = ((g - b) / delta) + (g < b ? 6f : 0f);
-            else if (max == g) h = ((b - r) / delta) + 2f;
-            else               h = ((r - g) / delta) + 4f;
-            h *= 60f;
-        }
-        return new float[] { h, s, l };
     }
 
 }

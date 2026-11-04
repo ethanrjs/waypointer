@@ -3,14 +3,17 @@ package com.babbur.waypointer.api;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.codec.RouteLibraryCodec;
+import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +24,46 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("deprecation")
 class DefaultWaypointerApiTest {
+
+    @Test
+    void skysoftExportHonorsInclusionOptionsAndUsesExistingAppearance() {
+        var manager = new ActiveGroupManager();
+        var config = new WaypointerConfig();
+        config.setShowRouteLines(false);
+        var route = WaypointGroup.create("Island route", "private_island");
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        route.add(Waypoint.at(1, 98, 3).withName("Start").withColor(0x123456));
+        manager.add(route);
+        var api = new DefaultWaypointerApi(manager, () -> true, Runnable::run, config);
+        String share = api.exportRoutes(List.of(route.id()), ExportOptions.builder()
+                .target(ExportTarget.SKYSOFT).includeNames(false).includeColors(false).build());
+        assertTrue(share.startsWith("SKYSOFT:"));
+        var restored = WaypointImporter.importAny(share).groups().getFirst();
+        assertEquals("", restored.get(0).name());
+        assertNotEquals(0x123456, restored.get(0).color());
+        assertEquals("private_island", restored.zoneId());
+        assertEquals("false", restored.styleOverride().values().get("showRouteLines"));
+    }
+
+    @Test
+    void waypointUpdatesPreservePersonalStylesNotRepresentedByPublicSpecs() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String groupId = api.createRoute(RouteSpec.builder()
+                .waypoint(WaypointSpec.at(1, 2, 3)).build());
+        WaypointGroup group = manager.get(groupId);
+        WaypointStyle style = WaypointStyle.EMPTY.with("labelScale", 1.5);
+        group.set(0, group.get(0).withStyleOverride(style));
+
+        assertTrue(api.updateWaypoint(groupId, 0, WaypointSpec.at(4, 5, 6)));
+        assertEquals(style, group.get(0).styleOverride());
+        assertEquals(4, group.get(0).x());
+
+        WaypointReference reference = api.savedRoutes().get(0).waypointReferences().get(0);
+        assertTrue(api.updateWaypoint(reference, WaypointSpec.at(7, 8, 9)));
+        assertEquals(style, group.get(0).styleOverride());
+        assertEquals(7, group.get(0).x());
+    }
 
     @Test
     void public_export_defaults_are_full_fidelity() {
@@ -59,8 +102,8 @@ class DefaultWaypointerApiTest {
     @Test
     void publicImportSourcesExhaustivelyMirrorImporterSources() {
         assertEquals(
-                java.util.Arrays.stream(WaypointImporter.Source.values()).map(Enum::name).toList(),
-                java.util.Arrays.stream(ImportSource.values()).map(Enum::name).toList());
+                Arrays.stream(WaypointImporter.Source.values()).map(Enum::name).toList(),
+                Arrays.stream(ImportSource.values()).map(Enum::name).toList());
         for (WaypointImporter.Source source : WaypointImporter.Source.values()) {
             assertEquals(source.name(), ImportSource.from(source).name());
         }
@@ -371,6 +414,22 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void publicImportRetargetsUnknownMineshaftToTheResolvedCurrentLayout() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("mineshaft_ruby_1"));
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String skyblocker = "[Skyblocker-Waypoint-Data-V1]"
+                + "H4sIAAAAAAAC/4uuVspLzE1VslIKzkhMK1Eoyi8tSVXSUcoszknMSwEK52bmpRaD"
+                + "pICC5YmVBfmZeSXFSlbR1UoF+SDa0EDHzETHyCBWB2aQo1JtbG0sAA/1L6tZAAAA";
+
+        ImportSummary summary = api.importRoutes(skyblocker,
+                ImportOptions.builder().targetCurrentZoneWhenUnknown(true).build());
+
+        assertEquals(ImportSource.SKYBLOCKER, summary.source());
+        assertEquals("mineshaft_ruby_1", api.allGroups().getFirst().zoneId());
+    }
+
+    @Test
     void importRoutesBatchesDataChangeForMultipleGroups() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);
@@ -423,6 +482,43 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void publicAllOffMultiRegularExportUsesTheBareRoutePack() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String firstId = api.createRoute(RouteSpec.builder()
+                .name("Discarded First")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("Discarded point"))
+                .build());
+        String secondId = api.createRoute(RouteSpec.builder()
+                .name("Discarded Second")
+                .zoneId("dwarven_mines")
+                .waypoint(WaypointSpec.at(4, 5, 6).name("Discarded point"))
+                .build());
+        ExportOptions allOff = ExportOptions.builder()
+                .includeNames(false)
+                .includeColors(false)
+                .includeRadii(false)
+                .includeWaypointFlags(false)
+                .includeGroupMeta(false)
+                .includeZone(false)
+                .build();
+
+        String payload = api.exportRoutes(List.of(firstId, secondId), allOff);
+        var debug = WaypointCodec.debugDecode(payload);
+        List<WaypointGroup> decoded = WaypointCodec.decode(payload);
+
+        assertEquals(10, debug.version());
+        assertTrue(debug.groups().stream().allMatch(group ->
+                group.coordMode().startsWith("V10_BARE_PACK_")));
+        assertEquals(2, decoded.size());
+        assertEquals("", decoded.get(0).name());
+        assertEquals("", decoded.get(1).name());
+        assertEquals(Waypoint.at(1, 2, 3), decoded.get(0).get(0));
+        assertEquals(Waypoint.at(4, 5, 6), decoded.get(1).get(0));
+    }
+
+    @Test
     void exportRoutesCanUseSkytilsTarget() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);
@@ -469,7 +565,9 @@ class DefaultWaypointerApiTest {
         WaypointerApi targetApi = new DefaultWaypointerApi(targetManager);
         ImportSummary summary = targetApi.importRoutes(payload, ImportOptions.defaults());
 
-        assertTrue(payload.startsWith(RouteLibraryCodec.MAGIC));
+        assertTrue(payload.startsWith(WaypointCodec.MAGIC),
+                "library metadata rides inside the universal WP: share");
+        assertFalse(payload.startsWith(RouteLibraryCodec.MAGIC));
         assertEquals(1, summary.groupIds().size());
         String importedId = summary.groupIds().getFirst();
         WaypointGroup imported = targetManager.get(importedId);

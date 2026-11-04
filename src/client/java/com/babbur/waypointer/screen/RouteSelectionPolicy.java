@@ -49,16 +49,6 @@ final class RouteSelectionPolicy {
         return next;
     }
 
-    /** The current selection minus everything that is no longer visible, in visible order. */
-    static LinkedHashSet<String> retainVisible(List<String> visibleIds, Set<String> selectedIds) {
-        LinkedHashSet<String> kept = new LinkedHashSet<>();
-        if (visibleIds == null || selectedIds == null) return kept;
-        for (String id : visibleIds) {
-            if (id != null && selectedIds.contains(id)) kept.add(id);
-        }
-        return kept;
-    }
-
     static String firstVisibleSelection(List<String> visibleIds, Set<String> selectedIds) {
         if (visibleIds == null || selectedIds == null) return null;
         for (String id : visibleIds) {

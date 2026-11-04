@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -35,9 +36,9 @@ public final class ColorPickerScreen extends Screen {
     private final IntConsumer onPicked;
     private final WaypointColorPickerState waypointState;
 
-    private float hue;       // [0, 360)
-    private float sat;       // [0, 1]
-    private float value;     // [0, 1]
+    private float hue;
+    private float sat;
+    private float value;
 
     private EditBox hexBox;
     private int svX, svY, hueX, hueY, swatchX, swatchY;
@@ -46,7 +47,7 @@ public final class ColorPickerScreen extends Screen {
     private DynamicTexture hueTex;
     private Identifier svTexId;
     private Identifier hueTexId;
-    private float svTexBakedHue = -1f; // hue used when svTex was last filled; triggers re-upload when drifted
+    private float svTexBakedHue = -1f;
 
     private enum Drag { NONE, SV, HUE }
     private Drag drag = Drag.NONE;
@@ -155,7 +156,7 @@ public final class ColorPickerScreen extends Screen {
         int panelX = (width - PANEL_W) / 2;
         int panelH = panelHeight();
         int panelY = (height - panelH) / 2;
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, SURFACE);
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, GuiTokens.panel(SURFACE));
 
         g.text(font, pickerTitle, panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
 
@@ -291,7 +292,7 @@ public final class ColorPickerScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         double mx = event.x(), my = event.y();
-        if (event.button() == 0) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             if (inside(mx, my, svX, svY, SV_SIZE, SV_SIZE)) {
                 drag = Drag.SV;
                 updateSv(mx, my);
@@ -393,5 +394,11 @@ public final class ColorPickerScreen extends Screen {
 
     private static int clamp255(int v) {
         return MathUtil.clampByte(v);
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
     }
 }

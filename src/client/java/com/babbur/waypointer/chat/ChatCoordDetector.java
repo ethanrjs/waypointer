@@ -7,7 +7,6 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -23,16 +22,9 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Monitors game chat for incoming coordinates
- * 
- *
- * False-positive policy lives in {@link CoordScanner}. that class has no
- * Minecraft dependencies and is unit-tested.
- */
 public final class ChatCoordDetector {
 
-    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]"); 
+    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
     private static final char FORMAT_PREFIX = '\u00A7';
     private static final long AUTO_ADD_DEDUPE_MS = 15_000L;
@@ -51,8 +43,6 @@ public final class ChatCoordDetector {
     }
 
     private Component onMessage(Component msg, boolean overlay) {
-        // Action bar / overlay messages disappear after a fraction of a second;
-        // decorating them is wasted effort and visually noisy.
         if (overlay) return msg;
         if (WaypointerChatFeedback.consumeIfSuppressed(msg)) return msg;
         if (!config.chatCoordDetection()) return msg;
@@ -97,7 +87,7 @@ public final class ChatCoordDetector {
         }
 
         return rebuildWithHighlights(msg, visibleMatches, flat,
-                config.autoAddChatTempWaypoints(), tempLabels, senderNames);
+                config.autoAddChatTempWaypoints(), tempLabels, senderNames, config.showChatCoordBlockButton());
     }
 
     private void pruneRecentAutoAddedChatTemps(long now) {
@@ -114,8 +104,8 @@ public final class ChatCoordDetector {
                                                    String flatText,
                                                    boolean chatTempAlreadyAutoAdded,
                                                    List<String> tempLabels,
-                                                   List<String> senderNames) {
-        Builder builder = new Builder(matches, flatText, chatTempAlreadyAutoAdded, tempLabels, senderNames);
+                                                   List<String> senderNames, boolean showBlockButton) {
+        Builder builder = new Builder(matches, flatText, chatTempAlreadyAutoAdded, tempLabels, senderNames, showBlockButton);
 
         msg.visit((style, content) -> {
             builder.append(style, content);
@@ -124,27 +114,25 @@ public final class ChatCoordDetector {
         return builder.build();
     }
 
-    /**
-     * Stateful assembler that knows the absolute character offset it has consumed so
-     * far.
-     */
     private static final class Builder {
         private final List<CoordScanner.Match> matches;
         private final String flatText;
-        private int cursor;        // absolute offset in flat text
-        private int matchIdx;      // index into matches list
+        private int cursor;
+        private int matchIdx;
         private final MutableComponent out = Component.empty();
         private final boolean chatTempAlreadyAutoAdded;
         private final List<String> tempLabels;
         private final List<String> senderNames;
+        private final boolean showBlockButton;
 
         Builder(List<CoordScanner.Match> matches, String flatText,
-                boolean chatTempAlreadyAutoAdded, List<String> tempLabels, List<String> senderNames) {
+                boolean chatTempAlreadyAutoAdded, List<String> tempLabels, List<String> senderNames, boolean showBlockButton) {
             this.matches = matches;
             this.flatText = flatText;
             this.chatTempAlreadyAutoAdded = chatTempAlreadyAutoAdded;
             this.tempLabels = tempLabels;
             this.senderNames = senderNames;
+            this.showBlockButton = showBlockButton;
         }
 
         void append(Style style, String content) {
@@ -153,14 +141,14 @@ public final class ChatCoordDetector {
             int segmentStart = cursor;
             int segmentEnd = cursor + content.length();
 
-            int localStart = 0; // offset within 'content'
+            int localStart = 0;
             while (matchIdx < matches.size()) {
                 CoordScanner.Match m = matches.get(matchIdx);
                 if (m.end() <= segmentStart) {
                     matchIdx++;
                     continue;
                 }
-                if (m.start() >= segmentEnd) break; // match is after this segment
+                if (m.start() >= segmentEnd) break;
 
                 int preStartLocal = Math.max(0, m.start() - segmentStart);
                 if (preStartLocal > localStart) {
@@ -180,7 +168,7 @@ public final class ChatCoordDetector {
                 if (m.end() > segmentEnd) {
                     break;
                 }
-                out.append(blockSenderAction(senderNames.get(matchIdx)));
+                if (showBlockButton) out.append(blockSenderAction(senderNames.get(matchIdx)));
                 matchIdx++;
             }
 
@@ -194,9 +182,6 @@ public final class ChatCoordDetector {
         Component build() { return out; }
     }
 
-    /**
-     * Create temp waypoint chat message
-     */
     private static Style chipStyle(Style base, CoordScanner.Match m, String flatText,
             boolean chatTempAlreadyAutoAdded, String tempLabel, String senderName) {
         Style styled = base
@@ -218,20 +203,22 @@ public final class ChatCoordDetector {
                 .withStyle(Style.EMPTY
                         .withColor(ChatFormatting.RED)
                         .withClickEvent(new ClickEvent.RunCommand("/waypointer blacklist add " + senderName))
-                        .withHoverEvent(new HoverEvent.ShowText(Component.literal(
-                                "Ignore chat coordinates from " + senderName)
+                        .withHoverEvent(new HoverEvent.ShowText(Component.translatableWithFallback(
+                                "waypointer.chat.block.hover", "Ignore chat coordinates from %s", senderName)
                                 .withStyle(ChatFormatting.RED))));
     }
     private static Component tempWaypointHover(CoordScanner.Match m, boolean alreadyAdded,
                                                String senderName) {
-        MutableComponent out = Component.empty()
-                .append(Component.literal("Temporary waypoint at ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("(" + m.x() + ", " + m.y() + ", " + m.z() + ")")
-                        .withStyle(ChatFormatting.YELLOW));
+        MutableComponent out = Component.translatableWithFallback("waypointer.chat.temp.hover",
+                "Temporary waypoint at %s",
+                Component.literal("(" + m.x() + ", " + m.y() + ", " + m.z() + ")")
+                        .withStyle(ChatFormatting.YELLOW)).withStyle(ChatFormatting.GRAY);
 
         out.append(Component.literal("\n"));
-        out.append(Component.literal(alreadyAdded ? "Click to use this temporary waypoint."
-                : "Click to add a temporary waypoint.").withStyle(ChatFormatting.AQUA));
+        out.append(Component.translatableWithFallback(alreadyAdded
+                        ? "waypointer.chat.temp.hover.use" : "waypointer.chat.temp.hover.add",
+                alreadyAdded ? "Click to use this temporary waypoint."
+                        : "Click to add a temporary waypoint.").withStyle(ChatFormatting.AQUA));
 
         return out;
     }
@@ -255,7 +242,7 @@ public final class ChatCoordDetector {
     static String senderNameForChatTemp(String flatText, int coordStart) {
         if (flatText == null || flatText.isBlank()) return "";
         int end = Math.max(0, Math.min(coordStart, flatText.length()));
-        int colon = indexOfLastSenderColon(flatText, end);
+        int colon = indexOfSenderColon(flatText, end);
         if (colon < 0) return "";
 
         String prefix = BRACKETED_PREFIX.matcher(flatText.substring(0, colon)).replaceAll(" ");
@@ -268,7 +255,7 @@ public final class ChatCoordDetector {
     private static SenderSpan senderSpanForChatTemp(String flatText, int coordStart) {
         if (flatText == null || flatText.isBlank()) return null;
         int endLimit = Math.max(0, Math.min(coordStart, flatText.length()));
-        int colon = indexOfLastSenderColon(flatText, endLimit);
+        int colon = indexOfSenderColon(flatText, endLimit);
         if (colon < 0) return null;
 
         int end = trimWhitespaceBackward(flatText, colon);
@@ -323,7 +310,6 @@ public final class ChatCoordDetector {
         return out;
     }
 
-    // 
     private static String legacyFormattedSlice(Component message, int start, int end) {
         LegacySliceBuilder builder = new LegacySliceBuilder(start, end);
         message.visit((style, content) -> {
@@ -407,16 +393,13 @@ public final class ChatCoordDetector {
 
     private record SenderSpan(int start, int end) {}
 
-    /**
-     * Last {@code ':'} before {@code beforeIndex} that is not part of a labeled-axis
-     * prefix ({@code x:}/{@code y:}/{@code z:}). Bare coord matches after a labeled
-     * triple would otherwise latch onto {@code z:} and mis-parse the sender token.
-     */
-    private static int indexOfLastSenderColon(String flatText, int beforeIndex) {
-        for (int i = beforeIndex - 1; i >= 0; i--) {
-            if (flatText.charAt(i) != ':') continue;
-            if (isLabeledAxisColon(flatText, i)) continue;
-            return i;
+    private static int indexOfSenderColon(String flatText, int beforeIndex) {
+        int bracketDepth = 0;
+        for (int i = 0; i < beforeIndex; i++) {
+            char c = flatText.charAt(i);
+            if (c == '[') bracketDepth++;
+            else if (c == ']') bracketDepth = Math.max(0, bracketDepth - 1);
+            else if (c == ':' && bracketDepth == 0 && !isLabeledAxisColon(flatText, i)) return i;
         }
         return -1;
     }

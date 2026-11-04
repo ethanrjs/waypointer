@@ -11,7 +11,6 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
-/** Projects labels with the same camera effects as the world renderer. */
 public final class WorldScreenProjector {
 
     private final Matrix4f viewProjection = new Matrix4f();
@@ -26,12 +25,18 @@ public final class WorldScreenProjector {
     private float fovDegrees = 70.0f;
 
     public void prepare(GameRenderer renderer, Camera camera) {
+        prepare(renderer, camera, true);
+    }
+
+    public void prepare(GameRenderer renderer, Camera camera, boolean followCameraEffects) {
         GameRenderState gameState = MinecraftCompat.gameRenderState(renderer);
         CameraRenderState cameraState = gameState.levelRenderState.cameraRenderState;
         PoseStack cameraEffects = new PoseStack();
-        renderer.bobHurt(cameraState, cameraEffects);
-        if (gameState.optionsRenderState.bobView) {
-            renderer.bobView(cameraState, cameraEffects);
+        if (followCameraEffects) {
+            renderer.bobHurt(cameraState, cameraEffects);
+            if (gameState.optionsRenderState.bobView) {
+                renderer.bobView(cameraState, cameraEffects);
+            }
         }
         composeViewProjection(
                 cameraState.projectionMatrix,

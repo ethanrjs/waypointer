@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -206,7 +207,7 @@ class ZoneCanonicalizationIntegrationTest {
     }
 
     private static void writeUtf8(DataOutputStream out, String value) throws Exception {
-        byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         WaypointCodec.writeVarint(out, bytes.length);
         out.write(bytes);
     }

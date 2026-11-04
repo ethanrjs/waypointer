@@ -42,4 +42,18 @@ class WaypointerChatFeedbackTest {
         assertFalse(WaypointerChatFeedback.consumeIfSuppressed(
                 Component.literal("Deleted group \"Mines\"")));
     }
+
+    @Test
+    void prefixedServerEchoIsSuppressedForBothChatDetectors() {
+        WaypointerChatFeedback.suppressOutgoing(
+                Component.literal("Fairy Grotto: 300 100 300"), "Some_Player");
+        assertFalse(WaypointerChatFeedback.consumeIfSuppressed(Component.literal(
+                "[MVP+] Other_Player: Fairy Grotto: 300 100 300")));
+        Component echo = Component.literal(
+                "[MVP+] Some_Player: Fairy Grotto: 300 100 300");
+
+        assertTrue(WaypointerChatFeedback.consumeIfSuppressed(echo));
+        assertTrue(WaypointerChatFeedback.consumeIfSuppressed(Component.literal(echo.getString())));
+        assertFalse(WaypointerChatFeedback.consumeIfSuppressed(echo));
+    }
 }

@@ -29,6 +29,38 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void defaultReachRadiusChangeMovesOnlyRoutesStillOnTheDefault() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup created = WaypointGroup.create("Created", "hub");
+        created.setDefaultRadius(5.0);
+        created.setRadiusSource(WaypointGroup.RadiusSource.DEFAULT);
+        WaypointGroup edited = WaypointGroup.create("Edited", "hub");
+        edited.setCustomRadius(5.0);
+        WaypointGroup olderMatching = WaypointGroup.create("Older matching", "hub");
+        olderMatching.setDefaultRadius(5.0);
+        WaypointGroup olderDifferent = WaypointGroup.create("Older different", "hub");
+        olderDifferent.setDefaultRadius(12.0);
+        manager.addAll(List.of(created, edited, olderMatching, olderDifferent));
+        AtomicInteger dataChanges = new AtomicInteger();
+        manager.addDataListener(dataChanges::incrementAndGet);
+
+        assertTrue(manager.followDefaultReachRadius(5.0, 40.0));
+
+        assertEquals(40.0, created.defaultRadius());
+        assertEquals(5.0, edited.defaultRadius());
+        assertEquals(40.0, olderMatching.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.DEFAULT, olderMatching.radiusSource());
+        assertEquals(12.0, olderDifferent.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.UNKNOWN, olderDifferent.radiusSource());
+        assertEquals(1, dataChanges.get());
+
+        manager.followDefaultReachRadius(40.0, 8.0);
+        assertEquals(8.0, created.defaultRadius());
+        assertEquals(8.0, olderMatching.defaultRadius());
+        assertEquals(5.0, edited.defaultRadius());
+    }
+
+    @Test
     void retiredDwarvenSurfaceZoneGroupsActivateInThePacketBackedZone() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup route = new WaypointGroup(
@@ -39,6 +71,27 @@ class ActiveGroupManagerTest {
         assertEquals("dwarven_mines", route.zoneId());
         assertEquals(List.of(route), manager.activeGroups());
         assertEquals(List.of(route), manager.groupsForZone("glacite_tunnels"));
+    }
+
+    @Test
+    void hidingWaypointsEmptiesTheActiveRoutesWithoutChangingThemOrSaving() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = new WaypointGroup("route", "Route", "hub");
+        manager.add(route);
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        manager.setWaypointsHidden(true);
+        assertTrue(manager.activeGroups().isEmpty());
+        assertTrue(route.enabled());
+        manager.isolateRouteForEditing(route);
+        assertEquals(List.of(route), manager.activeGroups(), "the route being edited still shows");
+        manager.isolateRouteForEditing(null);
+
+        manager.setWaypointsHidden(false);
+        assertEquals(List.of(route), manager.activeGroups());
+        assertEquals(0, persistentChanges.get());
     }
 
     @Test
@@ -63,6 +116,25 @@ class ActiveGroupManagerTest {
         manager.add(WaypointGroup.create("Persistent", "hub"));
 
         assertEquals(4, allChanges.get());
+        assertEquals(1, persistentChanges.get());
+    }
+
+    @Test
+    void batchChangesPersistOnlyWhenTheyIncludeASavedGroup() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "hub");
+        manager.addAll(List.of(runtime, saved));
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        manager.fireDataChangedFor(List.of(runtime));
+        manager.fireDataChangedFor(List.of(runtime, saved));
+
+        assertEquals(2, allChanges.get());
         assertEquals(1, persistentChanges.get());
     }
 
@@ -181,9 +253,6 @@ class ActiveGroupManagerTest {
         assertNotNull(DungeonRoomData.entry("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
-        // Runtime mirror: the projected form DungeonRoomRouteSync surfaces for
-        // the current room placement. Stored room groups never surface (they
-        // hold room-local coordinates); see the test below.
         WaypointGroup group = new WaypointGroup("dungeon:auto:spider", "Room Route", "spider");
         group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setRuntimeOnly(true);
@@ -233,6 +302,27 @@ class ActiveGroupManagerTest {
         assertEquals(1, route.size(), "permanent route data should be left alone");
         assertEquals(0, temp.size(), "temporary menu bucket should be emptied");
         assertFalse(manager.tempWaypointFocusActive(), "focused temp render mode should be cleared too");
+    }
+
+    @Test
+    void tempFocusKeepsEnabledStructureMarkersAndRestoresRoutesWhenCleared() {
+        var manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
+        var route = WaypointGroup.create("Route", "crystal_hollows");
+        manager.add(route);
+        var structure = new WaypointGroup("crystal_hollows:structure:odawa", "Odawa", "crystal_hollows");
+        structure.setRuntimeOnly(true);
+        structure.add(Waypoint.at(350, 100, 350));
+        manager.add(structure);
+        var hidden = new WaypointGroup("crystal_hollows:structure:divan", "Divan", "crystal_hollows");
+        hidden.setRuntimeOnly(true);
+        hidden.setEnabled(false);
+        manager.add(hidden);
+        var temp = manager.addTempWaypoint(400, 100, 400, "Target");
+        manager.focusTempWaypoint(temp, 0);
+        assertEquals(List.of(structure, temp), manager.activeGroups());
+        manager.clearTempWaypointFocus();
+        assertEquals(List.of(route, structure, temp), manager.activeGroups());
     }
 
     @Test
@@ -371,12 +461,19 @@ class ActiveGroupManagerTest {
         runtime.setRuntimeOnly(true);
         manager.addAll(List.of(source, otherZone, runtime));
         RouteFolder hubFolder = new RouteFolder("hub-folder", "Hub", "hub", false);
+        RouteFolder runtimeFolder = new RouteFolder(
+                "runtime-folder", "Runtime", "hub", false, RouteFolder.DEFAULT_COLOR, true);
         RouteFolder parkFolder = new RouteFolder("park-folder", "Park", "the_park", false);
         manager.addFolder(hubFolder, List.of());
+        manager.addFolder(runtimeFolder, List.of());
         manager.addFolder(parkFolder, List.of(otherZone.id()));
 
         assertFalse(manager.canMoveGroupToContainer(
                 source.id(), parkFolder.id(), null));
+        assertFalse(manager.canMoveGroupToContainer(
+                source.id(), runtimeFolder.id(), null));
+        assertFalse(manager.moveGroupToContainer(
+                source.id(), runtimeFolder.id(), null));
         assertFalse(manager.moveGroupToContainer(
                 source.id(), parkFolder.id(), null));
         assertFalse(manager.moveGroupToContainer(
@@ -385,6 +482,55 @@ class ActiveGroupManagerTest {
                 runtime.id(), hubFolder.id(), null));
         assertEquals(List.of(source, otherZone, runtime), manager.allGroupsList());
         assertNull(manager.folderForGroup(source.id()));
+    }
+
+    @Test
+    void runtimeRoutesCanOnlyBelongToRuntimeFolders() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "crystal_hollows");
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.addAll(List.of(saved, runtime));
+        RouteFolder persisted = new RouteFolder(
+                "persisted", "Saved", "crystal_hollows", false);
+        RouteFolder runtimeFolder = new RouteFolder(
+                "runtime-folder", "Structures", "crystal_hollows", false, 0x55FFFF, true);
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.addFolder(new RouteFolder(
+                        "runtime-with-saved", "Runtime", "crystal_hollows", false,
+                        RouteFolder.DEFAULT_COLOR, true), List.of(saved.id())));
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.addFolder(new RouteFolder(
+                        "saved-with-runtime", "Saved", "crystal_hollows", false),
+                        List.of(runtime.id())));
+        manager.addFolder(persisted, List.of());
+        manager.addFolder(runtimeFolder, List.of());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.assignGroupToFolder(saved.id(), runtimeFolder.id()));
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.assignGroupToFolder(runtime.id(), persisted.id()));
+        WaypointGroup runtimeReplacement = new WaypointGroup(
+                "runtime-replacement", "Runtime replacement", "crystal_hollows");
+        runtimeReplacement.setRuntimeOnly(true);
+        WaypointGroup savedReplacement = new WaypointGroup(
+                "saved-replacement", "Saved replacement", "crystal_hollows");
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.replaceGroupsAtomically(List.of(saved.id()),
+                        List.of(runtimeReplacement),
+                        Map.of(runtimeReplacement.id(), persisted.id())));
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.replaceGroupsAtomically(List.of(runtime.id()),
+                        List.of(savedReplacement),
+                        Map.of(savedReplacement.id(), runtimeFolder.id())));
+        assertTrue(manager.assignGroupToFolder(runtime.id(), runtimeFolder.id()));
+        assertEquals(runtimeFolder, manager.folderForGroup(runtime.id()));
+
+        WaypointGroup replacement = new WaypointGroup("runtime", "Updated", "crystal_hollows");
+        replacement.setRuntimeOnly(true);
+        manager.replaceGroupsAtomically(List.of(runtime.id()), List.of(replacement),
+                Map.of(replacement.id(), runtimeFolder.id()));
+        assertEquals(runtimeFolder, manager.folderForGroup(replacement.id()));
     }
 
     @Test

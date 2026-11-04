@@ -10,8 +10,6 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.screen.AddNamedWaypointScreen;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
@@ -30,7 +28,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
+import com.babbur.waypointer.compat.InputCompat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +46,8 @@ public final class WaypointerKeybinds {
     static final String EXIT_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.exit_edit_mode";
     static final String TOGGLE_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.toggle_edit_mode";
     static final String REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY = "key.waypointer.reposition_add_waypoint";
-    static final int OPEN_EDITOR_DEFAULT_KEY = GLFW.GLFW_KEY_U;
+    static final String TOGGLE_WAYPOINTS_TRANSLATION_KEY = "key.waypointer.toggle_waypoints";
+    static final int OPEN_EDITOR_DEFAULT_KEY = InputCompat.KEY_U;
     static final int UNBOUND_DEFAULT_KEY = InputConstants.UNKNOWN.getValue();
     static final List<String> KEYBIND_TRANSLATION_KEYS = List.of(
             OPEN_EDITOR_TRANSLATION_KEY,
@@ -60,9 +59,11 @@ public final class WaypointerKeybinds {
             ENTER_EDIT_MODE_TRANSLATION_KEY,
             EXIT_EDIT_MODE_TRANSLATION_KEY,
             TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-            REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY);
+            REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
+            TOGGLE_WAYPOINTS_TRANSLATION_KEY);
     static final List<Integer> KEYBIND_DEFAULT_KEYS = List.of(
             OPEN_EDITOR_DEFAULT_KEY,
+            UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
@@ -79,7 +80,6 @@ public final class WaypointerKeybinds {
             "waypointer.input.edit_mode.convert_definition_first")
             .withStyle(ChatFormatting.YELLOW);
     private static KeyMapping registeredOpenEditor;
-    private static KeyMapping registeredExitEditMode;
 
     private final KeyMapping openEditor;
     private final KeyMapping addWaypointHere;
@@ -91,6 +91,7 @@ public final class WaypointerKeybinds {
     private final KeyMapping exitEditMode;
     private final KeyMapping toggleEditMode;
     private final KeyMapping addWaypointWhereLooking;
+    private final KeyMapping toggleWaypoints;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -110,14 +111,14 @@ public final class WaypointerKeybinds {
         this.unskipWaypoint = register(UNSKIP_WAYPOINT_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
         this.enterEditMode = register(ENTER_EDIT_MODE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
         this.exitEditMode = register(EXIT_EDIT_MODE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
-        registeredExitEditMode = this.exitEditMode;
         this.toggleEditMode = register(TOGGLE_EDIT_MODE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
         this.addWaypointWhereLooking = register(REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.toggleWaypoints = register(TOGGLE_WAYPOINTS_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
     }
 
     private static KeyMapping register(String translationKey, int defaultKey) {
         return KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                translationKey, InputConstants.Type.KEYSYM, defaultKey, CATEGORY));
+                translationKey, InputCompat.keyboardType(), defaultKey, CATEGORY));
     }
 
     public void install() {
@@ -150,7 +151,7 @@ public final class WaypointerKeybinds {
         for (KeyMapping mapping : mappings) {
             List<String> conflicts = new ArrayList<>();
             for (KeyMapping candidate : allMappings) {
-                if (candidate != mapping && mapping.same(candidate)) {
+                if (!mapping.isUnbound() && candidate != mapping && mapping.same(candidate)) {
                     conflicts.add(candidate.getName());
                 }
             }
@@ -179,12 +180,6 @@ public final class WaypointerKeybinds {
         GuiEventListener focused = screen.getFocused();
         return focused instanceof EditBox editBox && editBox.isFocused()
                 || focused instanceof MultiLineEditBox multiLine && multiLine.isFocused();
-    }
-
-    public static String exitEditModeKeyName() {
-        KeyMapping mapping = registeredExitEditMode;
-        if (mapping == null || mapping.isUnbound()) return "";
-        return mapping.getTranslatedKeyMessage().getString().trim();
     }
 
     private void onTick(Minecraft mc) {
@@ -239,6 +234,14 @@ public final class WaypointerKeybinds {
             drainWaypointKeybindClicks();
             return;
         }
+        while (toggleWaypoints.consumeClick()) toggleWaypoints(mc, manager);
+    }
+
+    static void toggleWaypoints(Minecraft mc, ActiveGroupManager manager) {
+        boolean hidden = !manager.waypointsHidden();
+        manager.setWaypointsHidden(hidden);
+        MinecraftCompat.setOverlayMessage(mc, Component.translatable(hidden
+                ? "waypointer.input.waypoints.hidden" : "waypointer.input.waypoints.shown"), false);
     }
 
     private void drainWaypointKeybindClicks() {
@@ -252,6 +255,7 @@ public final class WaypointerKeybinds {
         while (exitEditMode.consumeClick()) {}
         while (toggleEditMode.consumeClick()) {}
         while (addWaypointWhereLooking.consumeClick()) {}
+        while (toggleWaypoints.consumeClick()) {}
     }
 
     private void skipCurrentWaypoint() {
@@ -279,13 +283,6 @@ public final class WaypointerKeybinds {
             return false;
         }
         return globalRestart;
-    }
-
-    static boolean isCompletedDungeonRoomRoute(WaypointGroup group) {
-        return group != null
-                && !group.temp()
-                && group.isComplete()
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
     private void unskipCurrentWaypoint() {
@@ -324,8 +321,13 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         int flags = WaypointRepositionMode.defaultDungeonEditFlags(target);
-        target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
-                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0)));
+        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
+                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0));
+        if (stored == null) {
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage(target));
+            return;
+        }
+        target.add(stored);
         addFlow.afterWaypointAdded(target, target.size() - 1,
                 config.showWaypointChatShareButtons());
         manager.fireDataChanged();

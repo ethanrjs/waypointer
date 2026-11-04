@@ -3,13 +3,6 @@ package com.babbur.waypointer.core;
 import java.util.Arrays;
 import java.util.Base64;
 
-/**
- * Immutable 16x16 texture for the six faces of a waypoint box.
- *
- * <p>Pixels store indices into a fixed sixteen-color palette. That keeps a full
- * six-face paint close to 2 KiB on disk instead of repeating a 24-bit color for
- * every texel, while still matching the painter's sixteen visible swatches.
- */
 public final class WaypointPaint {
 
     public static final int SIZE = 16;
@@ -17,7 +10,6 @@ public final class WaypointPaint {
     public static final int FACE_PIXELS = SIZE * SIZE;
     public static final int PIXEL_COUNT = FACE_PIXELS * Face.values().length;
 
-    /** T-shaped atlas placement used by both the editor and the world renderer. */
     public enum Face {
         NORTH(1, 1),
         EAST(2, 1),
@@ -50,6 +42,7 @@ public final class WaypointPaint {
     private final int[] palette;
     private final byte[] pixels;
     private final int hashCode;
+    private final long contentFingerprint;
 
     public WaypointPaint(int[] palette, byte[] pixels) {
         if (palette == null || palette.length != PALETTE_SIZE) {
@@ -69,10 +62,32 @@ public final class WaypointPaint {
             }
         }
         this.hashCode = 31 * Arrays.hashCode(this.palette) + Arrays.hashCode(this.pixels);
+        this.contentFingerprint = fingerprint(this.palette, this.pixels);
     }
 
     public static WaypointPaint solid(int rgb) {
         return new WaypointPaint(defaultPalette(rgb), new byte[PIXEL_COUNT]);
+    }
+
+    private static final WaypointPaint MISSING = missingTexture();
+
+    public static WaypointPaint missing() {
+        return MISSING;
+    }
+
+    private static WaypointPaint missingTexture() {
+        int[] palette = defaultPalette(0xF800F8);
+        palette[1] = 0x000000;
+        byte[] pixels = new byte[PIXEL_COUNT];
+        for (Face face : Face.values()) {
+            for (int y = 0; y < SIZE; y++) {
+                for (int x = 0; x < SIZE; x++) {
+                    boolean magenta = (x < SIZE / 2) == (y < SIZE / 2);
+                    pixels[pixelOffset(face, x, y)] = (byte) (magenta ? 0 : 1);
+                }
+            }
+        }
+        return new WaypointPaint(palette, pixels);
     }
 
     public static int[] defaultPalette(int firstColor) {
@@ -89,11 +104,6 @@ public final class WaypointPaint {
         return palette[paletteIndex(face, x, y)];
     }
 
-    public int paletteColor(int slot) {
-        checkPaletteSlot(slot);
-        return palette[slot];
-    }
-
     public int paletteIndex(Face face, int x, int y) {
         return Byte.toUnsignedInt(pixels[pixelOffset(face, x, y)]);
     }
@@ -106,12 +116,50 @@ public final class WaypointPaint {
         return pixels.clone();
     }
 
+    public long contentFingerprint() {
+        return contentFingerprint;
+    }
+
     public String pixelsBase64() {
         return Base64.getEncoder().encodeToString(pixels);
     }
 
+    public String toCode() {
+        StringBuilder code = new StringBuilder(PALETTE_SIZE * 6 + PIXEL_COUNT / 3 * 2);
+        for (int color : palette) code.append(String.format("%06x", color));
+        byte[] packed = new byte[PIXEL_COUNT / 2];
+        for (int i = 0; i < packed.length; i++) {
+            packed[i] = (byte) (pixels[i * 2] << 4 | pixels[i * 2 + 1]);
+        }
+        return code.append(Base64.getEncoder().encodeToString(packed)).toString();
+    }
+
+    public static WaypointPaint fromCode(String code) {
+        int paletteChars = PALETTE_SIZE * 6;
+        if (code == null || code.length() != paletteChars + PIXEL_COUNT / 3 * 2) return null;
+        try {
+            int[] palette = new int[PALETTE_SIZE];
+            for (int i = 0; i < PALETTE_SIZE; i++) {
+                palette[i] = Integer.parseInt(code, i * 6, i * 6 + 6, 16);
+            }
+            byte[] packed = Base64.getDecoder().decode(code.substring(paletteChars));
+            if (packed.length != PIXEL_COUNT / 2) return null;
+            byte[] pixels = new byte[PIXEL_COUNT];
+            for (int i = 0; i < packed.length; i++) {
+                pixels[i * 2] = (byte) ((packed[i] >> 4) & 0x0F);
+                pixels[i * 2 + 1] = (byte) (packed[i] & 0x0F);
+            }
+            return new WaypointPaint(palette, pixels);
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
+    }
+
     public static byte[] decodePixels(String encoded) {
         if (encoded == null) throw new IllegalArgumentException("waypoint paint pixels are missing");
+        if (encoded.length() != PIXEL_COUNT / 3 * 4) {
+            throw new IllegalArgumentException("waypoint paint must contain 1536 pixels");
+        }
         byte[] decoded = Base64.getDecoder().decode(encoded);
         if (decoded.length != PIXEL_COUNT) {
             throw new IllegalArgumentException("waypoint paint must contain 1536 pixels");
@@ -137,12 +185,6 @@ public final class WaypointPaint {
         return face.ordinal() * FACE_PIXELS + y * SIZE + x;
     }
 
-    private static void checkPaletteSlot(int slot) {
-        if (slot < 0 || slot >= PALETTE_SIZE) {
-            throw new IndexOutOfBoundsException("waypoint paint palette slot outside 0..15");
-        }
-    }
-
     @Override
     public boolean equals(Object other) {
         if (this == other) return true;
@@ -153,5 +195,16 @@ public final class WaypointPaint {
     @Override
     public int hashCode() {
         return hashCode;
+    }
+
+    private static long fingerprint(int[] palette, byte[] pixels) {
+        long value = 0xCBF29CE484222325L;
+        for (int color : palette) {
+            value = (value ^ color) * 0x100000001B3L;
+        }
+        for (byte pixel : pixels) {
+            value = (value ^ Byte.toUnsignedInt(pixel)) * 0x100000001B3L;
+        }
+        return value;
     }
 }

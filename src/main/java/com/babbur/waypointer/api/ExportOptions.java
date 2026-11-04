@@ -58,11 +58,6 @@ public final class ExportOptions {
         return includeGroupMeta;
     }
 
-    /**
-     * Whether exported routes keep the island they were recorded on. When
-     * false the island is stripped and importers place the route on whatever
-     * island the recipient is standing on.
-     */
     public boolean includeZone() {
         return includeZone;
     }

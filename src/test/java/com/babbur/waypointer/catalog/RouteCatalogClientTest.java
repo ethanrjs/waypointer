@@ -3,18 +3,24 @@ package com.babbur.waypointer.catalog;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.debug.DebugSignals;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,6 +29,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RouteCatalogClientTest {
     private static final String ID = "Abcdefghijklmnopqrstuv";
     private static final String PAYLOAD = catalogPayload();
+
+    @Test
+    void malformedUpdateReceiptRecordsSuccessfulHttpWithInvalidResponse() {
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", "{\"route\":{}}".getBytes(StandardCharsets.UTF_8)));
+        CompletionException failure = assertThrows(CompletionException.class, () -> client(transport).updateRoute(ID,
+                CatalogRouteUpdate.metadata(null, null, CatalogPublishRequest.Visibility.UNLISTED),
+                PublisherIdentity.generate(Instant.EPOCH)).join());
+        assertEquals("invalid_response", assertInstanceOf(CatalogApiException.class, failure.getCause()).code());
+        assertEquals("PATCH / HTTP 200 / invalid_response",
+                DebugSignals.catalogFailureLine());
+    }
+
+    @Test
+    void failedUpdateRecordsOnlySafeMethodStatusAndCode() {
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                403, "application/json", "{\"error\":{\"code\":\"route_not_found\",\"message\":\"private detail\"}}"
+                        .getBytes(StandardCharsets.UTF_8)));
+        assertThrows(CompletionException.class, () -> client(transport).updateRoute(ID,
+                CatalogRouteUpdate.metadata(null, null, CatalogPublishRequest.Visibility.UNLISTED),
+                PublisherIdentity.generate(Instant.EPOCH)).join());
+        assertEquals("PATCH / HTTP 403 / route_not_found",
+                DebugSignals.catalogFailureLine());
+        DebugSignals.recordCatalogFailure("private method", 500, "private token=secret");
+        assertEquals("REQUEST / HTTP 500 / unknown",
+                DebugSignals.catalogFailureLine());
+    }
 
     @Test
     void listUsesBoundedJsonRequestAndParsesRoutes() {
@@ -71,6 +104,40 @@ class RouteCatalogClientTest {
     }
 
     @Test
+    void listSendsTagAndSortButKeepsTheDefaultOrderUrlUnchanged() {
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", "{\"routes\":[]}".getBytes(StandardCharsets.UTF_8)));
+        RouteCatalogClient client = client(transport);
+
+        client.listRoutes("gems", null, "Mining-Cult", "popular", null).join();
+        assertEquals("https://catalog.example/api/routes?limit=50&q=gems&tag=mining-cult&sort=popular",
+                transport.request.uri().toString());
+        client.listRoutes(null, "hub", null, "recommended", null).join();
+        assertEquals("https://catalog.example/api/routes?limit=50&zone=hub", transport.request.uri().toString());
+        client.listRoutes(null, null, null, "sideways", null).join();
+        assertEquals("https://catalog.example/api/routes?limit=50", transport.request.uri().toString());
+        assertThrows(IllegalArgumentException.class,
+                () -> client.listRoutes(null, null, "Not A Tag", null, null));
+    }
+
+    @Test
+    void previewReadsTheLightEndpoint() {
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", ("{\"version\":3,\"totalPoints\":2,\"truncated\":false,"
+                + "\"groups\":[{\"kind\":\"regular\",\"points\":[[1,70,-2,16711680,0],[5,71,3,255,1]]}]}")
+                .getBytes(StandardCharsets.UTF_8)));
+
+        CatalogRoutePreviewData preview = client(transport).getRoutePreview("Abcdefghijklmnopqrstuv").join();
+
+        assertEquals("https://catalog.example/api/routes/Abcdefghijklmnopqrstuv/preview",
+                transport.request.uri().toString());
+        assertEquals(3, preview.version());
+        assertEquals(1, preview.groups().size());
+        assertEquals(new CatalogRoutePreviewData.Point(5, 71, 3, 0x0000FF, true),
+                preview.groups().getFirst().points().get(1));
+    }
+
+    @Test
     void listRejectsInvalidFiltersBeforeNetworkAccess() {
         RecordingTransport transport = new RecordingTransport(null);
         RouteCatalogClient client = client(transport);
@@ -83,12 +150,18 @@ class RouteCatalogClientTest {
     }
 
     @Test
-    void detailsRejectUnsafeIdsBeforeNetworkAccess() {
+    void invalidDetailsReturnFailedFuturesBeforeNetworkAccess() {
         RecordingTransport transport = new RecordingTransport(null);
         RouteCatalogClient client = client(transport);
 
-        assertThrows(IllegalArgumentException.class, () -> client.getRoute("../admin"));
-        assertEquals(null, transport.request);
+        for (String invalidId : new String[] {"a", "../admin", null}) {
+            CompletableFuture<CatalogRouteDetails> failure = assertDoesNotThrow(
+                    () -> client.getRoute(invalidId));
+            CompletionException joined = assertThrows(
+                    CompletionException.class, failure::join);
+            assertInstanceOf(IllegalArgumentException.class, joined.getCause());
+        }
+        assertNull(transport.request);
     }
 
     @Test
@@ -147,6 +220,48 @@ class RouteCatalogClientTest {
     }
 
     @Test
+    void preparedPublishUsesTheSameValidatedRequestPath() {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
+        RecordingTransport transport = publishTransport(identity, "Tester");
+        RouteCatalogClient client = client(transport);
+        CatalogProtocol.PreparedCatalogPayload prepared =
+                CatalogProtocol.prepareCatalogPayload(List.of(catalogRoute()));
+        CatalogPublishRequest request = new CatalogPublishRequest(
+                prepared.payload(), "Route", "Description",
+                CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
+
+        CatalogPublishReceipt receipt = client.publishPreparedRoute(
+                request, identity, prepared).join();
+
+        assertEquals(ID, receipt.result().route().id());
+        assertEquals(CatalogProtocol.payloadHash(prepared.payload()),
+                receipt.payloadSha256());
+        assertEquals("POST", transport.request.method());
+        assertNotNull(transport.request.headers()
+                .firstValue("X-Waypointer-Signature").orElse(null));
+    }
+
+    @Test
+    void preparedAndUntrustedPublishRejectChangedBytesBeforeNetworkAccess() {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
+        CatalogProtocol.PreparedCatalogPayload prepared =
+                CatalogProtocol.prepareCatalogPayload(List.of(catalogRoute()));
+        CatalogPublishRequest changed = new CatalogPublishRequest(
+                prepared.payload() + " ", "Route", "Description",
+                CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
+        RecordingTransport preparedTransport = new RecordingTransport(null);
+        RecordingTransport untrustedTransport = new RecordingTransport(null);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> client(preparedTransport).publishPreparedRoute(
+                        changed, identity, prepared));
+        assertThrows(IllegalArgumentException.class,
+                () -> client(untrustedTransport).publishRoute(changed, identity));
+        assertNull(preparedTransport.request);
+        assertNull(untrustedTransport.request);
+    }
+
+    @Test
     void deleteSignsTheExactRoutePath() {
         RecordingTransport transport = emptyTransport();
         RouteCatalogClient client = client(transport);
@@ -158,6 +273,56 @@ class RouteCatalogClientTest {
         assertEquals("https://catalog.example/api/routes/" + ID,
                 transport.request.uri().toString());
         assertValidSignature(transport.request, identity, "DELETE", "/api/routes/" + ID);
+    }
+
+    @Test
+    void updateSignsThePatchBodyAndBindsTheConfirmedRoute() {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
+        String json = """
+                {"route":{
+                  "id":"%s","title":"Renamed",
+                  "description":"A longer description text.",
+                  "authorName":"Tester","publisherId":"%s",
+                  "publisherVerified":false,"visibility":"public",
+                  "zoneId":"hub","zoneLabel":"Hub",
+                  "waypointCount":1,"groupCount":1,"codecVersion":9,"version":3,
+                  "downloads":12,
+                  "createdAt":"2026-08-13T00:00:00Z","updatedAt":"2026-09-12T00:00:00Z",
+                  "sharePath":"/r/%s"
+                }}
+                """.formatted(ID, identity.publisherId(), ID);
+        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", json.getBytes(StandardCharsets.UTF_8)));
+        RouteCatalogClient client = client(transport);
+
+        CatalogRouteSummary route = client.updateRoute(ID, CatalogRouteUpdate.metadata(
+                "Renamed", "A longer description text.",
+                CatalogPublishRequest.Visibility.PUBLIC), identity).join();
+
+        assertEquals("PATCH", transport.request.method());
+        assertEquals("https://catalog.example/api/routes/" + ID,
+                transport.request.uri().toString());
+        assertEquals("application/json",
+                transport.request.headers().firstValue("Content-Type").orElseThrow());
+        byte[] bodyBytes = bodyOf(transport.request);
+        String body = new String(bodyBytes, StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"title\":\"Renamed\""));
+        assertTrue(body.contains("\"visibility\":\"public\""));
+        assertTrue(!body.contains("payload"));
+        assertValidSignature(transport.request, identity, "PATCH", "/api/routes/" + ID, bodyBytes);
+        assertEquals(3, route.version());
+        assertEquals(12, route.downloads());
+        assertEquals("Renamed", route.title());
+
+        RecordingTransport wrongRoute = new RecordingTransport(new RouteCatalogClient.Response(
+                200, "application/json", json.replace(ID, "Bbcdefghijklmnopqrstuv")
+                        .getBytes(StandardCharsets.UTF_8)));
+        CompletionException error = assertThrows(CompletionException.class, () ->
+                client(wrongRoute).updateRoute(ID, CatalogRouteUpdate.replacePayload(PAYLOAD, "hub"), identity).join());
+        assertEquals("invalid_response", ((CatalogApiException) error.getCause()).code());
+        assertTrue(new String(bodyOf(wrongRoute.request), StandardCharsets.UTF_8).contains("\"zoneId\":\"hub\""));
+        assertThrows(IllegalArgumentException.class, () ->
+                client.updateRoute(ID, CatalogRouteUpdate.metadata(null, null, null), identity));
     }
 
     @Test
@@ -200,6 +365,26 @@ class RouteCatalogClientTest {
 
     private static void assertValidSignature(
             HttpRequest request, PublisherIdentity identity, String method, String path) {
+        assertValidSignature(request, identity, method, path, new byte[0]);
+    }
+
+    private static byte[] bodyOf(HttpRequest request) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        request.bodyPublisher().orElseThrow().subscribe(new Flow.Subscriber<ByteBuffer>() {
+            @Override public void onSubscribe(Flow.Subscription subscription) { subscription.request(Long.MAX_VALUE); }
+            @Override public void onNext(ByteBuffer value) {
+                byte[] block = new byte[value.remaining()]; value.get(block); bytes.writeBytes(block);
+            }
+            @Override public void onError(Throwable error) { done.completeExceptionally(error); }
+            @Override public void onComplete() { done.complete(null); }
+        });
+        done.join();
+        return bytes.toByteArray();
+    }
+
+    private static void assertValidSignature(
+            HttpRequest request, PublisherIdentity identity, String method, String path, byte[] body) {
         long timestamp = Long.parseLong(request.headers()
                 .firstValue("X-Waypointer-Timestamp").orElseThrow());
         String nonce = request.headers()
@@ -208,7 +393,7 @@ class RouteCatalogClientTest {
                 .firstValue("X-Waypointer-Signature").orElseThrow());
         byte[] preimage = CatalogRequestSigner.preimage(
                 CatalogRequestSigner.PRODUCTION_AUDIENCE,
-                method, path, identity.publisherId(), timestamp, nonce, new byte[0]);
+                method, path, identity.publisherId(), timestamp, nonce, body);
         assertTrue(identity.verifies(preimage, signature));
     }
 
@@ -313,9 +498,13 @@ class RouteCatalogClientTest {
     }
 
     private static String catalogPayload() {
+        return WaypointCodec.encodeCatalog(List.of(catalogRoute()));
+    }
+
+    private static WaypointGroup catalogRoute() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(new Waypoint(1, 64, 2, "Start", 0x44AA66, 0, 0.0));
-        return WaypointCodec.encodeCatalog(List.of(group));
+        return group;
     }
 
     private static final class RecordingTransport implements RouteCatalogClient.Transport {

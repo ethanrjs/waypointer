@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -59,7 +60,7 @@ class RemoteLocalePackagingTest {
             JsonObject entry = entries.getAsJsonObject(locale);
             assertEquals(bytes.length, entry.get("bytes").getAsInt());
             assertEquals(
-                    java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),
+                    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),
                     entry.get("sha256").getAsString());
             assertTrue(locale.matches("[a-z0-9]+(?:_[a-z0-9]+)*"));
         }

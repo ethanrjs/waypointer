@@ -3,11 +3,14 @@ package com.babbur.waypointer.dungeon;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.config.WaypointerConfig;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.BlockPos;
 
@@ -15,19 +18,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 public final class EtherwarpAlignmentCue {
-    // Prevent aim flicker from replaying the cue.
     private static final long JITTER_GUARD_MILLIS = 350L;
 
     private final ActiveGroupManager manager;
-    private final BooleanSupplier enabled;
+    private final Supplier<String> soundSelection;
     private final AlignmentState state = new AlignmentState(JITTER_GUARD_MILLIS);
 
-    public EtherwarpAlignmentCue(ActiveGroupManager manager, BooleanSupplier enabled) {
+    public EtherwarpAlignmentCue(ActiveGroupManager manager,
+                                 Supplier<String> soundSelection) {
         this.manager = Objects.requireNonNull(manager, "manager");
-        this.enabled = Objects.requireNonNull(enabled, "enabled");
+        this.soundSelection = Objects.requireNonNull(soundSelection, "soundSelection");
     }
 
     public void install() {
@@ -35,7 +38,9 @@ public final class EtherwarpAlignmentCue {
     }
 
     private void onTick(Minecraft minecraft) {
-        if (!enabled.getAsBoolean() || minecraft == null
+        String sound = soundSelection.get();
+        if (sound == null || sound.isBlank()
+                || minecraft == null
                 || minecraft.level == null || minecraft.player == null) {
             state.update(null, false, System.currentTimeMillis());
             return;
@@ -57,8 +62,10 @@ public final class EtherwarpAlignmentCue {
             return;
         }
         if (!state.update(aligned.key(), true, System.currentTimeMillis())) return;
+        CueSound cueSound = cueSound(sound);
+        if (cueSound == null) return;
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(
-                SoundEvents.EXPERIENCE_ORB_PICKUP, 1.65F, 0.30F));
+                cueSound.event(), cueSound.volume(), cueSound.pitch()));
     }
 
     private Optional<EtherwarpAbility> heldAbility(LocalPlayer player) {
@@ -98,7 +105,21 @@ public final class EtherwarpAlignmentCue {
         return null;
     }
 
+    static CueSound cueSound(String sound) {
+        if (!WaypointerConfig.isValidSoundId(sound) || sound.isBlank()) return null;
+        Identifier id = Identifier.parse(sound.trim());
+        return switch (id.toString()) {
+            case "minecraft:entity.experience_orb.pickup" -> new CueSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.65F, 0.30F);
+            case "minecraft:block.note_block.pling" -> new CueSound(SoundEvents.NOTE_BLOCK_PLING.value(), 0.85F, 1.80F);
+            case "minecraft:block.bell.use" -> new CueSound(SoundEvents.BELL_BLOCK, 0.70F, 1.30F);
+            default -> new CueSound(SoundEvent.createVariableRangeEvent(id), 1.0F, 1.0F);
+        };
+    }
+
     record Target(String key, Waypoint waypoint) {
+    }
+
+    record CueSound(SoundEvent event, float volume, float pitch) {
     }
 
     static final class AlignmentState {

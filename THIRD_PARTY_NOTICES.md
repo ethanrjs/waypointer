@@ -54,7 +54,7 @@ Odin-compatible dungeon room grid/core detection behavior for named dungeon
 room detection.
 
 - Project: https://github.com/odtheking/Odin
-- Room data source commit: `2f96b4481d223287567c8e38efa5bc1ae0a5787d`
+- Room data source commit: `cb333da402dfbea10cc0f06422646f334dace5bb`
 - Room data source file: `src/main/resources/assets/odin/rooms.json`
 - Algorithm source commit: `57c4fa5d7d92a67bda440aedcb45010dafae89c7`
 - Algorithm source file: `src/main/kotlin/com/odtheking/odin/utils/skyblock/dungeon/ScanUtils.kt`
@@ -88,3 +88,62 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## SecretRoutes room-name/core mapping data
+
+Waypointer bundles a reduced table of SecretRoutes room names and core hashes
+to match SecretRoutes imports to the Odin-lineage room catalog without relying
+on room-name guesses. No SecretRoutes route packs are bundled.
+
+- Project: https://github.com/yourboykyle/SecretRoutes
+- Source commit: `a6a88c831206df5c16ec49d416c9d7e6b5a533e0`
+- Source file: `src/main/resources/assets/secretroutesmod/rooms.json`
+- License: GNU General Public License v3.0
+- License text: https://github.com/yourboykyle/SecretRoutes/blob/a6a88c831206df5c16ec49d416c9d7e6b5a533e0/LICENSE
+
+## Crystal Hollows detection and Wishing Compass solver
+
+The wishing compass particle heuristics, target-filter constants, and zone
+boxes are adapted from NotEnoughUpdates.
+
+- Project: https://github.com/NotEnoughUpdates/NotEnoughUpdates
+- Source file: `src/main/java/io/github/moulberry/notenoughupdates/miscfeatures/CrystalWishingCompassSolver.java`
+- License: GNU Lesser General Public License v3.0
+
+The Keeper offsets for the Mines of Divan centre and the sidebar/lobby approach
+follow Skytils 1.x.
+
+- Project: https://github.com/Skytils/SkytilsMod
+- Source file: `features/impl/mining/CHWaypoints.kt`
+- License: GNU Affero General Public License v3.0
+
+Waypointer is GPL-3.0-only.
+
+## Metal Detector chest positions
+
+The Mines of Divan chest coordinates were cross-checked against Skyblocker's
+MetalDetector.java. The distance filter is independently implemented.
+
+- Project: https://github.com/SkyblockerMod/Skyblocker
+- Source file: `src/main/java/de/hysky/skyblocker/skyblock/dwarven/MetalDetector.java`
+- License: GNU Lesser General Public License v3.0
+
+## Gradle wrapper startup scripts
+
+`gradlew` and `gradlew.bat` are distributed under the Apache License, Version 2.0.
+Their explanatory comments have been removed.
+
+Copyright © 2015-2021 the original authors.
+Copyright 2015 the original author or authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

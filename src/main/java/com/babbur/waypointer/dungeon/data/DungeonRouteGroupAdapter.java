@@ -10,8 +10,8 @@ import com.babbur.waypointer.dungeon.DungeonWaypointTrigger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-/** Converts legacy dungeon room entries into standard Waypointer routes. */
 final class DungeonRouteGroupAdapter {
 
     private static final int SUPPORT_WAYPOINT_COLOR = 0xFFB300;
@@ -20,6 +20,12 @@ final class DungeonRouteGroupAdapter {
 
     static WaypointGroup fromWaypoints(String roomId, String name,
                                        List<DungeonWaypoint> dungeonWaypoints) {
+        return fromWaypoints(roomId, name, dungeonWaypoints, Map.of());
+    }
+
+    static WaypointGroup fromWaypoints(String roomId, String name,
+                                       List<DungeonWaypoint> dungeonWaypoints,
+                                       Map<Integer, List<int[]>> pathGuides) {
         String normalizedRoomId = DungeonRoomCatalogEntry.normalizeId(roomId);
         if (normalizedRoomId.isBlank()) {
             throw new IllegalArgumentException("dungeon route has no room id");
@@ -52,11 +58,15 @@ final class DungeonRouteGroupAdapter {
             }
 
             if (dungeonWaypoint.secretIndex() != currentStage) {
+                addPathGuides(waypoints, pathGuides.get(currentStage));
                 currentStage = dungeonWaypoint.secretIndex();
                 stageHasMain = false;
             }
             int flags = flagsForTrigger(dungeonWaypoint.trigger());
             if (stageHasMain) flags |= Waypoint.FLAG_SUBWAYPOINT;
+            if (stageHasMain && isMining(dungeonWaypoint.trigger())) {
+                flags |= Waypoint.FLAG_STEP_ANY_ORDER;
+            }
             if (dungeonWaypoint.completesSecret()) flags |= Waypoint.FLAG_DUNGEON_SECRET;
             if (usesLineOfSight(dungeonWaypoint.trigger())) flags |= Waypoint.FLAG_DEPTH_CHECKED;
             int color = actionColor(dungeonWaypoint);
@@ -75,9 +85,9 @@ final class DungeonRouteGroupAdapter {
                 if (dungeonWaypoint.trigger() == DungeonWaypointTrigger.THROW_PEARL) {
                     highlightFlags |= Waypoint.FLAG_DUNGEON_PEARL_TARGET
                             | Waypoint.FLAG_HIDE_BEACON | Waypoint.FLAG_HIDE_NAME;
-                } else if (dungeonWaypoint.trigger() == DungeonWaypointTrigger.BREAK_BLOCKS
-                        || dungeonWaypoint.trigger() == DungeonWaypointTrigger.DUNGEONBREAKER) {
-                    highlightFlags |= flagsForTrigger(dungeonWaypoint.trigger());
+                } else if (isMining(dungeonWaypoint.trigger())) {
+                    highlightFlags |= flagsForTrigger(dungeonWaypoint.trigger())
+                            | Waypoint.FLAG_STEP_ANY_ORDER;
                     if (usesLineOfSight(dungeonWaypoint.trigger())) {
                         highlightFlags |= Waypoint.FLAG_DEPTH_CHECKED;
                     }
@@ -89,12 +99,24 @@ final class DungeonRouteGroupAdapter {
             }
         }
 
+        addPathGuides(waypoints, pathGuides.get(currentStage));
+
         if (!hasProgressWaypoint) {
             group.setLoadMode(WaypointGroup.LoadMode.STATIC);
             for (Waypoint support : leadingSupport) waypoints.add(support.withSubwaypoint(false));
         }
         group.addAll(waypoints);
         return group;
+    }
+
+    private static void addPathGuides(List<Waypoint> waypoints, List<int[]> path) {
+        if (path == null) return;
+        for (int[] position : path) {
+            waypoints.add(new Waypoint(position[0], position[1], position[2], "", 0x8AA7BA,
+                    Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT
+                            | Waypoint.FLAG_FILLED_SUBWAYPOINT | Waypoint.FLAG_HIDE_NAME
+                            | Waypoint.FLAG_HIDE_BEACON, 0.0));
+        }
     }
 
     private static int actionColor(DungeonWaypoint waypoint) {
@@ -129,6 +151,11 @@ final class DungeonRouteGroupAdapter {
                     Waypoint.FLAG_SKIP_ON_INTERACT;
             case CHAT_MESSAGE, MANUAL -> Waypoint.FLAG_SKIP_ON_STAND;
         };
+    }
+
+    private static boolean isMining(DungeonWaypointTrigger trigger) {
+        return trigger == DungeonWaypointTrigger.BREAK_BLOCKS
+                || trigger == DungeonWaypointTrigger.DUNGEONBREAKER;
     }
 
     private static boolean usesLineOfSight(DungeonWaypointTrigger trigger) {

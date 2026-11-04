@@ -180,10 +180,12 @@ class DungeonEntryPathControllerTest {
         DungeonEntryPathController.PreparedPaths withFollowing =
                 controller.prepareInWorld(
                         groups, new Vec3(0.5D, 64.0D, 0.5D), world, true);
-        assertEquals(2, withFollowing.submissions().size());
+        assertEquals(3, withFollowing.submissions().size());
         assertSame(eligible, withFollowing.submissions().get(0).group());
         assertSame(following, withFollowing.submissions().get(1).group());
-        assertEquals(2, computations.get());
+        assertSame(subwaypoint, withFollowing.submissions().get(2).group(),
+                "a room route's current step action leads the path even when it is a sub-step");
+        assertEquals(3, computations.get());
     }
 
     @Test

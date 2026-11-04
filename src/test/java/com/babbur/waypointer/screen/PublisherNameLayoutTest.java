@@ -18,6 +18,15 @@ class PublisherNameLayoutTest {
     }
 
     @Test
+    void rejectionHasItsOwnVisibleLineEvenInShortWindows() {
+        for (int height : new int[]{100, 140, 240}) {
+            PublisherNameLayout.Layout layout = PublisherNameLayout.calculate(200, height, 120);
+            assertTrue(layout.errorY() >= layout.titleY() + 9);
+            assertTrue(layout.errorY() + layout.errorRows() * 9 <= layout.fieldY());
+        }
+    }
+
+    @Test
     void narrowWindowShrinksActionsWithoutPanelOverflow() {
         PublisherNameLayout.Layout layout = PublisherNameLayout.calculate(200, 140, 160);
 

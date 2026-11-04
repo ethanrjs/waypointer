@@ -1,9 +1,9 @@
 package com.babbur.waypointer.update;
 
+import com.babbur.waypointer.util.BoundedBody;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,6 +15,7 @@ final class GitHubReleaseClient {
 
     private static final int PAGE_SIZE = 100;
     private static final int MAX_PAGES = 10;
+    private static final int MAX_PAGE_BYTES = 4 * 1024 * 1024;
     private static final String RELEASES_ENDPOINT =
             "https://api.github.com/repos/ethanrjs/waypointer/releases";
 
@@ -28,9 +29,10 @@ final class GitHubReleaseClient {
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
         releasesEndpoint = URI.create(RELEASES_ENDPOINT);
-        transport = request -> httpClient.sendAsync(
-                        request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-                .thenApply(response -> new Response(response.statusCode(), response.body()));
+        transport = request -> httpClient.sendAsync(request, BoundedBody.handler(MAX_PAGE_BYTES,
+                        () -> new IllegalStateException("GitHub release page is too large")))
+                .thenApply(response -> new Response(response.statusCode(),
+                        new String(response.body(), StandardCharsets.UTF_8)));
         userAgent = "Waypointer/" + currentVersion;
     }
 

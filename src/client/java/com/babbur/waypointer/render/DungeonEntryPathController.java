@@ -132,7 +132,7 @@ final class DungeonEntryPathController {
                 && !group.isComplete()
                 && (currentIndex == 0 || includeFollowingWaypoints)
                 && group.size() > 0
-                && !group.isSubwaypoint(currentIndex)
+                && (!group.isSubwaypoint(currentIndex) || group.usesDungeonSteps())
                 && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 

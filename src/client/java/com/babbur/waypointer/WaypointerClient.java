@@ -3,21 +3,33 @@ package com.babbur.waypointer;
 import com.babbur.waypointer.api.DefaultWaypointerApi;
 import com.babbur.waypointer.api.WaypointerApi;
 import com.babbur.waypointer.api.WaypointerApiEntrypoints;
+import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.chat.ChatCoordDetector;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.ChatImportDetector;
-import com.babbur.waypointer.chat.HypixelPlayerRankSource;
 import com.babbur.waypointer.commands.WaypointerCommands;
 import com.babbur.waypointer.commands.DungeonCommands;
+import com.babbur.waypointer.commands.CrystalHollowsCommands;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsMinimap;
+import com.babbur.waypointer.crystal.CrystalHollowsStore;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync;
+import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.crystal.MetalDetectorController;
+import com.babbur.waypointer.crystal.StructureRelayController;
+import com.babbur.waypointer.crystal.WishingCompassController;
+import com.babbur.waypointer.debug.ServerTimingDiagnostics;
+import com.babbur.waypointer.dungeon.DungeonBossGate;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
+import com.babbur.waypointer.dungeon.DungeonRoomTimer;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import com.babbur.waypointer.dungeon.DungeonTriggerDetector;
@@ -35,21 +47,27 @@ import com.babbur.waypointer.progression.WorldJoinProgressReset;
 import com.babbur.waypointer.render.TracerRenderer;
 import com.babbur.waypointer.render.WaypointRenderer;
 import com.babbur.waypointer.render.HappySnowmanSession;
+import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
-import com.babbur.waypointer.screen.preview.RoutePreviewPipAdapter;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import com.babbur.waypointer.update.WaypointerUpdateChecker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 
 public final class WaypointerClient implements ClientModInitializer {
+
+    private static final String LEGACY_PERF_BACKUP = "perf-test-backup.wpc";
 
     private static ActiveGroupManager manager;
     private static Storage storage;
@@ -57,7 +75,12 @@ public final class WaypointerClient implements ClientModInitializer {
     private static WaypointerApi api;
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
+    private static ChatImportDetector chatImportDetector;
+    private static CrystalHollowsStore crystalHollowsStore;
+    private static CrystalHollowsTracker crystalHollowsTracker;
+    private static WishingCompassController crystalHollowsCompass;
     private static WaypointerKeybinds keybinds;
+    private static OverlayRenderer overlayRenderer;
     private static boolean dungeonRouteInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
 
@@ -73,6 +96,14 @@ public final class WaypointerClient implements ClientModInitializer {
         return config;
     }
 
+    private static void followDefaultReachRadius(double previous, double current) {
+        if (config.routesFollowDefaultReachRadius()) manager.followDefaultReachRadius(previous, current);
+    }
+
+    static boolean shouldResetAfterDisconnect(Object disconnected, Object current) {
+        return current == null || current == disconnected;
+    }
+
     public static WaypointerApi api() {
         return api;
     }
@@ -85,6 +116,19 @@ public final class WaypointerClient implements ClientModInitializer {
         return dungeonTracker;
     }
 
+    public static Component decorateChatImport(Component message) {
+        ChatImportDetector detector = chatImportDetector;
+        return detector == null ? message : detector.decorate(message);
+    }
+
+    public static CrystalHollowsTracker crystalHollowsTracker() {
+        return crystalHollowsTracker;
+    }
+
+    public static WishingCompassController crystalHollowsCompass() {
+        return crystalHollowsCompass;
+    }
+
     public static WaypointerKeybinds keybinds() {
         return keybinds;
     }
@@ -92,25 +136,38 @@ public final class WaypointerClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         config = WaypointerConfig.load();
+        recoverLegacyPerfTestBackup(config, legacyPerfBackupPath());
         dungeonConfig = DungeonConfig.load();
         manager = new ActiveGroupManager();
         storage = Storage.defaultLocation();
         storage.load(manager);
         migrateLegacyDungeonRoutes();
         storage.attach(manager);
+        config.setDefaultReachRadiusListener(WaypointerClient::followDefaultReachRadius);
         Minecraft minecraft = Minecraft.getInstance();
-        api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
+        ServerTimingDiagnostics.install();
+        api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft, config);
 
         new LocationTracker(manager, config).install();
-        HypixelPlayerRankSource.install();
+        installCrystalHollowsSubsystem();
         DungeonChestInteractionGuard chestInteractionGuard = new DungeonChestInteractionGuard();
         chestInteractionGuard.install();
         new ProximityTracker(manager, config, chestInteractionGuard, dungeonConfig).install();
         new TempWaypointCleaner(manager).install();
         new WorldJoinProgressReset(manager, config).install();
         HappySnowmanSession.install();
-        RoutePreviewPipAdapter.install();
-        new WaypointRenderer(manager, config, dungeonConfig).install();
+        WaypointRenderer waypointRenderer = new WaypointRenderer(manager, config, dungeonConfig);
+        waypointRenderer.install();
+        overlayRenderer = OverlayRenderer.install(waypointRenderer, manager, config);
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            OverlayRenderer renderer = overlayRenderer;
+            client.execute(() -> {
+                if (renderer != null && renderer == overlayRenderer
+                        && shouldResetAfterDisconnect(handler, client.getConnection())) {
+                    renderer.resetScene();
+                }
+            });
+        });
         new TracerRenderer(manager, config, dungeonConfig).install();
         new EtherwarpAlignmentCue(manager, config::etherwarpAlignmentSound).install();
         WaypointRepositionMode.install();
@@ -125,7 +182,8 @@ public final class WaypointerClient implements ClientModInitializer {
         keybinds = new WaypointerKeybinds(WaypointerClient::openGui, manager, config);
         keybinds.install();
         new ChatCoordDetector(config, manager).install();
-        new ChatImportDetector(config, chatImportCache).install();
+        chatImportDetector = new ChatImportDetector(config, chatImportCache);
+        chatImportDetector.install();
         RemoteLocales.install();
         WaypointerUpdateChecker.install();
         int apiEntrypoints = WaypointerApiEntrypoints.invokeFabricEntrypoints(api);
@@ -139,11 +197,51 @@ public final class WaypointerClient implements ClientModInitializer {
         Waypointer.LOGGER.info("Waypointer client ready -- {} route(s) loaded", manager.allGroups().size());
     }
 
+    private static Path legacyPerfBackupPath() {
+        return FabricLoader.getInstance().getConfigDir()
+                .resolve(Waypointer.MOD_ID).resolve(LEGACY_PERF_BACKUP);
+    }
+
+    static void recoverLegacyPerfTestBackup(WaypointerConfig config, Path backup) {
+        if (config == null || backup == null) return;
+        Path recovery = backup.resolveSibling(backup.getFileName() + ".recovery");
+        try {
+            if (Files.exists(backup)) {
+                Files.move(backup, recovery,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } else if (!Files.exists(recovery)) {
+                return;
+            }
+
+            WaypointerConfig recovered = WaypointerConfigCodec.decode(
+                    Files.readString(recovery).trim());
+            config.replaceWith(recovered);
+            Path archived = recovery.resolveSibling(
+                    recovery.getFileName() + ".recovered-" + UUID.randomUUID());
+            Files.move(recovery, archived, StandardCopyOption.ATOMIC_MOVE);
+            Waypointer.LOGGER.info(
+                    "Recovered settings from an interrupted performance test; archived snapshot at {}",
+                    archived);
+        } catch (Exception failure) {
+            Waypointer.LOGGER.warn(
+                    "Could not recover legacy perf-test settings backup; retained it at {}",
+                    recovery, failure);
+        }
+    }
+
     private static void onClientStopping(Minecraft client) {
+        if (overlayRenderer != null) {
+            runShutdownStep("overlay renderer", overlayRenderer::close);
+            overlayRenderer = null;
+        }
         runShutdownStep("waypoint storage", storage::flush);
         runShutdownStep("configuration", config::flush);
         if (dungeonConfig != null) {
             runShutdownStep("dungeon configuration", dungeonConfig::flush);
+        }
+        if (crystalHollowsTracker != null) {
+            runShutdownStep("Crystal Hollows storage", crystalHollowsTracker::flush);
         }
     }
 
@@ -217,7 +315,24 @@ public final class WaypointerClient implements ClientModInitializer {
         new DungeonRoomZoneBridge(manager, dungeonTracker).install();
         new DungeonRoomRouteSync(manager, dungeonTracker, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonConfig, manager).install();
+        new DungeonRoomTimer(manager, dungeonTracker, dungeonConfig).install();
+        new DungeonBossGate(manager, dungeonTracker).install();
         new DungeonCommands(dungeonTracker, dungeonConfig, manager).install();
+    }
+
+    private static void installCrystalHollowsSubsystem() {
+        crystalHollowsStore = CrystalHollowsStore.loadDefault();
+        crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
+        crystalHollowsTracker.install();
+        new CrystalHollowsStructureRouteSync(manager, crystalHollowsTracker).install();
+        new CrystalHollowsMinimap(crystalHollowsTracker, config).install();
+        crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
+        crystalHollowsCompass.install();
+        new MetalDetectorController(manager, crystalHollowsTracker, config).install();
+        PublishedSources.install(FabricLoader.getInstance().getConfigDir()
+                .resolve(Waypointer.MOD_ID).resolve("publisher").resolve("published-sources.json"));
+        new StructureRelayController(crystalHollowsTracker, config).install();
+        new CrystalHollowsCommands(crystalHollowsTracker, crystalHollowsCompass, config).install();
     }
 
     private static void onDungeonRouteContextChanged(Zone zone) {
@@ -247,7 +362,7 @@ public final class WaypointerClient implements ClientModInitializer {
         }
     }
 
-    private static boolean isDungeonRoomRouteGroup(com.babbur.waypointer.core.WaypointGroup group) {
+    private static boolean isDungeonRoomRouteGroup(WaypointGroup group) {
         return group != null
                 && !group.temp()
                 && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;

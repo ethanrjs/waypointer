@@ -5,8 +5,10 @@ import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.config.WaypointerConfig;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -21,13 +23,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * Default implementation backed by Waypointer's in-memory group manager.
- *
- * <p>Constructed by Waypointer after storage has loaded. Consumers receive this
- * as the {@link WaypointerApi} interface, not as a mutable state owner.
- * Third-party integrations must not construct or cast to this implementation.
- */
 @SuppressWarnings("deprecation")
 public final class DefaultWaypointerApi implements WaypointerApi {
 
@@ -36,6 +31,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     private final ActiveGroupManager manager;
     private final BooleanSupplier isClientThread;
     private final Executor clientExecutor;
+    private final WaypointerConfig config;
 
     public DefaultWaypointerApi(ActiveGroupManager manager) {
         this(manager, () -> true, Runnable::run);
@@ -45,9 +41,15 @@ public final class DefaultWaypointerApi implements WaypointerApi {
             ActiveGroupManager manager,
             BooleanSupplier isClientThread,
             Executor clientExecutor) {
+        this(manager, isClientThread, clientExecutor, new WaypointerConfig());
+    }
+
+    public DefaultWaypointerApi(ActiveGroupManager manager, BooleanSupplier isClientThread,
+                                Executor clientExecutor, WaypointerConfig config) {
         this.manager = Objects.requireNonNull(manager, "manager");
         this.isClientThread = Objects.requireNonNull(isClientThread, "isClientThread");
         this.clientExecutor = Objects.requireNonNull(clientExecutor, "clientExecutor");
+        this.config = Objects.requireNonNull(config, "config");
     }
 
     @Override
@@ -120,7 +122,8 @@ public final class DefaultWaypointerApi implements WaypointerApi {
             if (!isSavedRoute(group)) return false;
             if (waypointIndex < 0 || waypointIndex >= group.size()) return false;
 
-            group.set(waypointIndex, replacement.toWaypoint());
+            group.set(waypointIndex, replacement.toWaypoint()
+                    .withStyleOverride(group.get(waypointIndex).styleOverride()));
             manager.fireDataChangedFor(group);
             return true;
         });
@@ -133,7 +136,8 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         return callOnClientThread(() -> {
             WaypointGroup group = matchingSavedRoute(reference);
             if (group == null) return false;
-            group.set(reference.index(), replacement.toWaypoint());
+            group.set(reference.index(), replacement.toWaypoint()
+                    .withStyleOverride(group.get(reference.index()).styleOverride()));
             manager.fireDataChangedFor(group);
             return true;
         });
@@ -167,7 +171,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Objects.requireNonNull(waypoint, "waypoint");
         return callOnClientThread(() -> {
             WaypointGroup group = manager.getOrCreateTempGroup();
-            com.babbur.waypointer.core.Waypoint ownedWaypoint = waypoint.toTempWaypoint();
+            Waypoint ownedWaypoint = waypoint.toTempWaypoint();
             group.add(ownedWaypoint);
             manager.fireTransientDataChanged();
             return closeOnce(() -> removeCapturedWaypoint(group, ownedWaypoint));
@@ -221,7 +225,8 @@ public final class DefaultWaypointerApi implements WaypointerApi {
                     groups,
                     actualOptions.toCodecOptions(),
                     target,
-                    metadata);
+                    metadata,
+                    config);
         });
     }
 
@@ -289,7 +294,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
 
     private void removeCapturedWaypoint(
             WaypointGroup capturedGroup,
-            com.babbur.waypointer.core.Waypoint capturedWaypoint) {
+            Waypoint capturedWaypoint) {
         callOnClientThread(() -> {
             if (manager.get(capturedGroup.id()) != capturedGroup) return null;
             for (int i = 0; i < capturedGroup.size(); i++) {
@@ -324,7 +329,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         group.setEnabled(route.enabled());
         group.setLoadMode(route.loadMode().toCore());
         group.setDefaultRadius(route.defaultRadius());
-        List<com.babbur.waypointer.core.Waypoint> waypoints = new ArrayList<>(route.waypoints().size());
+        List<Waypoint> waypoints = new ArrayList<>(route.waypoints().size());
         for (WaypointSpec waypoint : route.waypoints()) waypoints.add(waypoint.toWaypoint());
         group.addAll(waypoints);
         return group;
@@ -335,7 +340,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         WaypointGroup group = new WaypointGroup(id, overlay.name(), overlay.zoneId());
         group.setTemp(true);
         group.setLoadMode(overlay.loadMode().toCore());
-        List<com.babbur.waypointer.core.Waypoint> waypoints = new ArrayList<>(overlay.waypoints().size());
+        List<Waypoint> waypoints = new ArrayList<>(overlay.waypoints().size());
         for (WaypointSpec waypoint : overlay.waypoints()) waypoints.add(waypoint.toTempWaypoint());
         group.addAll(waypoints);
         return group;
@@ -354,7 +359,9 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     private void retargetUnknownZone(WaypointGroup group, ImportOptions options) {
         Zone zone = manager.currentZone();
         if (!options.targetCurrentZoneWhenUnknown() || zone == null) return;
-        if (Zone.UNKNOWN.id().equals(group.zoneId())) group.setZoneId(zone.id());
+        if (Zone.shouldRetargetImportedZone(group.zoneId(), zone.id())) {
+            group.setZoneId(zone.id());
+        }
     }
 
     private List<WaypointGroup> exportGroups(List<String> groupIds) {

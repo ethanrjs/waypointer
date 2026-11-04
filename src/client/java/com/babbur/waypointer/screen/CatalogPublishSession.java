@@ -2,26 +2,28 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogPublishLifecycle;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.CatalogPublishResult;
+import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
-import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.WaypointGroup;
 
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-// Keeps one publish flow alive across screen navigation.
 final class CatalogPublishSession {
     private final Supplier<PublisherIdentity> identityLoader;
     private final Supplier<PublisherIdentity> knownIdentityLoader;
@@ -57,8 +59,10 @@ final class CatalogPublishSession {
             Executor worker) {
         this(group, identityStore::loadOrCreate,
                 () -> Files.isRegularFile(identityStore.file()) ? identityStore.load() : null,
-                (request, identity) -> CatalogPublishLifecycle.publishAndPersist(
-                        client, request, identity, identityStore, publicationRegistry),
+                (request, identity, prepared) ->
+                        CatalogPublishLifecycle.publishPreparedAndPersist(
+                                client, request, identity, prepared,
+                                identityStore, publicationRegistry),
                 worker);
         Objects.requireNonNull(client, "client");
         Objects.requireNonNull(identityStore, "identityStore");
@@ -134,7 +138,7 @@ final class CatalogPublishSession {
             pending = identity;
             token = attempt;
         }
-        startPublishing(token, pending, publisherName);
+        startPublishing(token, pending.forNameClaim(), publisherName);
     }
 
     void markCopied() {
@@ -166,31 +170,34 @@ final class CatalogPublishSession {
 
     private void startPublishing(
             long token, PublisherIdentity signer, String requestedName) {
-        WaypointGroup route;
+        List<WaypointGroup> routes;
+        String zoneId;
         String title;
         String description;
         CatalogPublishRequest.Visibility visibility;
         synchronized (this) {
             if (token != attempt || !form.valid()) return;
             phase = Phase.PUBLISHING;
-            route = form.group().exportSnapshot();
+            failure = null;
+            routes = form.groups().stream().map(WaypointGroup::exportSnapshot).toList();
+            zoneId = form.zoneId();
             title = form.normalizedTitle();
             description = form.normalizedDescription();
             visibility = form.visibility();
         }
         notifyListeners(snapshot());
 
-        // Always claim the name on the wire; a wiped catalog re-registers a
-        // stored claim automatically instead of failing with name_required.
         String claimedName = requestedName != null
                 ? requestedName : signer.publisherName();
-        CompletableFuture.supplyAsync(() -> WaypointCodec.encodeCatalog(List.of(route)), worker)
-                .thenCompose(payload -> {
+        CompletableFuture.supplyAsync(
+                        () -> CatalogProtocol.prepareCatalogPayload(routes), worker)
+                .thenCompose(prepared -> {
                     CatalogPublishRequest request = new CatalogPublishRequest(
-                            payload, title, description, visibility,
-                            route.zoneId(), claimedName);
-                    return publisher.publish(request, signer)
-                            .thenApply(completion -> new Published(completion, payload));
+                            prepared.payload(), title, description, visibility,
+                            zoneId, claimedName);
+                    return publisher.publish(request, signer, prepared)
+                            .thenApply(completion -> new Published(
+                                    completion, prepared.payload()));
                 })
                 .whenComplete((published, publishFailure) -> finishPublish(
                         token, published, publishFailure));
@@ -201,12 +208,10 @@ final class CatalogPublishSession {
         synchronized (this) {
             if (token != attempt || phase != Phase.PUBLISHING) return;
             if (publishFailure != null) {
-                if (publisherNameRequired(publishFailure) && identity != null) {
-                    // The catalog does not know this publisher's name (for
-                    // example after a server reset). Ask for it again; a new
-                    // attempt number lets the view reopen its prompt.
+                if (publisherNameNeedsEntry(publishFailure) && identity != null) {
                     ++attempt;
                     phase = Phase.NEEDS_PUBLISHER_NAME;
+                    failure = publishFailure;
                     notifyListeners(snapshotLocked());
                     return;
                 }
@@ -214,6 +219,11 @@ final class CatalogPublishSession {
                 failure = publishFailure;
             } else {
                 CatalogPublishLifecycle.Completion completion = published.completion();
+                var sources = PublishedSources.active();
+                if (sources != null && completion.result() != null && completion.result().route() != null) {
+                    sources.remember(completion.result().route().id(),
+                            form.groups().stream().map(WaypointGroup::id).toList());
+                }
                 phase = Phase.SUCCEEDED;
                 result = completion.result();
                 publishedPayload = published.payload();
@@ -225,15 +235,17 @@ final class CatalogPublishSession {
         notifyListeners(snapshot());
     }
 
-    static boolean publisherNameRequired(Throwable failure) {
+    static boolean publisherNameNeedsEntry(Throwable failure) {
         Throwable cause = failure;
-        while ((cause instanceof java.util.concurrent.CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
+        while ((cause instanceof CompletionException
+                || cause instanceof ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }
         return cause instanceof CatalogApiException api
-                && "publisher_name_required".equals(api.code());
+                && ("publisher_name_required".equals(api.code())
+                || "publisher_name_taken".equals(api.code())
+                || "invalid_publisher_name".equals(api.code()));
     }
 
     private void formEdited() {
@@ -308,6 +320,8 @@ final class CatalogPublishSession {
     @FunctionalInterface
     interface PublishOperation {
         CompletableFuture<CatalogPublishLifecycle.Completion> publish(
-                CatalogPublishRequest request, PublisherIdentity identity);
+                CatalogPublishRequest request,
+                PublisherIdentity identity,
+                CatalogProtocol.PreparedCatalogPayload prepared);
     }
 }

@@ -14,6 +14,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.Locale;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
@@ -187,12 +188,9 @@ final class RouteFolderEditScreen extends Screen {
             int routeCount = folder == null
                     ? selectedGroupIds.size()
                     : manager.groupIdsInFolder(folder.id()).size();
-            String detail = folder == null && routeCount == 0
-                    ? Component.translatable(
-                            "waypointer.screen.route_folder.empty_selection").getString()
-                    : Component.translatable(
-                            RouteListPresentation.folderRouteCountKey(routeCount),
-                            routeCount).getString();
+            String detail = Component.translatable(
+                    RouteListPresentation.folderRouteCountKey(routeCount),
+                    routeCount).getString();
             graphics.text(font, font.plainSubstrByWidth(
                             detail, layout.contentWidth()),
                     layout.contentX(), layout.detailY(), TEXT_DIM, false);
@@ -246,7 +244,7 @@ final class RouteFolderEditScreen extends Screen {
     }
 
     static String formatColor(int color) {
-        return String.format(java.util.Locale.ROOT, "#%06X", color & 0xFFFFFF);
+        return String.format(Locale.ROOT, "#%06X", color & 0xFFFFFF);
     }
 
     private int displayColor() {

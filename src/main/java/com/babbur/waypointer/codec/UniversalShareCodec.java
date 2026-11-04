@@ -1,20 +1,41 @@
 package com.babbur.waypointer.codec;
 
+import com.babbur.waypointer.config.V10ConfigBodyCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
+import com.babbur.waypointer.dungeon.data.V10DungeonBodyCodec;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public final class UniversalShareCodec {
 
-    public enum Type { WAYPOINTS, CONFIG, DUNGEON }
+    public enum Type { WAYPOINTS, CONFIG, DUNGEON, CATALOG }
 
-    public sealed interface Decoded permits Waypoints, Configuration, DungeonRoutes {
+    public sealed interface Decoded permits Waypoints, Configuration, DungeonRoutes, CatalogReference {
         Type type();
+    }
+
+    public record CatalogReference(String routeId) implements Decoded {
+        public CatalogReference {
+            if (!V10CatalogReferenceCodec.isValidRouteId(routeId)) {
+                throw new IllegalArgumentException("invalid catalog route id");
+            }
+        }
+
+        @Override
+        public Type type() {
+            return Type.CATALOG;
+        }
+
+        public String shareUrl() {
+            return CatalogShareLink.forRouteId(routeId);
+        }
     }
 
     public record Waypoints(WaypointImporter.ImportResult result) implements Decoded {
@@ -40,34 +61,66 @@ public final class UniversalShareCodec {
 
     private UniversalShareCodec() {}
 
-    public static String encodeWaypoints(List<com.babbur.waypointer.core.WaypointGroup> groups,
+    public static String encodeWaypoints(List<WaypointGroup> groups,
                                          WaypointCodec.Options options) {
-        return WaypointCodec.encode(groups, options);
+        return V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty());
     }
 
     public static String encodeWaypoints(
-            List<com.babbur.waypointer.core.WaypointGroup> groups,
+            List<WaypointGroup> groups,
             WaypointCodec.Options options,
             RouteLibraryMetadata metadata) {
-        return RouteLibraryCodec.encode(groups, options, metadata);
+        return V11Codec.encodeBest(groups, options, metadata);
     }
 
     public static String encodeConfig(WaypointerConfig config) {
-        return WaypointerConfigCodec.encode(config);
+        try {
+            return V10ConfigCodec.encode(config);
+        } catch (IOException failure) {
+            throw new IllegalStateException("v10 config encode failed", failure);
+        }
     }
 
     public static String encodeDungeon(Collection<WaypointGroup> routes) {
-        return DungeonRoomShareCodec.encode(routes);
+        return V11Codec.encodeBestDungeon(routes);
+    }
+
+    public static String encodeCatalogReference(String routeId) {
+        try {
+            return WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId);
+        } catch (IOException failure) {
+            throw new IllegalStateException("v10 catalog reference encode failed", failure);
+        }
     }
 
     public static Decoded decode(String payload) {
         if (payload == null) throw new IllegalArgumentException("null payload");
         WaypointImporter.enforceTextPayloadLimit(payload);
         String normalized = WaypointImporter.stripMarkdownCodeFence(payload);
+        Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(normalized);
+        if (linkedRoute.isPresent()) {
+            return new CatalogReference(linkedRoute.get());
+        }
         if (normalized.startsWith(WaypointerConfigCodec.MAGIC)) {
             return new Configuration(WaypointerConfigCodec.decode(normalized));
         }
-        if (DungeonRoomShareCodec.isPayload(normalized)) {
+        if (V11Codec.isPayload(normalized)) {
+            V11Codec.Decoded decoded = V11Codec.decode(normalized);
+            boolean allRooms = decoded.groups().stream()
+                    .allMatch(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON);
+            if (allRooms) {
+                return new DungeonRoutes(new DungeonRouteImporter.Result(decoded.groups(),
+                        decoded.groups().stream().mapToInt(WaypointGroup::size).sum(), List.of(), 0,
+                        DungeonRouteImporter.Format.WAYPOINTER));
+            }
+            return new Waypoints(WaypointImporter.importAny(normalized));
+        }
+        V10Transport.CheckedFrame committedV10 = probeV10(normalized);
+        if (committedV10 != null) {
+            return decodeCommittedV10(normalized, committedV10);
+        }
+        if (DungeonRoomShareCodec.isPayload(normalized)
+                || DungeonRouteImporter.isOdinRoomPack(normalized)) {
             return new DungeonRoutes(DungeonRouteImporter.parse(normalized));
         }
 
@@ -80,6 +133,48 @@ public final class UniversalShareCodec {
                 waypointFailure.addSuppressed(dungeonFailure);
                 throw waypointFailure;
             }
+        }
+    }
+
+    private static V10Transport.CheckedFrame probeV10(String normalized) {
+        if (!normalized.startsWith(WaypointCodec.MAGIC)) return null;
+        String transport = normalized.substring(WaypointCodec.MAGIC.length());
+        if (!V10Transport.looksLikeV10(transport)) return null;
+        try {
+            return V10Transport.probe(transport);
+        } catch (IOException | IllegalArgumentException uncommitted) {
+
+            return null;
+        }
+    }
+
+    private static Decoded decodeCommittedV10(String normalized,
+                                              V10Transport.CheckedFrame frame) {
+        try {
+            if (frame.contentKind() == V10BareRoutePackCodec.CONTENT_KIND
+                    && V10CatalogReferenceCodec.isReferenceSemantic(frame.semantic())) {
+                return new CatalogReference(V10CatalogReferenceCodec.decode(frame));
+            }
+            return switch (frame.contentKind()) {
+                case V10ConfigBodyCodec.CONTENT_KIND ->
+                        new Configuration(V10ConfigCodec.decode(frame));
+                case V10DungeonBodyCodec.CONTENT_KIND -> {
+                    V10DungeonBodyCodec.Decoded decoded = V10DungeonCodec.decode(frame);
+                    yield new DungeonRoutes(new DungeonRouteImporter.Result(
+                            decoded.routes(), decoded.waypointCount(), List.of(), 0,
+                            DungeonRouteImporter.Format.WAYPOINTER));
+                }
+                case V10GeneralRouteCodec.CONTENT_KIND,
+                     V10CompactRouteCodec.CONTENT_KIND, 2, 5,
+                     V10BareRoutePackCodec.CONTENT_KIND,
+                     V10GeneralRouteCodec.LABELED_CONTENT_KIND ->
+                        new Waypoints(WaypointImporter.importAny(normalized));
+                default -> throw new IllegalArgumentException(
+                        "unsupported committed v10 share kind " + frame.contentKind());
+            };
+        } catch (IOException | IllegalArgumentException failure) {
+            throw new IllegalArgumentException("share decode failed: committed v10 kind "
+                    + frame.contentKind() + "=" + failure.getMessage(), failure);
         }
     }
 

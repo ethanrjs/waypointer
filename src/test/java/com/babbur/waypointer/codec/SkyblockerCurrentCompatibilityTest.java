@@ -8,6 +8,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -26,7 +27,7 @@ class SkyblockerCurrentCompatibilityTest {
         try (var input = getClass().getResourceAsStream("/fixtures/skyblocker-current-waypoints.json")) {
             json = new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
-        var compressed = new java.io.ByteArrayOutputStream();
+        var compressed = new ByteArrayOutputStream();
         try (var gzip = new GZIPOutputStream(compressed)) {
             gzip.write(json.getBytes(StandardCharsets.UTF_8));
         }

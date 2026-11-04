@@ -9,6 +9,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,6 +20,72 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CatalogBrowserModelTest {
     private static final String API_ROOT = "https://catalog.example/api/";
     private static final String HASH = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    @Test
+    void notInstalledCheckboxIncludesUpdatesAndRepairsAndPreservesLoadedPages() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        CatalogRouteSummary installed = summary("AAAAAAAAAAAAAAAAAAAAAA", "Installed", 1);
+        CatalogRouteSummary missing = summary("BBBBBBBBBBBBBBBBBBBBBB", "Missing", 1);
+        CatalogRouteSummary update = summary("CCCCCCCCCCCCCCCCCCCCCC", "Update", 1);
+        CatalogRouteSummary repair = summary("DDDDDDDDDDDDDDDDDDDDDD", "Repair", 2);
+        manager.addAll(List.of(tagged(installed, 0), tagged(update, 0), tagged(repair, 0)));
+        update = copy(update, 2, update.codecVersion(), 1, 1, "hub");
+        model.applyPage(new CatalogPage(List.of(installed, missing, update, repair), true, "next"), false);
+        model.select(installed);
+        model.filterInstalled(API_ROOT, manager, true);
+        assertEquals(List.of(repair, update, missing), model.routes());
+        assertNull(model.selectedRoute());
+        assertEquals("next", model.nextCursor());
+        CatalogRouteSummary next = summary("EEEEEEEEEEEEEEEEEEEEEE", "Next", 1);
+        model.scrollBy(1, 1);
+        model.applyPage(new CatalogPage(List.of(next), false, null), true);
+        model.filterInstalled(API_ROOT, manager, true);
+        assertEquals(List.of(repair, update, missing, next), model.routes());
+        assertEquals(1, model.scrollOffset());
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(repair, update, missing, next, installed), model.routes(),
+                "installed, up-to-date routes go last");
+        model.filterInstalled(API_ROOT, manager, true);
+        model.beginRefresh();
+        model.filterInstalled(API_ROOT, manager, false);
+        assertTrue(model.routes().isEmpty());
+    }
+
+    @Test
+    void sortsAndTagFilterReorderOnlyTheLoadedRoutes() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        CatalogRouteSummary quiet = summary("AAAAAAAAAAAAAAAAAAAAAA", "Quiet", 1);
+        CatalogRouteSummary busy = withInstallsAndTags(summary("BBBBBBBBBBBBBBBBBBBBBB", "Busy", 1), 90,
+                List.of(CatalogRouteSummary.TAG_MINING_CULT));
+        CatalogRouteSummary alpha = withInstallsAndTags(summary("CCCCCCCCCCCCCCCCCCCCCC", "Alpha", 1), 5, List.of());
+        model.applyPage(new CatalogPage(List.of(quiet, busy, alpha), false, null), false);
+
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(busy, alpha, quiet), model.routes(), "recommended favours installs away from home");
+        assertTrue(model.setSort(CatalogBrowserModel.Sort.POPULAR));
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(busy, alpha, quiet), model.routes());
+        model.setSort(CatalogBrowserModel.Sort.NAME);
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(alpha, busy, quiet), model.routes());
+
+        assertTrue(model.anyLoadedRouteHas(CatalogRouteSummary.TAG_MINING_CULT));
+        model.setTagFilter(CatalogRouteSummary.TAG_MINING_CULT);
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(busy), model.routes());
+        model.setTagFilter(null);
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(3, model.routes().size());
+    }
+
+    private static CatalogRouteSummary withInstallsAndTags(CatalogRouteSummary route, long installs, List<String> tags) {
+        return new CatalogRouteSummary(route.id(), route.title(), route.description(), route.authorName(),
+                route.publisherId(), route.publisherVerified(), route.visibility(), route.zoneId(), route.zoneLabel(),
+                route.waypointCount(), route.groupCount(), route.codecVersion(), route.version(), installs,
+                route.createdAt(), route.updatedAt(), route.sharePath(), tags);
+    }
 
     @Test
     void pagesAppendByIdentityAndReconcileSelection() {
@@ -129,7 +196,7 @@ class CatalogBrowserModelTest {
     @Test
     void scrollingClampsAndKeepsKeyboardSelectionVisible() {
         CatalogBrowserModel model = new CatalogBrowserModel();
-        List<CatalogRouteSummary> routes = java.util.stream.IntStream.range(0, 10)
+        List<CatalogRouteSummary> routes = IntStream.range(0, 10)
                 .mapToObj(index -> summary(
                         "AAAAAAAAAAAAAAAAAAAAA" + index, "Route " + index, 1))
                 .toList();

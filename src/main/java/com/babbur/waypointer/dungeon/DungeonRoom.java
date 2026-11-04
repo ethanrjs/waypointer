@@ -3,10 +3,6 @@ package com.babbur.waypointer.dungeon;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Geometry and optional catalog identity for the current room. Segment X/Z
- * pairs are packed into longs to avoid allocating coordinate objects.
- */
 public record DungeonRoom(
         DungeonRoomType type,
         DungeonRoomShape shape,

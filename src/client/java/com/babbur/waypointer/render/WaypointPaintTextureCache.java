@@ -2,29 +2,77 @@ package com.babbur.waypointer.render;
 
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 
-import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
-final class WaypointPaintTextureCache {
+public final class WaypointPaintTextureCache {
 
     static final int ATLAS_WIDTH = WaypointPaint.SIZE * 4;
     static final int ATLAS_HEIGHT = WaypointPaint.SIZE * 3;
     private static final int MAX_TEXTURES = 64;
+    public static final int MAX_RETAINED_ACTIVE_TEXTURES = 256;
+    private static int activeCapacity = MAX_TEXTURES;
+    private static final Set<WaypointPaint> RETAINED_PAINTS = new LinkedHashSet<>();
     private static final AtomicLong SEQUENCE = new AtomicLong();
     private static final Map<WaypointPaint, Entry> CACHE =
             new LinkedHashMap<>(16, 0.75f, true);
 
-    record Entry(Identifier id, RenderType throughWalls, RenderType depthTested) {}
+    public record Entry(Identifier id, RenderType throughWalls, RenderType depthTested) {}
 
     private WaypointPaintTextureCache() {}
+
+    public static int reserveForActivePaints(Iterable<WaypointPaint> paints) {
+        int overflow = selectRetainedPaints(paints, RETAINED_PAINTS);
+        activeCapacity = Math.max(MAX_TEXTURES, RETAINED_PAINTS.size());
+        evictOldTextures();
+        return overflow;
+    }
+
+    public static void resetRetainedReservation() {
+        if (RETAINED_PAINTS.isEmpty() && activeCapacity == MAX_TEXTURES) return;
+        RETAINED_PAINTS.clear();
+        activeCapacity = MAX_TEXTURES;
+        evictOldTextures();
+    }
+
+    static boolean isRetained(WaypointPaint paint) {
+        return RETAINED_PAINTS.contains(paint);
+    }
+
+    static Entry getRetained(WaypointPaint paint) {
+        return isRetained(paint) ? get(paint) : null;
+    }
+
+    static int selectRetainedPaints(Iterable<WaypointPaint> paints, Set<WaypointPaint> selected) {
+        selected.clear();
+        int overflow = 0;
+        if (paints == null) return 0;
+        for (WaypointPaint paint : paints) {
+            if (paint == null || selected.contains(paint)) continue;
+            if (selected.size() < MAX_RETAINED_ACTIVE_TEXTURES) selected.add(paint);
+            else overflow++;
+        }
+        return overflow;
+    }
+
+    public static void clear() {
+        List<Entry> entries = List.copyOf(CACHE.values());
+        CACHE.clear();
+        RETAINED_PAINTS.clear();
+        activeCapacity = MAX_TEXTURES;
+        for (Entry entry : entries) releaseEntry(entry);
+    }
 
     static Entry get(WaypointPaint paint) {
         Entry cached = CACHE.get(paint);
@@ -34,26 +82,29 @@ final class WaypointPaintTextureCache {
         Identifier id = Identifier.fromNamespaceAndPath(
                 Waypointer.MOD_ID, "waypoint_paint_" + sequence);
         DynamicTexture texture = new DynamicTexture(
-                () -> "waypointer_paint_" + sequence,
-                ATLAS_WIDTH, ATLAS_HEIGHT, false);
+                () -> "waypointer_paint_" + sequence, ATLAS_WIDTH, ATLAS_HEIGHT, false);
         var textureManager = Minecraft.getInstance().getTextureManager();
-        textureManager.register(id, texture);
+        boolean registered = false;
         boolean created = false;
         try {
             bake(texture, paint);
-
+            texture.getPixels().close();
+            textureManager.register(id, texture);
+            registered = true;
             Entry entry = new Entry(
                     id,
                     WaypointerRenderPipelines.paintedQuads(id, false),
                     WaypointerRenderPipelines.paintedQuads(id, true));
             CACHE.put(paint, entry);
+            OverlayRenderer.onPaintTextureCreated(entry);
             evictOldTextures();
             created = true;
             return entry;
         } finally {
             if (!created) {
                 CACHE.remove(paint);
-                textureManager.release(id);
+                if (registered) textureManager.release(id);
+                else texture.close();
             }
         }
     }
@@ -84,13 +135,35 @@ final class WaypointPaintTextureCache {
         return 0xFF000000 | (b << 16) | (g << 8) | r;
     }
 
+    static <K, V> Map.Entry<K, V> selectEvictionEntry(
+            Map<K, V> entries, Set<K> reserved) {
+        for (Map.Entry<K, V> entry : entries.entrySet()) {
+            if (!reserved.contains(entry.getKey())) return entry;
+        }
+        return null;
+    }
+
     private static void evictOldTextures() {
-        Minecraft minecraft = Minecraft.getInstance();
-        Iterator<Entry> entries = CACHE.values().iterator();
-        while (CACHE.size() > MAX_TEXTURES && entries.hasNext()) {
-            Entry oldest = entries.next();
-            entries.remove();
-            minecraft.getTextureManager().release(oldest.id());
+        while (CACHE.size() > activeCapacity) {
+            Map.Entry<WaypointPaint, Entry> eviction =
+                    selectEvictionEntry(CACHE, RETAINED_PAINTS);
+            if (eviction == null) return;
+            Entry entry = eviction.getValue();
+            CACHE.remove(eviction.getKey());
+            releaseEntry(entry);
+        }
+    }
+
+    private static void releaseEntry(Entry entry) {
+        try {
+            OverlayRenderer.onPaintTextureEvicted(entry);
+        } catch (RuntimeException | LinkageError failure) {
+            Waypointer.LOGGER.warn("Could not remove a paint mesh", failure);
+        }
+        try {
+            Minecraft.getInstance().getTextureManager().release(entry.id());
+        } catch (RuntimeException | LinkageError failure) {
+            Waypointer.LOGGER.warn("Could not release paint texture {}", entry.id(), failure);
         }
     }
 }

@@ -5,18 +5,21 @@ import com.babbur.waypointer.api.ImportSummary;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.RoutePack;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class CatalogRouteInstaller {
-    private static final int MAX_CATALOG_GROUPS = 64;
-    private static final int MAX_CATALOG_WAYPOINTS = 10_000;
-
     private CatalogRouteInstaller() {
     }
 
@@ -28,12 +31,6 @@ public final class CatalogRouteInstaller {
         CatalogProtocol.PayloadManifest manifest = CatalogProtocol.inspectPayload(details.payload());
         WaypointImporter.ImportResult result = WaypointImporter.validatePreparedImport(
                 WaypointImporter.Source.WAYPOINTER, manifest.groups(), manifest.label());
-
-        int groupCount = result.groups().size();
-        int waypointCount = result.groups().stream().mapToInt(WaypointGroup::size).sum();
-        if (groupCount > MAX_CATALOG_GROUPS || waypointCount > MAX_CATALOG_WAYPOINTS) {
-            throw new IllegalArgumentException("Catalog route exceeds install limits");
-        }
 
         CatalogProtocol.validateSummaryAgainstPayload(expected, manifest);
         return new PreparedRoute(expected, result, manifest.payloadSha256());
@@ -65,10 +62,27 @@ public final class CatalogRouteInstaller {
                 prepared.payloadSha256);
         List<WaypointGroup> groups = prepared.detachedGroups(
                 normalizedApiRoot, priorGroups);
-        manager.replaceGroupsAtomically(
-                prior.matchingGroupIds(), groups,
-                transferredFolderMemberships(manager, priorGroups, groups),
-                replacementAnchors(priorGroups, groups));
+        Set<String> enabledRooms = groups.stream()
+                .filter(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON && group.enabled())
+                .map(WaypointGroup::zoneId).collect(Collectors.toSet());
+        List<WaypointGroup> overlapping = manager.allGroups().stream()
+                .filter(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                        && !group.temp() && !group.runtimeOnly() && group.enabled()
+                        && enabledRooms.contains(group.zoneId())
+                        && !prior.matchingGroupIds().contains(group.id()))
+                .toList();
+        DungeonRoomRouteSync.batched(() -> {
+            overlapping.forEach(group -> group.setEnabled(false));
+            try {
+                manager.replaceGroupsAtomically(
+                        prior.matchingGroupIds(), groups,
+                        transferredFolderMemberships(manager, priorGroups, groups),
+                        replacementAnchors(priorGroups, groups));
+            } catch (RuntimeException failure) {
+                overlapping.forEach(group -> group.setEnabled(true));
+                throw failure;
+            }
+        });
 
         int waypointCount = groups.stream().mapToInt(WaypointGroup::size).sum();
         return new ImportSummary(
@@ -153,6 +167,25 @@ public final class CatalogRouteInstaller {
         return Map.copyOf(anchors);
     }
 
+    private static void preservePersonalStyles(WaypointGroup previous, WaypointGroup replacement) {
+        replacement.setStylePresetId(previous.stylePresetId());
+        replacement.setStyleOverride(previous.styleOverride());
+        if (!previous.zoneId().equals(replacement.zoneId())
+                || previous.routeKind() != replacement.routeKind()) return;
+        Map<Waypoint, List<Waypoint>> oldPoints = previous.waypoints().stream().collect(
+                Collectors.groupingBy(point -> point.withStyleOverride(WaypointStyle.EMPTY)));
+        Map<Waypoint, Long> newCounts = replacement.waypoints().stream().collect(
+                Collectors.groupingBy(point -> point.withStyleOverride(WaypointStyle.EMPTY),
+                        Collectors.counting()));
+        for (int index = 0; index < replacement.size(); index++) {
+            Waypoint key = replacement.get(index).withStyleOverride(WaypointStyle.EMPTY);
+            List<Waypoint> matches = oldPoints.get(key);
+            if (matches != null && matches.size() == 1 && newCounts.get(key) == 1L) {
+                replacement.setWaypointStyle(index, matches.getFirst().styleOverride());
+            }
+        }
+    }
+
     public static final class PreparedRoute {
         private final CatalogRouteSummary summary;
         private final WaypointImporter.ImportResult importResult;
@@ -181,14 +214,20 @@ public final class CatalogRouteInstaller {
                 String apiRoot, Map<Integer, WaypointGroup> priorGroups) {
             List<WaypointGroup> detached = new ArrayList<>(importResult.groups().size());
             int groupCount = importResult.groups().size();
+            boolean dungeonPack = importResult.groups().stream()
+                    .anyMatch(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON);
             for (int index = 0; index < groupCount; index++) {
                 WaypointGroup group = importResult.groups().get(index).exportSnapshot();
                 group.setCatalogProvenance(new CatalogRouteProvenance(
                         apiRoot, summary.id(), summary.version(), summary.codecVersion(),
                         payloadSha256, index, groupCount));
+                if (dungeonPack) group.setRoutePack(RoutePack.catalog(summary.id(), summary.title()));
+                if (group.icon().isEmpty()) group.setIcon(summary.icon());
                 WaypointGroup previous = priorGroups.get(index);
                 if (previous != null) {
                     group.setEnabled(previous.enabled());
+                    if (!previous.icon().isEmpty()) group.setIcon(previous.icon());
+                    preservePersonalStyles(previous, group);
                 }
                 detached.add(group);
             }

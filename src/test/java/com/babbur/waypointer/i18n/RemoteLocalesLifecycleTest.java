@@ -17,6 +17,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RemoteLocalesLifecycleTest {
     @Test
+    void debugSnapshotDoesNotStartDownloadOrLoadUnknownLocale() {
+        var snapshot = RemoteLocales.debugSnapshot("not_a_supported_locale");
+        assertFalse(snapshot.selectedSupported());
+        assertFalse(snapshot.overlayLoaded());
+        assertFalse(snapshot.reloadApplied());
+        assertFalse(snapshot.downloading());
+        assertEquals(0, snapshot.retryInMillis());
+    }
+
+    @Test
     void sharedPendingDownloadRunsAndStoresOnlyOnce() {
         ConcurrentHashMap<String, CompletableFuture<byte[]>> operations =
                 new ConcurrentHashMap<>();

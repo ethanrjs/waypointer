@@ -2,38 +2,63 @@ package com.babbur.waypointer.location;
 
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsSidebar;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 
 import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.Supplier;
 
-/** Detects SkyBlock zones from the sidebar every two ticks. */
 public final class ScoreboardZoneResolver implements ZoneSource {
 
-    /** Captures the location name before an optional coordinate suffix. */
-    private static final Pattern LOCATION_LINE = Pattern.compile(
-            "(?m)⏣[\\t ]*([^,\\r\\n]+?)[\\t ]*(?:,|$)");
-
     private static final int POLL_INTERVAL_TICKS = 2;
+    static final int PLAYER_LIST_CONFIRM_POLLS = 10;
 
     private Consumer<Zone> listener;
     private Zone lastEmitted;
     private int tickCounter = 0;
+    private Object worldIdentity;
+    private boolean retainingZone;
+    private Zone pendingPlayerListZone;
+    private int playerListZonePolls;
+
+    public ScoreboardZoneResolver() {}
+
+    ScoreboardZoneResolver(Consumer<Zone> listener) {
+        this.listener = listener;
+    }
 
     @Override
     public void register(Consumer<Zone> listener) {
         this.listener = listener;
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> updateWorld(null));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> updateWorld(null));
     }
 
     private void onTick(Minecraft mc) {
+        updateWorld(mc.level);
+        if (mc.level == null || mc.player == null) return;
         if (++tickCounter < POLL_INTERVAL_TICKS) return;
         tickCounter = 0;
+        acceptSidebar(SidebarTexts.collectColorStripped(mc), () -> TabListTexts.areaName(mc));
+    }
 
-        Zone z = detect(mc);
+    void acceptSidebar(String sidebar) {
+        acceptSidebar(sidebar, () -> null);
+    }
+
+    void acceptSidebar(String sidebar, Supplier<String> playerListArea) {
+        Zone z = resolveSidebarText(sidebar);
+        retainingZone = lastEmitted != null
+                && z == null
+                && CrystalHollowsSidebar.areaName(sidebar == null ? "" : sidebar) == null;
+        if (retainingZone) return;
+        if (z == null && lastEmitted == null) z = confirmedPlayerListZone(playerListArea.get());
+        else clearPlayerListZone();
+        z = ConfirmedLayoutRetention.retain(lastEmitted, z, sidebar == null ? "" : sidebar);
         if (!Objects.equals(z, lastEmitted)) {
             lastEmitted = z;
             Waypointer.LOGGER.debug("Scoreboard zone resolved to {}", z);
@@ -41,24 +66,70 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         }
     }
 
-    private Zone detect(Minecraft mc) {
-        if (mc == null || mc.level == null || mc.player == null) return null;
-        return resolveSidebarText(SidebarTexts.collectColorStripped(mc));
+    private Zone confirmedPlayerListZone(String area) {
+        Zone zone = resolveKnownAreaName(area);
+        if (zone == null) {
+            clearPlayerListZone();
+            return null;
+        }
+        if (zone.equals(pendingPlayerListZone)) {
+            playerListZonePolls++;
+        } else {
+            pendingPlayerListZone = zone;
+            playerListZonePolls = 1;
+        }
+        return playerListZonePolls >= PLAYER_LIST_CONFIRM_POLLS ? zone : null;
+    }
+
+    private void clearPlayerListZone() {
+        pendingPlayerListZone = null;
+        playerListZonePolls = 0;
+    }
+
+    void updateWorld(Object world) {
+        if (worldIdentity == world) return;
+        worldIdentity = world;
+        tickCounter = 0;
+        retainingZone = false;
+        clearPlayerListZone();
+        if (lastEmitted != null) {
+            lastEmitted = null;
+            if (listener != null) listener.accept(null);
+        }
+    }
+
+    public String detectionState() {
+        return "sidebarFallback=true, retainingZoneDuringMissingSidebar=" + retainingZone;
     }
 
     static Zone resolveSidebarText(String blob) {
         if (blob == null || blob.isBlank()) return null;
-        Matcher location = LOCATION_LINE.matcher(blob);
-        if (!location.find()) return null;
-
-
         Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
         if (mineshaftType != null) return mineshaftType;
+        String area = CrystalHollowsSidebar.areaName(blob);
+        if (area == null || area.isBlank()) return null;
+        area = area.replaceFirst(",\\s*$", "");
+
         Zone mineshaftArea = Zone.tryResolveDwarvenSubAreaFromSidebarBlob(blob);
         if (mineshaftArea != null) return mineshaftArea;
         Zone catacombsFloor = CatacombsFloorRefiner.tryResolveFromSidebarBlob(blob);
         if (catacombsFloor != null) return catacombsFloor;
+        return resolveAreaName(area);
+    }
 
-        return Zone.resolveFromDisplayName(location.group(1).trim());
+    static Zone resolveKnownAreaName(String area) {
+        Zone zone = resolveAreaName(area);
+        return zone != null && Zone.knownZones().contains(zone) ? zone : null;
+    }
+
+    static Zone resolveAreaName(String area) {
+        if (area == null || area.isBlank()) return null;
+        String cleaned = area.trim().replaceFirst(",\\s*$", "");
+        if (cleaned.isBlank()) return null;
+        if (CrystalHollowsSidebar.zoneForArea(cleaned) != null
+                || CrystalHollowsSidebar.structureForArea(cleaned) != null) {
+            return Zone.fromId("crystal_hollows");
+        }
+        return Zone.resolveFromDisplayName(cleaned);
     }
 }

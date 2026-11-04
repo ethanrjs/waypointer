@@ -3,6 +3,7 @@ package com.babbur.waypointer.catalog;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -10,7 +11,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 
-/** Writes through a temporary file and uses an atomic move when available. */
 final class CatalogAtomicFile {
     private CatalogAtomicFile() {
     }
@@ -80,7 +80,7 @@ final class CatalogAtomicFile {
         }
     }
 
-    static void writeFully(java.nio.channels.WritableByteChannel channel, ByteBuffer data)
+    static void writeFully(WritableByteChannel channel, ByteBuffer data)
             throws IOException {
         while (data.hasRemaining()) channel.write(data);
     }
