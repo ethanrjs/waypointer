@@ -42,16 +42,18 @@ final class V10ConfigCodec {
         private final int mode;
         private final byte[] payload;
         private final String transport;
+        private final int rankedLength;
 
         Candidate(int mode, byte[] payload) {
             this.mode = mode;
             this.payload = payload;
             this.transport = V10Transport.encode(mode, payload);
+            this.rankedLength = V10Transport.encodeLegacyText(payload).length();
         }
 
         @Override
         public int compareTo(Candidate other) {
-            int compared = Integer.compare(transport.length(), other.transport.length());
+            int compared = Integer.compare(rankedLength, other.rankedLength);
             if (compared != 0) return compared;
             compared = Integer.compare(mode, other.mode);
             if (compared != 0) return compared;

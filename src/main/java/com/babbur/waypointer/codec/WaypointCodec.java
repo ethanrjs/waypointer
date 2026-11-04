@@ -776,9 +776,17 @@ public final class WaypointCodec {
     }
 
     private static Optional<String> peekLabelV10(String payload) {
+        if (!V10Transport.looksLikeV10(payload)) return Optional.empty();
+        for (String raw : V10Transport.rawTextCandidates(payload)) {
+            Optional<String> label = peekLabelV10Raw(raw);
+            if (label.isPresent()) return label;
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> peekLabelV10Raw(String raw) {
         try {
-            if (!V10Transport.looksLikeV10(payload)) return Optional.empty();
-            byte[] framed = AsciiStreamCodec.decode(V10Transport.unescapeContextual(payload));
+            byte[] framed = AsciiStreamCodec.decode(raw);
             if (framed.length == 0) return Optional.empty();
             int header = framed[0] & 0xFF;
             int mode = V10Transport.modeOf((byte) header);
@@ -3316,7 +3324,7 @@ public final class WaypointCodec {
                 V10Transport.Outbound filteredDeflate = V10Transport.deflated(
                         raw, Deflater.FILTERED);
                 if (filteredDeflate.compareTo(best) < 0) best = filteredDeflate;
-                return best.transport().length();
+                return best.rankedLength();
             }
             byte[] compressed = raw.length > 0 && (raw[0] & HEADER_VERSION_MASK) == WIRE_VERSION
                     ? deflateV9(appendChecksum(raw))

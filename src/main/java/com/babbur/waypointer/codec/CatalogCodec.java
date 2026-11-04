@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.io.IOException;
 import java.util.List;
 
 public final class CatalogCodec {
@@ -15,7 +16,12 @@ public final class CatalogCodec {
     public static String encode(List<WaypointGroup> groups) {
         String v9 = WaypointCodec.encodeCatalog(groups);
         if (sameRoutes(groups, WaypointCodec.decodeCanonicalV9(v9))) return v9;
-        return V11Codec.encodeBest(groups, WaypointCodec.Options.FULL_FIDELITY, RouteLibraryMetadata.empty());
+        String v11 = V11Codec.encodeBest(groups, WaypointCodec.Options.FULL_FIDELITY, RouteLibraryMetadata.empty());
+        try {
+            return WaypointCodec.MAGIC + V10Transport.legacyText(v11.substring(WaypointCodec.MAGIC.length()));
+        } catch (IOException failure) {
+            throw new IllegalStateException("catalog payload did not round-trip", failure);
+        }
     }
 
     public static boolean isV11(String payload) {

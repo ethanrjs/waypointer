@@ -359,7 +359,8 @@ public final class WaypointGroup {
     public boolean followDefaultRadius(double previousDefault, double newDefault) {
         if (radiusSource == RadiusSource.CUSTOM) return false;
         if (radiusSource == RadiusSource.UNKNOWN
-                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0) {
+                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0
+                && Double.compare(defaultRadius, Waypoint.DEFAULT_REACH_RADIUS) != 0) {
             return false;
         }
         boolean adopted = radiusSource != RadiusSource.DEFAULT;

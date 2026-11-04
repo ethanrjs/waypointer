@@ -61,6 +61,30 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void untouchedRoutesOnTheBuiltInRadiusAdoptTheCurrentDefault() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup imported = WaypointGroup.create("Imported", "hub");
+        WaypointGroup shared = WaypointGroup.create("Shared with a radius", "hub");
+        shared.setDefaultRadius(12.0);
+        WaypointGroup edited = WaypointGroup.create("Edited", "hub");
+        edited.setCustomRadius(Waypoint.DEFAULT_REACH_RADIUS);
+        manager.addAll(List.of(imported, shared, edited));
+
+        assertTrue(manager.followDefaultReachRadius(8.0, 8.0));
+
+        assertEquals(8.0, imported.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.DEFAULT, imported.radiusSource());
+        assertEquals(12.0, shared.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.UNKNOWN, shared.radiusSource());
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, edited.defaultRadius());
+        assertFalse(manager.followDefaultReachRadius(8.0, 8.0));
+
+        manager.followDefaultReachRadius(8.0, 20.0);
+        assertEquals(20.0, imported.defaultRadius());
+        assertEquals(12.0, shared.defaultRadius());
+    }
+
+    @Test
     void retiredDwarvenSurfaceZoneGroupsActivateInThePacketBackedZone() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup route = new WaypointGroup(

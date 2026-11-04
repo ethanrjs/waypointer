@@ -269,7 +269,7 @@ class V10CompactRouteCodecTest {
         WaypointCodec.Options options = WaypointCodec.Options.FULL_FIDELITY.toBuilder()
                 .includeColors(false).build();
         String selected = WaypointCodec.encode(List.of(route), options);
-        assertTrue(selected.length() <= shared.length());
+        assertTrue(selected.length() <= ShareSpelling.of(shared).length());
         assertEquals(V10CompactRouteCodec.CONTENT_KIND,
                 V10Transport.probe(selected.substring(WaypointCodec.MAGIC.length())).contentKind());
         assertCompactProjection(route, options);

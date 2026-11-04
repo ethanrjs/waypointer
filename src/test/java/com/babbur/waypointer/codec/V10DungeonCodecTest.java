@@ -75,7 +75,7 @@ class V10DungeonCodecTest {
         assertArrayEquals(HexFormat.of().parseHex(
                 "4a00012c0763727970742d61054372797074000100028c01031f054368657374"
                         + "12345680284004000000000000010001"), semantic);
-        assertEquals("WP:_+N)mhQtw@Q[Le;F25E5N)lgj+^4bZalY<tJRQM'C#p6zQjD[;z3#!iD%",
+        assertEquals(ShareSpelling.of("WP:_+N)mhQtw@Q[Le;F25E5N)lgj+^4bZalY<tJRQM'C#p6zQjD[;z3#!iD%"),
                 wire);
         assertEquals(V10Transport.MODE_DEFLATE, V10Transport.decode(
                 wire.substring(WaypointCodec.MAGIC.length())).mode());

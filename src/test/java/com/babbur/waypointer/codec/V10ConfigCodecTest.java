@@ -76,18 +76,18 @@ class V10ConfigCodecTest {
             DeflateCandidate bestDeflate = defaultDeflate.compareTo(filteredDeflate) <= 0
                     ? defaultDeflate : filteredDeflate;
             assertEquals(fixture.name(), vector.get("id").getAsString());
-            assertEquals(vector.get("wire").getAsString(), wire, fixture.name());
-            assertEquals(vector.get("v10Chars").getAsInt(), wire.length(), fixture.name());
+            assertEquals(vector.get("wire").getAsString(), ShareSpelling.legacy(wire), fixture.name());
+            assertEquals(vector.get("v10Chars").getAsInt(), ShareSpelling.legacy(wire).length(), fixture.name());
             assertEquals(vector.get("semanticBytes").getAsInt(), semantic.length, fixture.name());
-            assertEquals(vector.get("v10AChars").getAsInt(), direct.length(), fixture.name());
-            assertEquals(vector.get("aWire").getAsString(), direct, fixture.name());
+            assertEquals(vector.get("v10AChars").getAsInt(), ShareSpelling.legacy(direct).length(), fixture.name());
+            assertEquals(vector.get("aWire").getAsString(), ShareSpelling.legacy(direct), fixture.name());
             assertEquals(vector.get("v10BCompressedBytes").getAsInt(),
                     bestDeflate.compressedBytes(), fixture.name());
             assertEquals(vector.get("v10BPayloadBytes").getAsInt(),
                     bestDeflate.payload().length, fixture.name());
             assertEquals(vector.get("v10BChars").getAsInt(),
-                    bestDeflate.wire().length(), fixture.name());
-            assertEquals(vector.get("bWire").getAsString(), bestDeflate.wire(), fixture.name());
+                    ShareSpelling.legacy(bestDeflate.wire()).length(), fixture.name());
+            assertEquals(vector.get("bWire").getAsString(), ShareSpelling.legacy(bestDeflate.wire()), fixture.name());
             assertEquals(vector.get("currentWpcChars").getAsInt(),
                     WaypointerConfigCodec.encode(fixture.config()).length(), fixture.name());
             assertEquals(vector.get("mode").getAsString(),

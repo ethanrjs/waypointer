@@ -43,7 +43,7 @@ class V10GoldenRegeneration {
             byte[] semantic = HexFormat.of().parseHex(vector.get("semanticHex").getAsString());
             WaypointGroup route = V10BareRouteCodec.decode(
                     new V10Transport.CheckedFrame(mode, semantic));
-            String wire = WaypointCodec.MAGIC + V10BareRouteCodec.encode(route);
+            String wire = ShareSpelling.legacy(WaypointCodec.MAGIC + V10BareRouteCodec.encode(route));
             String transport = wire.substring(WaypointCodec.MAGIC.length());
             V10Transport.Frame physical = V10Transport.decode(transport);
             V10Transport.CheckedFrame checked = V10Transport.probe(transport);
@@ -65,9 +65,9 @@ class V10GoldenRegeneration {
         JsonArray config = new JsonArray();
         for (V10ConfigCodecTest.NamedConfig fixture : V10ConfigCodecTest.fixtures()) {
             byte[] semantic = V10ConfigBodyCodec.encode(fixture.config());
-            String wire = UniversalShareCodec.encodeConfig(fixture.config());
+            String wire = ShareSpelling.legacy(UniversalShareCodec.encodeConfig(fixture.config()));
             byte[] direct = V10Transport.seal(V10Transport.MODE_DIRECT, semantic);
-            String aWire = WaypointCodec.MAGIC + V10Transport.encode(direct);
+            String aWire = WaypointCodec.MAGIC + V10Transport.encodeLegacyText(direct);
             byte[] defaultDeflate = V10Transport.deflateAndSeal(semantic, Deflater.DEFAULT_STRATEGY);
             byte[] filteredDeflate = V10Transport.deflateAndSeal(semantic, Deflater.FILTERED);
             V10Transport.Outbound best = new V10Transport.Outbound(
@@ -75,7 +75,7 @@ class V10GoldenRegeneration {
             V10Transport.Outbound filtered = new V10Transport.Outbound(
                     V10Transport.MODE_DEFLATE, filteredDeflate);
             if (filtered.compareTo(best) < 0) best = filtered;
-            String bWire = WaypointCodec.MAGIC + best.transport();
+            String bWire = WaypointCodec.MAGIC + V10Transport.encodeLegacyText(best.payload());
             JsonObject vector = new JsonObject();
             vector.addProperty("id", fixture.name());
             vector.addProperty("currentWpcChars",

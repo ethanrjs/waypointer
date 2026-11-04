@@ -54,6 +54,28 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void resumingOrResettingFollowLetsRoutesCatchUpWithTheDefault() {
+        var config = new WaypointerConfig();
+        config.setRoutesFollowDefaultReachRadius(false);
+        config.setDefaultReachRadius(5.0);
+        List<double[]> changes = new ArrayList<>();
+        config.setDefaultReachRadiusListener((previous, current) -> {
+            if (config.routesFollowDefaultReachRadius()) changes.add(new double[]{previous, current});
+        });
+
+        config.setRoutesFollowDefaultReachRadius(true);
+        config.setRoutesFollowDefaultReachRadius(true);
+        assertEquals(1, changes.size());
+        assertArrayEquals(new double[]{5.0, 5.0}, changes.get(0));
+
+        config.setRoutesFollowDefaultReachRadius(false);
+        config.resetToDefaults();
+        assertEquals(3, changes.size());
+        assertArrayEquals(new double[]{5.0, 5.0}, changes.get(1));
+        assertArrayEquals(new double[]{5.0, 3.0}, changes.get(2));
+    }
+
+    @Test
     void coordinateShareHelperDefaultsAndRoundTrips() throws Exception {
         var config = new WaypointerConfig();
         assertTrue(config.coordinateShareHelper());

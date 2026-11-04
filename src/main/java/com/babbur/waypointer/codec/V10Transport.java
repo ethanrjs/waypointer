@@ -2,7 +2,9 @@ package com.babbur.waypointer.codec;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -33,7 +35,13 @@ final class V10Transport {
 
     static boolean looksLikeWireVersion(String transport, int version) {
         if (transport == null || transport.length() < 2) return false;
-        String raw = unescapeContextual(transport.substring(0, Math.min(transport.length(), 4)));
+        return headerCarriesVersion(
+                unescapeShareTextPrefix(transport.substring(0, Math.min(transport.length(), 4))), version)
+                || headerCarriesVersion(
+                unescapeContextual(transport.substring(0, Math.min(transport.length(), 4))), version);
+    }
+
+    private static boolean headerCarriesVersion(String raw, int version) {
         if (raw.length() < 2) return false;
         int first = AsciiStreamCodec.alphabetIndex(raw.charAt(0));
         int second = AsciiStreamCodec.alphabetIndex(raw.charAt(1));
@@ -49,7 +57,21 @@ final class V10Transport {
         if (payload.length > MAX_FRAME_BYTES) {
             throw new IllegalArgumentException("v10 payload exceeds frame limit");
         }
-        String transport = escapeContextual(AsciiStreamCodec.encode(payload));
+        return checkedLength(escapeShareText(AsciiStreamCodec.encode(payload)));
+    }
+
+    static String encodeLegacyText(byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            throw new IllegalArgumentException("empty v10 payload");
+        }
+        return checkedLength(escapeContextual(AsciiStreamCodec.encode(payload)));
+    }
+
+    static String legacyText(String transport) throws IOException {
+        return encodeLegacyText(decode(transport).payload());
+    }
+
+    private static String checkedLength(String transport) {
         if (transport.length() > MAX_TRANSPORT_CHARS) {
             throw new IllegalArgumentException("v10 transport exceeds text limit");
         }
@@ -68,23 +90,15 @@ final class V10Transport {
     }
 
     static Frame decode(String transport) throws IOException {
-        if (transport == null || transport.isEmpty()
-                || transport.length() > MAX_TRANSPORT_CHARS) {
-            throw new IOException("v10 transport length is outside limit");
+        List<Frame> candidates = candidates(transport);
+        for (Frame frame : candidates) {
+            try {
+                verify(frame);
+                return frame;
+            } catch (IOException ignored) {
+            }
         }
-        byte[] payload;
-        try {
-            payload = AsciiStreamCodec.decode(unescapeContextual(transport));
-        } catch (IllegalArgumentException failure) {
-            throw new IOException("invalid v10 base-91 payload: " + failure.getMessage(), failure);
-        }
-        if (payload.length == 0 || payload.length > MAX_FRAME_BYTES) {
-            throw new IOException("decoded v10 payload length is outside limit");
-        }
-        if (!encode(payload).equals(transport)) {
-            throw new IOException("non-canonical v10 text transport");
-        }
-        return new Frame(modeOf(payload[0]), payload);
+        return candidates.getFirst();
     }
 
     static CheckedFrame probe(String transport) throws IOException {
@@ -92,15 +106,59 @@ final class V10Transport {
     }
 
     static CheckedFrame probe(String transport, int version) throws IOException {
-        Frame frame = decode(transport);
-        byte[] payload = frame.payload();
-        if ((payload[0] & HEADER_VERSION_MASK) != version) {
-            throw new IOException("v" + version + " version nibble did not match");
+        IOException failure = null;
+        for (Frame frame : candidates(transport)) {
+            if ((frame.payload()[0] & HEADER_VERSION_MASK) != version) continue;
+            try {
+                return new CheckedFrame(frame.mode(), verify(frame));
+            } catch (IOException verifyFailure) {
+                if (failure == null) failure = verifyFailure;
+            }
         }
-        byte[] semantic = frame.mode() == MODE_DIRECT
+        throw failure != null ? failure : new IOException("v" + version + " version nibble did not match");
+    }
+
+    private static byte[] verify(Frame frame) throws IOException {
+        byte[] payload = frame.payload();
+        return frame.mode() == MODE_DIRECT
                 ? unseal(MODE_DIRECT, payload)
                 : inflateAndVerify(payload);
-        return new CheckedFrame(frame.mode(), semantic);
+    }
+
+    private static List<Frame> candidates(String transport) throws IOException {
+        if (transport == null || transport.isEmpty()
+                || transport.length() > MAX_TRANSPORT_CHARS) {
+            throw new IOException("v10 transport length is outside limit");
+        }
+        List<Frame> frames = new ArrayList<>(2);
+        try {
+            frames.add(canonicalFrame(transport, unescapeShareText(transport), false));
+        } catch (IOException ignored) {
+        }
+        try {
+            frames.add(canonicalFrame(transport, unescapeContextual(transport), true));
+        } catch (IOException legacyFailure) {
+            if (frames.isEmpty()) throw legacyFailure;
+        }
+        return frames;
+    }
+
+    private static Frame canonicalFrame(String transport, String raw, boolean legacyText)
+            throws IOException {
+        byte[] payload;
+        try {
+            payload = AsciiStreamCodec.decode(raw);
+        } catch (IllegalArgumentException failure) {
+            throw new IOException("invalid v10 base-91 payload: " + failure.getMessage(), failure);
+        }
+        if (payload.length == 0 || payload.length > MAX_FRAME_BYTES) {
+            throw new IOException("decoded v10 payload length is outside limit");
+        }
+        String canonical = legacyText ? encodeLegacyText(payload) : encode(payload);
+        if (!canonical.equals(transport)) {
+            throw new IOException("non-canonical v10 text transport");
+        }
+        return new Frame(modeOf(payload[0]), payload);
     }
 
     static byte[] seal(int mode, byte[] semanticBody) {
@@ -324,6 +382,81 @@ final class V10Transport {
         }
     }
 
+    static String escapeShareText(String body) {
+        StringBuilder output = new StringBuilder(body.length() + body.length() / 24);
+        char previous = '\0';
+        for (int index = 0; index < body.length(); index++) {
+            char current = body.charAt(index);
+            switch (current) {
+                case '~' -> output.append("~-");
+                case '<' -> output.append("~(");
+                case '>' -> output.append("~)");
+                case '/' -> output.append(previous == 'o' ? "~/" : "/");
+                default -> output.append(current);
+            }
+            previous = current;
+        }
+        return output.toString();
+    }
+
+    static String unescapeShareText(String text) throws IOException {
+        StringBuilder output = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char current = text.charAt(index);
+            if (current == '<' || current == '>') {
+                throw new IOException("invalid v10 escape: raw angle bracket at " + index);
+            }
+            if (current != '~') {
+                output.append(current);
+                continue;
+            }
+            char escaped = index + 1 < text.length() ? unescapedShareChar(text.charAt(index + 1)) : '\0';
+            if (escaped == '\0') {
+                throw new IOException("invalid v10 escape at " + index);
+            }
+            output.append(escaped);
+            index++;
+        }
+        return output.toString();
+    }
+
+    static List<String> rawTextCandidates(String transport) {
+        List<String> raws = new ArrayList<>(2);
+        try {
+            raws.add(unescapeShareText(transport));
+        } catch (IOException ignored) {
+        }
+        raws.add(unescapeContextual(transport));
+        return raws;
+    }
+
+    private static String unescapeShareTextPrefix(String text) {
+        StringBuilder output = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char current = text.charAt(index);
+            if (current == '<' || current == '>') break;
+            if (current != '~') {
+                output.append(current);
+                continue;
+            }
+            char escaped = index + 1 < text.length() ? unescapedShareChar(text.charAt(index + 1)) : '\0';
+            if (escaped == '\0') break;
+            output.append(escaped);
+            index++;
+        }
+        return output.toString();
+    }
+
+    private static char unescapedShareChar(char marker) {
+        return switch (marker) {
+            case '-' -> '~';
+            case '(' -> '<';
+            case ')' -> '>';
+            case '/' -> '/';
+            default -> '\0';
+        };
+    }
+
     static String escapeContextual(String body) {
         StringBuilder output = new StringBuilder(body.length());
         for (int index = 0; index < body.length(); index++) {
@@ -366,6 +499,7 @@ final class V10Transport {
         private final int mode;
         private final byte[] payload;
         private final String transport;
+        private final int rankedLength;
 
         Outbound(int mode, byte[] payload) {
             validateMode(mode);
@@ -373,6 +507,7 @@ final class V10Transport {
             this.mode = mode;
             this.payload = payload.clone();
             this.transport = encode(mode, this.payload);
+            this.rankedLength = encodeLegacyText(this.payload).length();
         }
 
         int mode() {
@@ -387,9 +522,13 @@ final class V10Transport {
             return transport;
         }
 
+        int rankedLength() {
+            return rankedLength;
+        }
+
         @Override
         public int compareTo(Outbound other) {
-            int compared = Integer.compare(transport.length(), other.transport.length());
+            int compared = Integer.compare(rankedLength, other.rankedLength);
             if (compared != 0) return compared;
             compared = Integer.compare(mode, other.mode);
             if (compared != 0) return compared;

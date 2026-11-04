@@ -43,7 +43,7 @@ class V10SparseRouteCodecTest {
                 .withPreciseSixteenths(22, 1130, 0));
 
         String code = WaypointCodec.MAGIC + V10SparseRouteCodec.encode(route, DEFAULT_SPARSE);
-        assertEquals("WP:~!Y9Kl$QC!K)$!N{P9KP)", code);
+        assertEquals(ShareSpelling.of("WP:~!Y9Kl$QC!K)$!N{P9KP)"), code);
         WaypointGroup decoded = WaypointCodec.decode(code).getFirst();
         assertRouteFields(route, decoded, true);
     }
@@ -66,7 +66,7 @@ class V10SparseRouteCodecTest {
         }
 
         String code = WaypointCodec.MAGIC + V10SparseRouteCodec.encode(route, FULL_SPARSE);
-        assertEquals("WP:Cr:4IPM8>Fh'OXYQ'9=3:eP(J-TgvVx!<bh?n#hSX>@AfI{ajT:fK[/1P*%!rl&", code);
+        assertEquals(ShareSpelling.of("WP:Cr:4IPM8>Fh'OXYQ'9=3:eP(J-TgvVx!<bh?n#hSX>@AfI{ajT:fK[/1P*%!rl&"), code);
         assertRouteFields(route, WaypointCodec.decode(code).getFirst(), true);
     }
 
@@ -82,7 +82,7 @@ class V10SparseRouteCodecTest {
 
         String code = WaypointCodec.MAGIC + V10SparseRouteCodec.encode(route, FULL_SPARSE);
         String legacy = "WP:p+OXOhwFd5LPR%JE*\"^)a\"SE?A'!Wv%";
-        assertTrue(code.length() <= legacy.length());
+        assertTrue(ShareSpelling.legacy(code).length() <= legacy.length());
         V10Transport.CheckedFrame frame = V10Transport.probe(
                 legacy.substring(WaypointCodec.MAGIC.length()));
         assertEquals(0, frame.semantic()[1]);

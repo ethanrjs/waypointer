@@ -55,7 +55,7 @@ class V10ProductionProfileTest {
             assertEquals(vector.get("points").getAsInt(), decoded.size());
             assertEquals(vector.get("coordinateSha256").getAsString(), coordinateHash(decoded));
 
-            assertEquals(expectedWire, WaypointCodec.MAGIC + V10BareRouteCodec.encode(decoded));
+            assertEquals(ShareSpelling.of(expectedWire), WaypointCodec.MAGIC + V10BareRouteCodec.encode(decoded));
 
             switch (vector.get("mode").getAsString()) {
                 case "quotient" -> {

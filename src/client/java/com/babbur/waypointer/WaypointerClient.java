@@ -100,6 +100,11 @@ public final class WaypointerClient implements ClientModInitializer {
         if (config.routesFollowDefaultReachRadius()) manager.followDefaultReachRadius(previous, current);
     }
 
+    private static void adoptDefaultReachRadius() {
+        double current = config.defaultReachRadius();
+        followDefaultReachRadius(current, current);
+    }
+
     static boolean shouldResetAfterDisconnect(Object disconnected, Object current) {
         return current == null || current == disconnected;
     }
@@ -144,6 +149,8 @@ public final class WaypointerClient implements ClientModInitializer {
         migrateLegacyDungeonRoutes();
         storage.attach(manager);
         config.setDefaultReachRadiusListener(WaypointerClient::followDefaultReachRadius);
+        manager.addPersistentDataListener(WaypointerClient::adoptDefaultReachRadius);
+        adoptDefaultReachRadius();
         Minecraft minecraft = Minecraft.getInstance();
         ServerTimingDiagnostics.install();
         api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft, config);

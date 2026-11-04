@@ -32,9 +32,9 @@ class WaypointCodecV10BareRouteTest {
     void direct_mode_matches_locked_contextual91_goldens() {
 
         assertEquals(String.join("\n",
-                        "WP:M!8D%",
-                        "WP:<$!!#~%S#",
-                        "WP:v)i\"&\"g42F0#(#"),
+                        ShareSpelling.of("WP:M!8D%"),
+                        ShareSpelling.of("WP:<$!!#~%S#"),
+                        ShareSpelling.of("WP:v)i\"&\"g42F0#(#")),
                 String.join("\n",
                         encodeBare(List.of()),
                         encodeBare(List.of(point(0, 0, 0))),
@@ -210,7 +210,7 @@ class WaypointCodecV10BareRouteTest {
         assertEquals("V10_QUOTIENT", debug.groups().getFirst().coordMode());
         assertTrue(debug.textEncoding().contains("V10_QUOTIENT"));
 
-        assertEquals("348 chars, 281 payload bytes, sha256 e2d5f286d94cea1c185821bc608099db1e3cabed1992351edd37b7968154fa41",
+        assertEquals("364 chars, 281 payload bytes, sha256 e2d5f286d94cea1c185821bc608099db1e3cabed1992351edd37b7968154fa41",
                 encoded.length() + " chars, " + frame.payload().length + " payload bytes, sha256 "
                         + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                                 .digest(frame.payload())));

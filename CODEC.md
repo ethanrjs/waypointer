@@ -42,7 +42,7 @@ Terms used in this document:
 Every V10 object is one line of text:
 
 ```text
-WP:<contextual base-91 of payload>
+WP:<share-text base-91 of payload>
 
 payload = H' || content || CRC16_BE(H' || body)
 
@@ -89,20 +89,35 @@ The encoder accumulates payload bits little-endian.
 5. For the final buffer, emit `alphabet[bitBuffer mod 91]`.
 6. Emit a second final character when `bitCount > 7 || bitBuffer >= 91`.
 
-The decoder reads alphabet digits in pairs. For a pair `(first, second)`, set `e = first + second*91`. Consume 13 bits when `(e & 8191) > 88`; otherwise consume 14 bits. Emit complete low bytes in little-endian bit order. If one digit `d` remains, set `bitBuffer |= d << bitCount`. Then emit `bitBuffer & 0xFF`. There is no pad character. The canonical text check in section 3.3 rejects alternate tails.
+The decoder reads alphabet digits in pairs. For a pair `(first, second)`, set `e = first + second*91`. Consume 13 bits when `(e & 8191) > 88`; otherwise consume 14 bits. Emit complete low bytes in little-endian bit order. If one digit `d` remains, set `bitBuffer |= d << bitCount`. Then emit `bitBuffer & 0xFF`. There is no pad character. The canonical text check in section 3.4 rejects alternate tails.
 
-### 3.2 Contextual escape
+### 3.2 Share-text escape
 
-Hypixel rewrites `<3` and `o/` in chat. The escape inserts one `~` marker in exactly these cases, scanning left to right over the raw base-91 text:
+Hypixel rewrites `<3` and `o/` in chat, and YouTube strips `<` and `>`. Encoders write the raw base-91 text through a two-character escape that uses `~` as its marker, scanning left to right:
+
+| Raw character | Written as |
+|---|---|
+| `~` | `~-` |
+| `<` | `~(` |
+| `>` | `~)` |
+| `/` right after a raw `o` | `~/` |
+
+Every other character is written as itself. Share text therefore never contains `<`, `>`, `<3`, `o/` or `~~` (Discord strikethrough). Unescaping reads `~` plus its partner as one raw character; a bare `<` or `>`, a trailing `~`, or `~` before any other character is invalid share text.
+
+Candidate selection (every exporter that compares lengths) ranks candidates by their legacy contextual text length, so the share-text layer changes only how a payload is spelled, never which payload is chosen. Catalog payloads keep the legacy contextual spelling.
+
+### 3.3 Legacy contextual escape
+
+Waypointer 1.13 and earlier wrote a contextual escape that inserts one `~` marker in exactly these cases:
 
 - After `<` when the next raw character is `3` or `~`.
 - After `o` when the next raw character is `/` or `~`.
 
-Unescape removes one `~` after `<` or `o` only when the character after that `~` is the matching partner (`3` or `/`) or another `~`. Every other `~` is a normal base-91 digit. Escaped output never contains `<3` or `o/`.
+Unescape removes one `~` after `<` or `o` only when the character after that `~` is the matching partner (`3` or `/`) or another `~`. Every other `~` is a normal base-91 digit. Escaped output never contains `<3` or `o/`. Decoders MUST keep reading this spelling.
 
-### 3.3 Canonical text
+### 3.4 Canonical text and spelling detection
 
-A decoder MUST re-encode the decoded payload (base-91 plus escape) and require byte equality with the received transport text. This rejects non-canonical escapes and alternate base-91 tails. This rule applies to the text layer only; it does not re-run DEFLATE.
+A decoder unescapes the transport text as share text and, separately, as legacy contextual text. Each spelling that unescapes and re-encodes (base-91 plus that spelling's escape) to byte-identical transport text is a candidate; this rejects non-canonical escapes and alternate base-91 tails. The share-text candidate is tried first. A candidate is accepted when its version nibble matches and its CRC-16 verifies (section 2); otherwise the next candidate is tried. Text without `~`, `<`, `>` or `o/` is spelled identically in both layers. This rule applies to the text layer only; it does not re-run DEFLATE.
 
 ## 4. Semantic header and commitment
 
@@ -1253,7 +1268,7 @@ The digest input for `selectedWireSha256` is the fixture-order sequence of compl
 | File | Responsibility |
 |---|---|
 | `src/main/java/com/babbur/waypointer/codec/UniversalShareCodec.java` | Universal route, config, and dungeon entry point |
-| `src/main/java/com/babbur/waypointer/codec/V10Transport.java` | Frame, CRC, DEFLATE bounds, contextual text |
+| `src/main/java/com/babbur/waypointer/codec/V10Transport.java` | Frame, CRC, DEFLATE bounds, share-text and legacy contextual text |
 | `src/main/java/com/babbur/waypointer/codec/V10RouteCodec.java` | Route selection and kinds 0, 1, 2, 5, and 6 dispatch |
 | `src/main/java/com/babbur/waypointer/codec/V10GeneralRouteCodec.java` | Kind-0 A/B candidate selection |
 | `src/main/java/com/babbur/waypointer/codec/V10CompactRouteCodec.java` | Kind-1 compact single-route body |
@@ -1283,7 +1298,7 @@ Interoperability checks:
 
 1. CRC-16 check value is `0x29B1`.
 2. Base-91 pair threshold is 88.
-3. Contextual escape round-trips `<~3`, `o~/`, `<~~3`, and tilde runs.
+3. Contextual escape round-trips `<~3`, `o~/`, `<~~3`, and tilde runs; share-text escape never writes `<`, `>`, `<3`, `o/` or `~~`, and legacy-spelled codes still decode.
 4. Canonical text rejects an unescaped raw `<3` pair.
 5. Flipping header bit 7 (the mode) is rejected by mode-specific decoding or the header-bound CRC.
 6. Quotient count and work-limit violations are rejected.
@@ -1304,7 +1319,7 @@ V11 keeps the V10 frame and adds two kinds: the saved-route JSON as a complete f
 
 ## 17. Wire version 11
 
-V11 uses the V10 frame unchanged (sections 2-4): the same text layer, contextual escape, header-carried mode, CRC-16, limits and probe, with wire version 11 in the low nibble of the header. Kinds 0 and 1 are defined. A verified version-11 frame with any other kind is not a V11 share and is not decoded as one. V11 carries one share label, up to 256 routes with up to 50,000 waypoints in total, and up to 256 folders.
+V11 uses the V10 frame unchanged (sections 2-4): the same text layer and escapes, header-carried mode, CRC-16, limits and probe, with wire version 11 in the low nibble of the header. Kinds 0 and 1 are defined. A verified version-11 frame with any other kind is not a V11 share and is not decoded as one. V11 carries one share label, up to 256 routes with up to 50,000 waypoints in total, and up to 256 folders.
 
 Both kinds describe the same share object. Kind 0 spells it as JSON; kind 1 codes it with an adaptive arithmetic coder. Decoding either kind yields routes, a label, and folders.
 
