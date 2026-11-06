@@ -1,18 +1,19 @@
 Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
 
-Features
+### Features
 
 - Per-zone waypoints
-- Dungeon rooms support
-- Crystal Hollows structure detection
+- Dungeon routes support
+- Crystal Hollows structure detection + Map
 - In-Game Route Browser
 - Ordered routes
 - Subwaypoints
 - Waypoint Painting
+- Global/Zone/Route/Waypoint level customization
+- Share from chat
 - Keybindings
 - Waypoint skipping
 - Wishing Compass solver
-- Customizable waypoint visuals
 - Works with shaders
 - ...and so much more!
 
@@ -26,22 +27,20 @@ Waypoint Import/Export Compatibility
 - Soopy V1 (I)
 - Firmament (I)
 - Skysoft (I/E) and JSON libraries (I)
+- Odin (I/E)
 - Generic JSON-based (I)
 
-Waypointer route-library codes preserve folder membership and folder colors.
-Config export uses universal `WP:` V10 kind-3 codes. Legacy `WPC:` versions 1-6 remain importable.
-
-Community routes
+### Community routes
 
 The 'Community' button next to the route search opens the catalog of routes
 other players published. Pick a route to preview and install it. Publish your
 own routes with the **Publish** button in the route editor.
 
-Skyblocker structure sharing
+### Skyblocker structure sharing
 
 This mod interoperates with the Skyblocker API and has safeguards to prevent abuse and spam. If you are on the Skyblocker team and want me to shut off access to the Skyblocker web socket for users, please create an issue. I can disable it immediately, remotely.
 
-Requirements
+### Requirements
 
 - Minecraft 26.1 to 26.3
 - Java 25+
@@ -52,24 +51,15 @@ Requirements
   - Minecraft 26.3: 0.162.0+26.3 or newer compatible 26.3 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
-Building
+### Building
 ```powersh
 ./gradlew buildAllTargets
 ```
-This builds and tests all three targets serially and produces separate runnable jars;
-it does not produce one universal jar:
-
 - `build/libs/waypointer-<mod-version>-mc26.1.2.jar`
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 - `build/libs/waypointer-<mod-version>-mc26.3.jar`
 
-For Minecraft 26.3, shared renderer sources with relocated GPU imports are generated
-at build time. Version-specific APIs remain in the target's `*Compat` classes.
-
-CODEC Specification
-See [CODEC.md](CODEC.md) for the full specification.
-
-API for Other Mods
+### API for Other Mods
 
 Waypointer exposes a Fabric entrypoint API for other client mods:
 ```json
