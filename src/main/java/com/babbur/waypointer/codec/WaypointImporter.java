@@ -507,10 +507,6 @@ public final class WaypointImporter {
         if (!root.isJsonArray()) {
             throw new IllegalArgumentException("Skyblocker V1 payload must contain a group array");
         }
-        // Route guides wrap flat ColeWeight/SkyHanni waypoint lists in the Skyblocker header too.
-        if (!looksLikeGroupArray(root.getAsJsonArray())) {
-            return importJson(json, defaultImportedRouteName);
-        }
 
         if (!looksLikeGroupArray(root.getAsJsonArray())) {
             return importJson(json, defaultImportedRouteName);
