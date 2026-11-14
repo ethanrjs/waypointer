@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 public final class UniversalShareCodec {
 
@@ -63,34 +64,48 @@ public final class UniversalShareCodec {
 
     public static String encodeWaypoints(List<WaypointGroup> groups,
                                          WaypointCodec.Options options) {
-        return withoutAngleBrackets(V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty()));
+        return shared(V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty()));
     }
 
     public static String encodeWaypoints(
             List<WaypointGroup> groups,
             WaypointCodec.Options options,
             RouteLibraryMetadata metadata) {
-        return withoutAngleBrackets(V11Codec.encodeBest(groups, options, metadata));
+        return shared(V11Codec.encodeBest(groups, options, metadata));
     }
 
     public static String encodeConfig(WaypointerConfig config) {
         try {
-            return withoutAngleBrackets(V10ConfigCodec.encode(config));
+            return shared(V10ConfigCodec.encode(config));
         } catch (IOException failure) {
             throw new IllegalStateException("v10 config encode failed", failure);
         }
     }
 
     public static String encodeDungeon(Collection<WaypointGroup> routes) {
-        return withoutAngleBrackets(V11Codec.encodeBestDungeon(routes));
+        return shared(V11Codec.encodeBestDungeon(routes));
     }
 
     public static String encodeCatalogReference(String routeId) {
         try {
-            return withoutAngleBrackets(WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId));
+            return shared(WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId));
         } catch (IOException failure) {
             throw new IllegalStateException("v10 catalog reference encode failed", failure);
         }
+    }
+
+    private static volatile BooleanSupplier bracketFreeShares = () -> false;
+
+    /**
+     * Decides whether shared codes use the bracket-free spelling. Off unless the player opts in:
+     * clients older than 1.14 and the website cannot read that spelling yet. Import always reads both.
+     */
+    public static void shareWithoutAngleBracketsWhen(BooleanSupplier setting) {
+        bracketFreeShares = setting == null ? () -> false : setting;
+    }
+
+    static String shared(String code) {
+        return bracketFreeShares.getAsBoolean() ? withoutAngleBrackets(code) : code;
     }
 
     /**

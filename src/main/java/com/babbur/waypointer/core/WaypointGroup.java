@@ -356,10 +356,16 @@ public final class WaypointGroup {
     public void setRadiusSource(RadiusSource source)    { this.radiusSource = Objects.requireNonNull(source); }
     public void setCustomRadius(double r)               { setDefaultRadius(r); radiusSource = RadiusSource.CUSTOM; }
 
+    /**
+     * Moves the route to a new global default reach radius unless it was set by hand. A route of
+     * unknown origin follows while it still matches the previous default or the built-in one
+     * (imports that carry no radius of their own land on the built-in value).
+     */
     public boolean followDefaultRadius(double previousDefault, double newDefault) {
         if (radiusSource == RadiusSource.CUSTOM) return false;
         if (radiusSource == RadiusSource.UNKNOWN
-                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0) {
+                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0
+                && !onBuiltInRadius()) {
             return false;
         }
         boolean adopted = radiusSource != RadiusSource.DEFAULT;
@@ -367,6 +373,24 @@ public final class WaypointGroup {
         if (Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(newDefault)) == 0) return adopted;
         setDefaultRadius(newDefault);
         return true;
+    }
+
+    /**
+     * A route of unknown origin still on the built-in reach radius came from an import or an
+     * older save that carried no radius of its own, so it takes the global default from now on.
+     * Returns whether anything changed.
+     */
+    public boolean adoptDefaultRadius(double currentDefault) {
+        if (radiusSource != RadiusSource.UNKNOWN || !onBuiltInRadius()) return false;
+        radiusSource = RadiusSource.DEFAULT;
+        if (Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(currentDefault)) != 0) {
+            setDefaultRadius(currentDefault);
+        }
+        return true;
+    }
+
+    private boolean onBuiltInRadius() {
+        return Double.compare(defaultRadius, Waypoint.DEFAULT_REACH_RADIUS) == 0;
     }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }

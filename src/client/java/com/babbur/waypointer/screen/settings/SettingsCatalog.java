@@ -533,7 +533,14 @@ public final class SettingsCatalog {
                                 null,
                                 "Route Line Color", null,
                                 (c, d) -> c.routeLineColor(),
-                                (c, d, v) -> c.setRouteLineColor(rgb(v)))));
+                                (c, d, v) -> c.setRouteLineColor(rgb(v))),
+                        Setting.number("routeLineOpacity", MAIN, "Route line opacity (0-1)",
+                                "How solid route connector lines are. 0 hides them.",
+                                (c, d) -> c.routeLineOpacity(),
+                                (c, d, v) -> c.setRouteLineOpacity(dbl(v)))
+                                .range(0.0, 1.0)
+                                .localOnly()
+                                .aliases("connector opacity", "line alpha", "line transparency", "fade")));
     }
 
     private static Category routes() {
@@ -872,7 +879,13 @@ public final class SettingsCatalog {
                         Setting.bool("exportIncludeZone", MAIN, "Include island",
                                 null,
                                 (c, d) -> c.exportIncludeZone(),
-                                (c, d, v) -> c.setExportIncludeZone((Boolean) v))));
+                                (c, d, v) -> c.setExportIncludeZone((Boolean) v)),
+                        Setting.bool("shareCodesWithoutAngleBrackets", MAIN, "Codes without < or >",
+                                "Spell shared codes without angle brackets, for YouTube and other sites that strip them. Waypointer 1.13 and older cannot import these codes.",
+                                (c, d) -> c.shareCodesWithoutAngleBrackets(),
+                                (c, d, v) -> c.setShareCodesWithoutAngleBrackets((Boolean) v))
+                                .localOnly()
+                                .aliases("youtube", "angle brackets", "bracket")));
     }
 
     private static Category system() {

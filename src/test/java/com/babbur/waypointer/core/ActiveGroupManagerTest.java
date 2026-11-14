@@ -61,6 +61,41 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void importsWithoutTheirOwnRadiusTakeTheDefaultAndKeepFollowingIt() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup imported = WaypointGroup.create("Imported", "hub");
+        WaypointGroup carriesRadius = WaypointGroup.create("Carries radius", "hub");
+        carriesRadius.setDefaultRadius(7.0);
+        WaypointGroup edited = WaypointGroup.create("Edited", "hub");
+        edited.setCustomRadius(Waypoint.DEFAULT_REACH_RADIUS);
+        manager.addAll(List.of(imported, carriesRadius, edited));
+
+        assertTrue(manager.adoptDefaultReachRadius(5.0));
+        assertEquals(5.0, imported.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.DEFAULT, imported.radiusSource());
+        assertEquals(7.0, carriesRadius.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.UNKNOWN, carriesRadius.radiusSource());
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, edited.defaultRadius());
+        assertFalse(manager.adoptDefaultReachRadius(5.0));
+
+        manager.followDefaultReachRadius(5.0, 40.0);
+        assertEquals(40.0, imported.defaultRadius());
+        assertEquals(7.0, carriesRadius.defaultRadius());
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, edited.defaultRadius());
+    }
+
+    @Test
+    void unknownRoutesOnTheBuiltInRadiusFollowEvenWhenThePreviousDefaultDiffered() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup older = WaypointGroup.create("Older import", "hub");
+        manager.add(older);
+
+        assertTrue(manager.followDefaultReachRadius(5.0, 40.0));
+        assertEquals(40.0, older.defaultRadius());
+        assertEquals(WaypointGroup.RadiusSource.DEFAULT, older.radiusSource());
+    }
+
+    @Test
     void retiredDwarvenSurfaceZoneGroupsActivateInThePacketBackedZone() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup route = new WaypointGroup(

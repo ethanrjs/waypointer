@@ -7,6 +7,7 @@ import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.chat.ChatCoordDetector;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.ChatImportDetector;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.commands.WaypointerCommands;
 import com.babbur.waypointer.commands.DungeonCommands;
 import com.babbur.waypointer.commands.CrystalHollowsCommands;
@@ -100,6 +101,10 @@ public final class WaypointerClient implements ClientModInitializer {
         if (config.routesFollowDefaultReachRadius()) manager.followDefaultReachRadius(previous, current);
     }
 
+    private static void adoptDefaultReachRadius() {
+        if (config.routesFollowDefaultReachRadius()) manager.adoptDefaultReachRadius(config.defaultReachRadius());
+    }
+
     static boolean shouldResetAfterDisconnect(Object disconnected, Object current) {
         return current == null || current == disconnected;
     }
@@ -144,6 +149,9 @@ public final class WaypointerClient implements ClientModInitializer {
         migrateLegacyDungeonRoutes();
         storage.attach(manager);
         config.setDefaultReachRadiusListener(WaypointerClient::followDefaultReachRadius);
+        UniversalShareCodec.shareWithoutAngleBracketsWhen(() -> config.shareCodesWithoutAngleBrackets());
+        adoptDefaultReachRadius();
+        manager.addPersistentDataListener(WaypointerClient::adoptDefaultReachRadius);
         Minecraft minecraft = Minecraft.getInstance();
         ServerTimingDiagnostics.install();
         api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft, config);

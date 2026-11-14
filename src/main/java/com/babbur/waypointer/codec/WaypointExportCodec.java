@@ -160,7 +160,7 @@ public final class WaypointExportCodec {
             safeOpts = safeOpts.toBuilder().includeZone(true).build();
         }
         return switch (target) {
-            case WAYPOINTER -> UniversalShareCodec.withoutAngleBrackets(
+            case WAYPOINTER -> UniversalShareCodec.shared(
                     V11Codec.encodeBest(groups, safeOpts, metadata));
             case SKYBLOCKER -> WaypointImporter.SKYBLOCKER_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skyblockerJson(groups, safeOpts)));

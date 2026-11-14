@@ -3,6 +3,7 @@ package com.babbur.waypointer.codec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,6 +12,25 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BracketFreeShareTest {
+
+    @AfterEach
+    void restoreDefaultSpelling() {
+        UniversalShareCodec.shareWithoutAngleBracketsWhen(null);
+    }
+
+    @Test
+    void sharesKeepTheStandardSpellingUnlessThePlayerOptsIn() {
+        List<WaypointGroup> routes = List.of(route(3));
+        String standard = V11Codec.encodeBest(routes, WaypointCodec.Options.FULL_FIDELITY,
+                RouteLibraryMetadata.empty());
+        assertEquals(standard, WaypointExportCodec.encode(routes, WaypointCodec.Options.FULL_FIDELITY,
+                WaypointExportCodec.Target.WAYPOINTER));
+
+        UniversalShareCodec.shareWithoutAngleBracketsWhen(() -> true);
+        String shared = WaypointExportCodec.encode(routes, WaypointCodec.Options.FULL_FIDELITY,
+                WaypointExportCodec.Target.WAYPOINTER);
+        assertFalse(shared.matches(".*[<>].*"), shared);
+    }
 
     @Test
     void base89BlocksRoundTripEveryTailLength() {
@@ -48,6 +68,7 @@ class BracketFreeShareTest {
 
     @Test
     void sharedRoutesHaveNoAngleBracketsAndImportBack() {
+        UniversalShareCodec.shareWithoutAngleBracketsWhen(() -> true);
         int respelled = 0;
         for (int seed = 0; seed < 40; seed++) {
             List<WaypointGroup> routes = List.of(route(seed));
@@ -71,6 +92,7 @@ class BracketFreeShareTest {
 
     @Test
     void configAndCatalogReferenceSharesAreBracketFreeToo() {
+        UniversalShareCodec.shareWithoutAngleBracketsWhen(() -> true);
         WaypointerConfig config = new WaypointerConfig();
         config.setDefaultReachRadius(7.5);
         config.setRouteMaxRenderDistance(321);

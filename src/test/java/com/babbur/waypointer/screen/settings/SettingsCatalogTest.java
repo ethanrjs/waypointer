@@ -26,7 +26,7 @@ class SettingsCatalogTest {
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
             "namedStyles", "preferredStyleId", "crystalHollowsStyles", "zoneStyles",
-            "beaconMotionSpeed", "beaconWidthScale", "completedWaypointOpacity", "currentWaypointOpacity", "labelBackdropOpacity", "labelDetailDistance", "labelDetailOnDemand", "labelShowCoordinates", "labelShowRouteName", "preventLabelOverlap", "routeLineDashed", "routeLineOpacity", "routeLineWidth", "sequenceContextOpacity", "showWaypointRoleBadge", "tracerCenterGap", "tracerEdgeArrow", "upcomingWaypointOpacity", "waypointIcon",
+            "beaconMotionSpeed", "beaconWidthScale", "completedWaypointOpacity", "currentWaypointOpacity", "labelBackdropOpacity", "labelDetailDistance", "labelDetailOnDemand", "labelShowCoordinates", "labelShowRouteName", "preventLabelOverlap", "routeLineDashed", "routeLineWidth", "sequenceContextOpacity", "showWaypointRoleBadge", "tracerCenterGap", "tracerEdgeArrow", "upcomingWaypointOpacity", "waypointIcon",
             "crystalHollowsCompassRays",
             "minimapScale", "minimapCustomPosition", "minimapPositionX", "minimapPositionY",
             "crystalHollowsDetections",

@@ -106,7 +106,7 @@ A decoder MUST re-encode the decoded payload (base-91 plus escape) and require b
 
 ### 3.4 Bracket-free spelling
 
-YouTube and some other sites refuse `<` and `>`. Shared codes therefore use a second spelling of the same payload whenever the standard text from sections 3.1-3.2 contains either character. When the standard text has neither, it is the shared code unchanged.
+YouTube and some other sites refuse `<` and `>`. When the player turns on the "Codes without < or >" sharing setting, shared codes use a second spelling of the same payload whenever the standard text from sections 3.1-3.2 contains either character. When the standard text has neither, it is the shared code unchanged. The setting is off by default because clients up to 1.13 read only the standard spelling; every decoder from 1.14 on reads both.
 
 The bracket-free alphabet is the base-91 alphabet without `<` and `>` (89 characters, ASCII order):
 

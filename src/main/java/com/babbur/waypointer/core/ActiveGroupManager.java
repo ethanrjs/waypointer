@@ -183,6 +183,21 @@ public final class ActiveGroupManager {
         return true;
     }
 
+    /**
+     * Saved routes of unknown origin on the built-in reach radius take the global default
+     * (issue #191: imports and older saves never followed it). Returns whether any changed.
+     */
+    public boolean adoptDefaultReachRadius(double current) {
+        List<WaypointGroup> changed = new ArrayList<>();
+        for (WaypointGroup group : allGroups()) {
+            if (group.temp() || group.runtimeOnly()) continue;
+            if (group.adoptDefaultRadius(current)) changed.add(group);
+        }
+        if (changed.isEmpty()) return false;
+        fireDataChangedFor(changed);
+        return true;
+    }
+
     public List<WaypointGroup> allGroupsList() {
         return List.copyOf(byId.values());
     }
