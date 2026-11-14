@@ -284,10 +284,7 @@ public final class GroupEditScreen extends Screen {
         y += BTN_H + GAP;
 
         skipAheadBtn = styledButton(sidebarInner, y, fieldW, BTN_H,
-                skipAheadLabel(), this::toggleSkipAhead,
-                Tooltip.create(Component.translatable(isDungeonRoomGroup()
-                        ? "waypointer.screen.group_edit.skip_ahead.tooltip.dungeon"
-                        : "waypointer.screen.group_edit.skip_ahead.tooltip")));
+                skipAheadLabel(), this::toggleSkipAhead, null);
         addSidebarWidget(skipAheadBtn);
         y += BTN_H + GAP;
 
@@ -343,10 +340,12 @@ public final class GroupEditScreen extends Screen {
                 publishButtonWidth(), BTN_H,
                 Component.translatable("waypointer.screen.group_edit.publish"),
                 b -> publish(),
-                Tooltip.create(Component.translatable(dungeonRoute
-                        ? "waypointer.screen.route_publish.validation.dungeon"
-                        : incompatibleDraft ? "waypointer.screen.route_publish.validation.mixed_routes"
-                        : "waypointer.screen.group_edit.publish.tooltip")), Icons.Icon.UPLOAD);
+                dungeonRoute || incompatibleDraft || compactHeader
+                        ? Tooltip.create(Component.translatable(dungeonRoute
+                                ? "waypointer.screen.route_publish.validation.dungeon"
+                                : incompatibleDraft ? "waypointer.screen.route_publish.validation.mixed_routes"
+                                : "waypointer.screen.group_edit.publish"))
+                        : null, Icons.Icon.UPLOAD);
         publishButton.active = !dungeonRoute && !incompatibleDraft;
         ((GuiTokens.StyledButton) publishButton).setIconOnly(compactHeader);
         addRenderableWidget(publishButton);
@@ -357,9 +356,8 @@ public final class GroupEditScreen extends Screen {
                 width - PAD_OUTER - publishButtonWidth() - GAP - appearanceW, PAD_OUTER - 6,
                 appearanceW, BTN_H, appearanceButtonLabel(look),
                 b -> openAppearance(routeAppearanceTarget()),
-                Tooltip.create(Component.translatable(look == null
-                        ? "waypointer.screen.group_edit.downloaded_route_read_only"
-                        : "waypointer.screen.group_edit.appearance.tooltip")), Icons.Icon.BRUSH);
+                look == null ? Tooltip.create(Component.translatable("waypointer.screen.group_edit.downloaded_route_read_only"))
+                        : compactHeader ? Tooltip.create(appearanceButtonLabel(look)) : null, Icons.Icon.BRUSH);
         appearanceButton.active = look != null;
         ((GuiTokens.StyledButton) appearanceButton).setIconOnly(compactHeader);
         addRenderableWidget(appearanceButton);
@@ -595,8 +593,7 @@ public final class GroupEditScreen extends Screen {
         if (routeMode == RouteColorMode.PAINT) {
             addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
                     Component.translatable("waypointer.screen.group_edit.paint"),
-                    b -> openWaypointPainter(), Tooltip.create(Component.translatable(
-                            "waypointer.screen.group_edit.paint.tooltip"))));
+                    b -> openWaypointPainter(), null));
             return y + BTN_H + GAP_TIGHT;
         }
 
@@ -604,8 +601,7 @@ public final class GroupEditScreen extends Screen {
             staticColorBtn = new ColorSwatchButton(sidebarInner, y, fieldW, BTN_H,
                     Component.translatable("waypointer.screen.group_edit.color.one").getString(),
                     group.staticColor(), this::openStaticColorPicker);
-            staticColorBtn.setTooltip(Tooltip.create(Component.translatable(
-                    "waypointer.screen.group_edit.color.one.tooltip")));
+            staticColorBtn.setTooltip(null);
             addSidebarWidget(staticColorBtn);
             return y + BTN_H + GAP_TIGHT;
         }
@@ -615,14 +611,12 @@ public final class GroupEditScreen extends Screen {
             gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
                     Component.translatable("waypointer.screen.group_edit.color.start").getString(),
                     group.gradientStartColor(), this::openGradientStartPicker);
-            gradientStartBtn.setTooltip(Tooltip.create(Component.translatable(
-                    "waypointer.screen.group_edit.color.start.tooltip")));
+            gradientStartBtn.setTooltip(null);
             gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
                     fieldW - swatchW - GAP_TIGHT, BTN_H,
                     Component.translatable("waypointer.screen.group_edit.color.end").getString(),
                     group.gradientEndColor(), this::openGradientEndPicker);
-            gradientEndBtn.setTooltip(Tooltip.create(Component.translatable(
-                    "waypointer.screen.group_edit.color.end.tooltip")));
+            gradientEndBtn.setTooltip(null);
             addSidebarWidget(gradientStartBtn);
             addSidebarWidget(gradientEndBtn);
             return y + BTN_H + GAP_TIGHT;
@@ -644,8 +638,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private static Tooltip colorModeTooltip(RouteColorMode mode) {
-        return Tooltip.create(Component.translatableWithFallback(
-                colorModeTooltipKey(mode), colorModeTooltipFallback(mode)));
+        return null;
     }
 
     private void toggleColorMode(Button b) {
@@ -748,8 +741,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private static Tooltip modeTooltip(WaypointGroup.LoadMode mode) {
-        return Tooltip.create(Component.translatableWithFallback(
-                modeTooltipKey(mode), modeTooltipFallback(mode)));
+        return null;
     }
 
     private void toggleLoadMode(Button b) {

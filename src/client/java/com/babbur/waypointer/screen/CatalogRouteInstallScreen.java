@@ -155,8 +155,7 @@ public final class CatalogRouteInstallScreen extends Screen {
         int actionW = Math.min(88, Math.max(56, (contentW - 64 - GAP * 3) / 3));
         installButton = styledButton(contentX + contentW - actionW, footerY, actionW, BTN_H,
                 installLabel(), button -> install(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_catalog.install.tooltip")));
+                null);
         addRenderableWidget(installButton);
         addRenderableWidget(styledButton(contentX + contentW - actionW * 2 - GAP, footerY,
                 actionW, BTN_H,

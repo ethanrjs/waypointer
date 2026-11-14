@@ -290,13 +290,11 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         unlistedButton = styledButton(formX, y, leftW, BTN_H,
                 visibilityOption(CatalogPublishRequest.Visibility.UNLISTED),
                 button -> chooseVisibility(CatalogPublishRequest.Visibility.UNLISTED),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.visibility.unlisted.tooltip")));
+                null);
         publicButton = styledButton(rightX, y, rightW, BTN_H,
                 visibilityOption(CatalogPublishRequest.Visibility.PUBLIC),
                 button -> chooseVisibility(CatalogPublishRequest.Visibility.PUBLIC),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.visibility.public.tooltip")));
+                null);
         addRenderableWidget(unlistedButton);
         addRenderableWidget(publicButton);
     }
@@ -313,8 +311,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
                 Component.translatable("waypointer.screen.route_publish.action.manage"),
                 button -> PublishedRoutesScreen.open(
                         this, catalogClient, identityStore, publicationRegistry),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.action.manage.tooltip")));
+                null);
         addRenderableWidget(manageButton);
 
         Component addLabel = Component.translatable(
@@ -329,19 +326,15 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         copyW = Math.min(contentW / 2, font.width(copyLabel()) + GAP_SECTION);
         copyButton = styledButton(contentX + contentW - copyW, copyY, copyW, BTN_H,
                 copyLabel(), button -> copyPublishedCode(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.action.copy.tooltip")));
+                null);
         addRenderableWidget(copyButton);
 
-        Component publishTooltip = Component.translatable(
-                "waypointer.screen.route_publish.action.publish.tooltip");
-        if (form.groups().stream().anyMatch(RoutePublishScreen::customPaintOmitted)) {
-            publishTooltip = Component.empty().append(publishTooltip)
-                    .append("\n").append(paintOmittedNotice());
-        }
+        // Only a warning earns a tooltip here: custom paint is left out of published routes.
+        Component publishTooltip = form.groups().stream().anyMatch(RoutePublishScreen::customPaintOmitted)
+                ? paintOmittedNotice() : null;
         publishButton = styledButton(manageX + manageW + GAP, footerY, publishW, BTN_H,
                 publishButtonLabel(), button -> publish(),
-                Tooltip.create(publishTooltip));
+                publishTooltip == null ? null : Tooltip.create(publishTooltip));
         addRenderableWidget(publishButton);
     }
 

@@ -100,8 +100,7 @@ final class PublishedRouteEditScreen extends Screen {
                 Component.translatable("waypointer.screen.route_publish.field.title"));
         titleBox.setMaxLength(TITLE_MAX);
         titleBox.setValue(title);
-        titleBox.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.route_publish.field.title.tooltip")));
+        titleBox.setTooltip(null);
         titleBox.setResponder(value -> { title = value == null ? "" : value; refreshButtons(); });
         addRenderableWidget(titleBox);
         y += BTN_H + GAP + LABEL_H;
@@ -134,13 +133,11 @@ final class PublishedRouteEditScreen extends Screen {
         unlistedButton = styledButton(contentX, y, half, BTN_H,
                 Component.translatable("waypointer.screen.route_publish.visibility.unlisted"),
                 button -> chooseVisibility(CatalogPublishRequest.Visibility.UNLISTED),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.visibility.unlisted.tooltip")));
+                null);
         publicButton = styledButton(contentX + half + GAP_TIGHT, y, half, BTN_H,
                 Component.translatable("waypointer.screen.route_publish.visibility.public"),
                 button -> chooseVisibility(CatalogPublishRequest.Visibility.PUBLIC),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.visibility.public.tooltip")));
+                null);
         addRenderableWidget(unlistedButton);
         addRenderableWidget(publicButton);
 
@@ -151,7 +148,7 @@ final class PublishedRouteEditScreen extends Screen {
         saveButton = styledButton(contentX + contentW - saveW, footerY, saveW, BTN_H,
                 Component.translatable("waypointer.screen.route_edit.action.save"),
                 button -> save(),
-                Tooltip.create(Component.translatable("waypointer.screen.route_edit.action.save.tooltip")));
+                null);
         addRenderableWidget(saveButton);
         updateButton = styledButton(contentX + 64 + GAP, footerY,
                 Math.max(1, contentW - 64 - saveW - GAP * 2), BTN_H,

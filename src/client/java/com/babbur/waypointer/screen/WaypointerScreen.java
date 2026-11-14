@@ -148,13 +148,11 @@ public final class WaypointerScreen extends Screen {
                 Component.translatable("waypointer.screen.main.import_export").getString(),
                 -1,
                 this::toggleImportExportMenu,
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.main.import_export.tooltip"))).withIcon(Icons.Icon.SHARE));
+                null).withIcon(Icons.Icon.SHARE));
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.new").getString(),
                 -1, this::toggleNewMenu,
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.main.new.tooltip"))).withIcon(Icons.Icon.PLUS));
+                null).withIcon(Icons.Icon.PLUS));
         left.add(new GuiTokens.ButtonSpec(
                 "\u25b2", REORDER_BTN_W, () -> moveSelectedRouteBy(-1),
                 Tooltip.create(Component.translatable("waypointer.screen.main.move_up.tooltip"))));
@@ -297,16 +295,14 @@ public final class WaypointerScreen extends Screen {
         searchBox.setMaxLength(80);
         searchBox.setValue(searchQuery);
         searchBox.setHint(Component.translatable("waypointer.screen.main.search"));
-        searchBox.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.search.tooltip")));
+        searchBox.setTooltip(null);
         searchBox.setResponder(this::onSearchChanged);
         syncSearchBoxGeometry();
         addRenderableWidget(searchBox);
         clearSearchButton = new OverlayButton(0, 0, SEARCH_CLEAR_BTN_W, BTN_H,
                 Component.translatable("waypointer.common.clear"), this::clearRouteSearch);
         clearSearchButton.icon(Icons.Icon.CLOSE);
-        clearSearchButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.search.clear.tooltip")));
+        clearSearchButton.setTooltip(null);
         updateClearSearchButton();
         syncSearchBoxGeometry();
         addRenderableWidget(clearSearchButton);
@@ -316,8 +312,7 @@ public final class WaypointerScreen extends Screen {
                 b -> RouteCatalogScreen.open(this));
         RouteCatalogScreen.warmUp();
         browseButton.icon(Icons.Icon.GLOBE);
-        browseButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.browse.tooltip")));
+        browseButton.setTooltip(null);
         syncSearchBoxGeometry();
         addRenderableWidget(browseButton);
 
@@ -325,8 +320,7 @@ public final class WaypointerScreen extends Screen {
                 Component.translatable("waypointer.screen.main.move_zone"),
                 this::startZoneMoveForSelection);
         moveZoneButton.icon(Icons.Icon.EXPORT);
-        moveZoneButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.move_zone.tooltip")));
+        moveZoneButton.setTooltip(null);
         syncSearchBoxGeometry();
         addRenderableWidget(moveZoneButton);
 
@@ -354,8 +348,7 @@ public final class WaypointerScreen extends Screen {
         restoreStructuresBtn = new GuiTokens.StyledButton(
                 islandSelectorBtn.getX() - GAP - restoreW, HEADER_BTN_Y, restoreW, BTN_H, restoreLabel,
                 b -> restoreStructuresFolder());
-        restoreStructuresBtn.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.restore_structures.tooltip")));
+        restoreStructuresBtn.setTooltip(null);
         restoreStructuresBtn.visible = restoreStructuresShown();
         addRenderableWidget(restoreStructuresBtn);
 
@@ -365,8 +358,7 @@ public final class WaypointerScreen extends Screen {
                 islandSelectorBtn.getX() - GAP - packsW, HEADER_BTN_Y, packsW, BTN_H, packsLabel,
                 b -> MinecraftCompat.setScreen(minecraft, new DungeonRoutePacksScreen(this, manager)))
                 .icon(Icons.Icon.FOLDER);
-        dungeonPacksBtn.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.dungeon.packs.button.tooltip")));
+        dungeonPacksBtn.setTooltip(null);
         dungeonPacksBtn.visible = dungeonPacksShown();
         addRenderableWidget(dungeonPacksBtn);
 
@@ -1974,7 +1966,7 @@ public final class WaypointerScreen extends Screen {
         if (selectedGroups.isEmpty()) {
             flashDeleteLabel(
                     Component.translatable("waypointer.screen.main.delete.select"),
-                    Component.translatable("waypointer.screen.main.delete.select.tooltip"));
+                    null);
             return;
         }
         LinkedHashSet<String> currentSelectedIds = new LinkedHashSet<>();
@@ -2034,7 +2026,7 @@ public final class WaypointerScreen extends Screen {
     private void flashDeleteLabel(Component msg, Component tooltipText) {
         if (deleteBtn == null) return;
         deleteBtn.setMessage(msg);
-        deleteBtn.setTooltip(Tooltip.create(tooltipText));
+        deleteBtn.setTooltip(tooltipText == null ? null : Tooltip.create(tooltipText));
         labelFlashUntil = System.currentTimeMillis() + 1500L;
     }
 

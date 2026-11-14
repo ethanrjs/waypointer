@@ -236,8 +236,7 @@ public final class ExportScreen extends Screen {
         int w = font.width(label) + FORMAT_LABEL_PAD;
         optionsButton = GuiTokens.styledButton(layout.contentX() + layout.contentWidth() - w,
                 layout.formY() - 3, w, OPTIONS_BUTTON_H, GuiTokens.colored(label, ACCENT),
-                this::openOptions, Tooltip.create(Component.translatable(
-                        "waypointer.screen.export.options.tooltip")));
+                this::openOptions, null);
         optionsButton.visible = optionsApply();
         addRenderableWidget(optionsButton);
     }
@@ -260,13 +259,11 @@ public final class ExportScreen extends Screen {
         routePickerToggleButton = GuiTokens.styledButton(
                 toggleX, y, ROUTE_PICKER_TOGGLE_W, BTN_H,
                 routePickerToggleLabel(), this::toggleRoutePicker,
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.export.routes.toggle.tooltip")));
+                null);
         routeSelectAllButton = GuiTokens.styledButton(
                 selectAllX, y, ROUTE_PICKER_SELECT_ALL_W, BTN_H,
                 Component.translatable("waypointer.screen.export.routes.select_all"),
-                this::selectAllRoutes, Tooltip.create(Component.translatable(
-                        "waypointer.screen.export.routes.select_all.tooltip")));
+                this::selectAllRoutes, null);
         addRenderableWidget(routePickerToggleButton);
         addRenderableWidget(routeSelectAllButton);
 
@@ -288,8 +285,7 @@ public final class ExportScreen extends Screen {
         Component back = Component.translatable("gui.back");
         Component copy = Component.translatable("waypointer.export.copy_clipboard");
         Component codeBlock = Component.translatable("waypointer.export.copy_code_block");
-        Tooltip codeBlockTooltip = Tooltip.create(Component.translatable(
-                "waypointer.screen.export.copy_code_block.tooltip"));
+        Tooltip codeBlockTooltip = null;
         int footerY = layout.footerY();
 
         if (layout.footerRows() == 1) {

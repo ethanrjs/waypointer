@@ -313,9 +313,6 @@ class GroupEditScreenTest {
                 "Right-click to skip",
                 "Break to skip",
                 "Waypoints can be skipped")));
-        assertEquals("Entering a later waypoint's radius skips to it,\n"
-                        + "even if it uses Stand, Interact, or Mine.",
-                GroupEditPolicy.skipAheadTooltipText(true));
     }
 
     @Test
@@ -415,35 +412,6 @@ class GroupEditScreenTest {
                 GroupEditPolicy.routeColorMode(WaypointGroup.GradientMode.MANUAL, false));
         assertEquals(GroupEditPolicy.RouteColorMode.PAINT,
                 GroupEditPolicy.routeColorMode(WaypointGroup.GradientMode.AUTO, true));
-    }
-
-    @Test
-    void routeModeTooltipsDescribeOnlyTheSelectedOption() {
-        assertEquals("waypointer.screen.group_edit.color_mode.tooltip.color",
-                GroupEditPolicy.colorModeTooltipKey(GroupEditPolicy.RouteColorMode.COLOR));
-        assertEquals("Edit each waypoint's color.",
-                GroupEditPolicy.colorModeTooltipFallback(GroupEditPolicy.RouteColorMode.COLOR));
-        assertEquals("waypointer.screen.group_edit.color_mode.tooltip.gradient",
-                GroupEditPolicy.colorModeTooltipKey(GroupEditPolicy.RouteColorMode.GRADIENT));
-        assertEquals("Blend waypoint colors from Start to End.",
-                GroupEditPolicy.colorModeTooltipFallback(GroupEditPolicy.RouteColorMode.GRADIENT));
-        assertEquals("waypointer.screen.group_edit.color_mode.tooltip.one",
-                GroupEditPolicy.colorModeTooltipKey(GroupEditPolicy.RouteColorMode.ONE));
-        assertEquals("Use one color for the whole route.",
-                GroupEditPolicy.colorModeTooltipFallback(GroupEditPolicy.RouteColorMode.ONE));
-        assertEquals("waypointer.screen.group_edit.color_mode.tooltip.paint",
-                GroupEditPolicy.colorModeTooltipKey(GroupEditPolicy.RouteColorMode.PAINT));
-        assertEquals("Use painted waypoint faces.",
-                GroupEditPolicy.colorModeTooltipFallback(GroupEditPolicy.RouteColorMode.PAINT));
-
-        assertEquals("waypointer.screen.group_edit.mode.tooltip.static",
-                GroupEditPolicy.modeTooltipKey(WaypointGroup.LoadMode.STATIC));
-        assertEquals("Show all waypoints.",
-                GroupEditPolicy.modeTooltipFallback(WaypointGroup.LoadMode.STATIC));
-        assertEquals("waypointer.screen.group_edit.mode.tooltip.sequence",
-                GroupEditPolicy.modeTooltipKey(WaypointGroup.LoadMode.SEQUENCE));
-        assertEquals("Go through waypoints one by one.",
-                GroupEditPolicy.modeTooltipFallback(WaypointGroup.LoadMode.SEQUENCE));
     }
 
     @Test

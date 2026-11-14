@@ -267,7 +267,7 @@ public final class RouteCatalogScreen extends Screen {
         GuiTokens.StyledButton refresh = (GuiTokens.StyledButton) styledButton(
                 contentRight - ICON_BTN_W, titleY, ICON_BTN_W, BTN_H, refreshLabel,
                 button -> requestManualRefresh(),
-                Tooltip.create(Component.translatable("waypointer.screen.route_catalog.refresh.tooltip")),
+                null,
                 Icons.Icon.RESET);
         refresh.setIconOnly(true);
         refreshButton = refresh;
@@ -278,7 +278,7 @@ public final class RouteCatalogScreen extends Screen {
         addRenderableWidget(styledButton(contentRight - ICON_BTN_W - GAP_TIGHT - mineW, titleY, mineW, BTN_H,
                 mineLabel, button -> PublishedRoutesScreen.open(this, catalogClient,
                         PublisherIdentityStore.defaultLocation(), CatalogPublicationRegistry.defaultLocation()),
-                Tooltip.create(Component.translatable("waypointer.screen.route_publish.action.manage.tooltip")),
+                null,
                 Icons.Icon.UPLOAD));
         headerTextWidth = Math.max(1, contentW - mineW - ICON_BTN_W - GAP * 2);
 
@@ -311,7 +311,7 @@ public final class RouteCatalogScreen extends Screen {
                     searchBox.setValue("");
                     runPendingSearch();
                     focusSearchBox();
-                }, Tooltip.create(Component.translatable("waypointer.screen.main.search.clear.tooltip")),
+                }, null,
                 Icons.Icon.CLOSE);
         clearSearch.setIconOnly(true);
         clearSearch.active = !browser.query().isEmpty();
@@ -324,8 +324,7 @@ public final class RouteCatalogScreen extends Screen {
         }
         int zoneX = stacked ? contentX : contentX + searchW + GAP;
         zoneFilterButton = new ZoneFilterButton(zoneX, filtersY, zoneW, BTN_H, zoneFilterLabel());
-        zoneFilterButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.route_catalog.filter.tooltip")));
+        zoneFilterButton.setTooltip(null);
         addRenderableWidget(zoneFilterButton);
         sortButton = new SortButton(zoneX + zoneW + GAP, filtersY, sortW, BTN_H, sortLabel());
         addRenderableWidget(sortButton);
@@ -337,8 +336,7 @@ public final class RouteCatalogScreen extends Screen {
                     onlyNotInstalled = !onlyNotInstalled;
                     applyFilters();
                 });
-        hideInstalledChip.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.route_catalog.not_installed.tooltip")));
+        hideInstalledChip.setTooltip(null);
         addRenderableWidget(hideInstalledChip);
         miningCultChip = null;
         if (browser.anyLoadedRouteHas(CatalogRouteSummary.TAG_MINING_CULT) || browser.tagFilter() != null) {
@@ -349,8 +347,7 @@ public final class RouteCatalogScreen extends Screen {
                         browser.setTagFilter(on ? null : CatalogRouteSummary.TAG_MINING_CULT);
                         refetchForServerFilters();
                     });
-            miningCultChip.setTooltip(Tooltip.create(Component.translatable(
-                    "waypointer.screen.route_catalog.tag.mining_cult.tooltip")));
+            miningCultChip.setTooltip(null);
             addRenderableWidget(miningCultChip);
         }
 
@@ -398,8 +395,7 @@ public final class RouteCatalogScreen extends Screen {
         boolean actionsShown = wideLayout || showingDetail;
         copyCodeButton = styledButton(contentRight - installW - GAP - copyW, footerY,
                 copyW, BTN_H, copyLabel, button -> copySelectedCode(),
-                Tooltip.create(Component.translatable("waypointer.screen.route_catalog.copy.tooltip")),
-                Icons.Icon.SHARE);
+                null, Icons.Icon.SHARE);
         installButton = styledButton(contentRight - installW, footerY, installW, BTN_H,
                 installButtonLabel(), button -> installSelectedRoute(), null, Icons.Icon.DOWNLOAD);
         copyCodeButton.visible = actionsShown;
@@ -582,8 +578,7 @@ public final class RouteCatalogScreen extends Screen {
                             ? "waypointer.screen.route_catalog.load_more.loading"
                             : "waypointer.screen.route_catalog.load_more"),
                     button -> loadMore(),
-                    Tooltip.create(Component.translatable(
-                            "waypointer.screen.route_catalog.load_more.tooltip")));
+                    null);
             loadMoreButton.active = !listLoading && !appending
                     && browser.nextCursor() != null;
             addRenderableWidget(loadMoreButton);
@@ -1344,11 +1339,6 @@ public final class RouteCatalogScreen extends Screen {
         }
         Component empty = Component.translatable(emptyListKey());
         drawCentered(graphics, empty, listX, listY, listW, listH, TEXT_DIM);
-        if (!browser.query().isBlank()) {
-            drawCenteredLine(graphics, Component.translatable(
-                            "waypointer.screen.route_catalog.empty.search_hint"),
-                    listX, listW, listY + listH / 2 + LINE_H, TEXT_MUTED);
-        }
     }
 
     private void drawCentered(GuiGraphicsExtractor graphics, Component text,

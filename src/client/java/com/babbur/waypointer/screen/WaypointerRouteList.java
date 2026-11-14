@@ -920,8 +920,10 @@ final class WaypointerRouteList {
             icon = Icons.Icon.ROUTE;
         }
         Component title = Component.translatable(key);
-        Component hint = Component.translatable(key.endsWith(".zone")
-                ? "waypointer.screen.main.empty.zone_hint" : key + "_hint");
+        // An empty search needs no hint: the search field is right there.
+        Component hint = key.endsWith(".search") ? Component.empty()
+                : Component.translatable(key.endsWith(".zone")
+                        ? "waypointer.screen.main.empty.zone_hint" : key + "_hint");
 
         int iconSize = Icons.SIZE * EMPTY_ICON_SCALE;
         int lineH = font().lineHeight;

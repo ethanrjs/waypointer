@@ -109,38 +109,6 @@ final class GroupEditPolicy {
         return name.charAt(0) + name.substring(1).toLowerCase(Locale.ROOT);
     }
 
-    static String colorModeTooltipKey(RouteColorMode mode) {
-        return "waypointer.screen.group_edit.color_mode.tooltip."
-                + colorModeName(mode).toLowerCase(Locale.ROOT);
-    }
-
-    static String colorModeTooltipFallback(RouteColorMode mode) {
-        return switch (mode == null ? RouteColorMode.COLOR : mode) {
-            case COLOR -> "Edit each waypoint's color.";
-            case GRADIENT -> "Blend waypoint colors from Start to End.";
-            case ONE -> "Use one color for the whole route.";
-            case PAINT -> "Use painted waypoint faces.";
-        };
-    }
-
-    static String modeTooltipKey(WaypointGroup.LoadMode mode) {
-        return "waypointer.screen.group_edit.mode.tooltip."
-                + (mode == WaypointGroup.LoadMode.SEQUENCE ? "sequence" : "static");
-    }
-
-    static String modeTooltipFallback(WaypointGroup.LoadMode mode) {
-        return mode == WaypointGroup.LoadMode.SEQUENCE
-                ? "Go through waypoints one by one."
-                : "Show all waypoints.";
-    }
-
-    static String skipAheadTooltipText(boolean dungeonRoomGroup) {
-        return dungeonRoomGroup
-                ? "Entering a later waypoint's radius skips to it,\n"
-                        + "even if it uses Stand, Interact, or Mine."
-                : "Toggle skipping waypoints for this route.";
-    }
-
     static List<String> routeInfoLabels(boolean dungeonRoomGroup) {
         return localizedInfo(ROUTE_INFO_LABELS, DUNGEON_ROUTE_INFO_LABELS, dungeonRoomGroup);
     }
