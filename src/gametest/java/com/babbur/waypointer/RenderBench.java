@@ -35,9 +35,11 @@ final class RenderBench {
     private static final long[] frameNanos = new long[FRAMES + 1];
     private static final int[] frameDraws = new int[FRAMES + 1];
     private static final long[] frameRebuilds = new long[FRAMES + 1];
+    private static final long[] frameRouteRebuilds = new long[FRAMES + 1];
     private static final long[] frameCost = new long[FRAMES + 1];
     private static volatile int recorded = -1;
     private static volatile boolean turning;
+    private static volatile boolean moving;
     private static volatile WaypointGroup advancing;
 
     private RenderBench() {}
@@ -50,6 +52,7 @@ final class RenderBench {
                 OverlayRenderer overlay = OverlayRenderer.activeOrNull();
                 frameDraws[index] = overlay == null ? 0 : overlay.lastDrawCalls();
                 frameRebuilds[index] = overlay == null ? 0 : overlay.fullRebuilds();
+                frameRouteRebuilds[index] = overlay == null ? 0 : overlay.routeRebuilds();
                 frameCost[index] = RenderCost.totalNanos();
                 recorded = index + 1;
             }
@@ -60,6 +63,11 @@ final class RenderBench {
             if (turning) {
                 client.player.setYRot((float) ((time * 3) % 360));
                 client.player.setXRot(10);
+            }
+            if (moving) {
+                double angle = time * 0.05;
+                client.player.setPos(CX + Math.cos(angle) * 24, CY, CZ + Math.sin(angle) * 24);
+                client.player.setYRot((float) Math.toDegrees(angle));
             }
             WaypointGroup route = advancing;
             if (route != null && time % 5 == 0) route.setCurrentIndex((route.currentIndex() + 1) % route.size());
@@ -111,14 +119,23 @@ final class RenderBench {
         advancing = sequence;
         report.add(measure(context, "8k static + sequence advancing"));
         advancing = null;
+        context.takeScreenshot("bench-static-sequence");
 
         context.runOnClient(client -> {
             config.setShowRouteLines(true);
             config.setRouteLineDashed(true);
         });
         report.add(measure(context, "+ dashed route lines"));
+        context.takeScreenshot("bench-dashed-lines");
         context.runOnClient(client -> config.setRouteLineDashed(false));
         report.add(measure(context, "+ solid route lines"));
+        context.takeScreenshot("bench-solid-lines");
+        moving = true;
+        report.add(measure(context, "+ solid route lines, moving"));
+        moving = false;
+        world.getServer().runCommand("tp @a " + (int) CX + " " + (int) CY + " " + (int) CZ + " 0 10");
+        context.waitTicks(10);
+        context.takeScreenshot("bench-solid-lines-after-moving");
         context.runOnClient(client -> config.setShowRouteLines(false));
 
         context.runOnClient(client -> {
@@ -192,14 +209,15 @@ final class RenderBench {
         double mean = Arrays.stream(ms).average().orElse(0);
         double draws = Arrays.stream(frameDraws, 1, FRAMES + 1).average().orElse(0);
         long rebuilds = frameRebuilds[FRAMES] - frameRebuilds[0];
+        long routeRebuilds = frameRouteRebuilds[FRAMES] - frameRouteRebuilds[0];
         double[] cost = new double[FRAMES];
         for (int i = 0; i < FRAMES; i++) cost[i] = (frameCost[i + 1] - frameCost[i]) / 1e6;
         double costMean = Arrays.stream(cost).average().orElse(0);
         Arrays.sort(cost);
         Arrays.sort(ms);
         return String.format(java.util.Locale.ROOT,
-                "%-34s waypointer mean %6.3f p50 %6.3f p95 %6.3f max %7.3f ms | frame mean %6.2f p50 %6.2f p95 %6.2f max %7.2f ms (%4.0f fps) | draws %5.0f rebuilds %d",
+                "%-34s waypointer mean %6.3f p50 %6.3f p95 %6.3f max %7.3f ms | frame mean %6.2f p50 %6.2f p95 %6.2f max %7.2f ms (%4.0f fps) | draws %5.0f rebuilds %d route-only %d",
                 name, costMean, cost[FRAMES / 2], cost[FRAMES * 95 / 100], cost[FRAMES - 1],
-                mean, ms[FRAMES / 2], ms[FRAMES * 95 / 100], ms[FRAMES - 1], 1000 / mean, draws, rebuilds);
+                mean, ms[FRAMES / 2], ms[FRAMES * 95 / 100], ms[FRAMES - 1], 1000 / mean, draws, rebuilds, routeRebuilds);
     }
 }

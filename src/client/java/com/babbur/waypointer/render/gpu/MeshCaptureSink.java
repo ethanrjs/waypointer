@@ -8,39 +8,106 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
+/**
+ * Captures one frame's geometry per material bucket. Dynamic geometry is rebuilt every frame.
+ * Static geometry is kept per route, so a frame rebuilds only the routes whose scene key changed
+ * and a bucket's static mesh is reassembled only when one of its routes' geometry changed.
+ */
 public final class MeshCaptureSink implements GeometrySink {
 
     public static final class Pair {
+        /** The bucket's static mesh as uploaded: every route's static geometry, in route order. */
         public final MeshBuilder statics;
         public final MeshBuilder dynamics;
+        private final MeshLayout layout;
+        private final MeshTopology topology;
+        /** Static geometry emitted outside any route (rebuilt with the whole scene only). */
+        private final MeshBuilder ungrouped;
+        private final Map<Object, MeshBuilder> groups = new IdentityHashMap<>();
+        private boolean staticsDirty;
 
         Pair(MeshLayout layout, MeshTopology topology) {
+            this.layout = layout;
+            this.topology = topology;
             this.statics = new MeshBuilder(layout, topology);
             this.dynamics = new MeshBuilder(layout, topology);
+            this.ungrouped = new MeshBuilder(layout, topology);
+        }
+
+        private MeshBuilder group(Object group) {
+            return groups.computeIfAbsent(group, g -> new MeshBuilder(layout, topology));
+        }
+
+        private void close() {
+            statics.close();
+            dynamics.close();
+            ungrouped.close();
+            for (MeshBuilder builder : groups.values()) builder.close();
+            groups.clear();
         }
     }
 
     private final OverlayPipelines pipelines;
     private final PoseStack poseStack;
     private final Map<MeshBucket, Pair> buckets = new LinkedHashMap<>();
-    private boolean captureStatic = true;
+    private boolean rebuildAll = true;
+    private Set<?> rebuildGroups = Set.of();
+    private Object currentGroup;
     private boolean inDynamicScope;
+    private long groupRebuilds;
 
     public MeshCaptureSink(OverlayPipelines pipelines, PoseStack poseStack) {
         this.pipelines = Objects.requireNonNull(pipelines, "pipelines");
         this.poseStack = Objects.requireNonNull(poseStack, "poseStack");
     }
 
+    /** Rebuilds every route's static geometry (or none), dropping routes no longer active. */
     public void beginCapture(boolean fullRebuild) {
-        captureStatic = fullRebuild;
+        beginCapture(fullRebuild ? null : Set.of(), null);
+    }
+
+    /**
+     * Starts a frame. {@code rebuild} names the routes whose static geometry is re-emitted
+     * ({@code null}: all of them); routes outside {@code live} lose their static geometry
+     * ({@code null}: keep every route).
+     */
+    public void beginCapture(Set<?> rebuild, Collection<?> live) {
+        rebuildAll = rebuild == null;
+        rebuildGroups = rebuild == null ? Set.of() : rebuild;
+        currentGroup = null;
         inDynamicScope = false;
+        Set<Object> liveSet = null;
+        if (live != null) {
+            liveSet = Collections.newSetFromMap(new IdentityHashMap<>());
+            liveSet.addAll(live);
+        }
         for (Pair pair : buckets.values()) {
             pair.dynamics.reset();
-            if (fullRebuild) pair.statics.reset();
+            if (rebuildAll) {
+                if (!pair.ungrouped.isEmpty()) pair.staticsDirty = true;
+                pair.ungrouped.reset();
+            }
+            for (Iterator<Map.Entry<Object, MeshBuilder>> it = pair.groups.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<Object, MeshBuilder> entry = it.next();
+                boolean gone = liveSet != null && !liveSet.contains(entry.getKey());
+                if (!gone && !rebuildAll && !rebuildGroups.contains(entry.getKey())) continue;
+                if (!entry.getValue().isEmpty()) pair.staticsDirty = true;
+                if (gone) {
+                    entry.getValue().close();
+                    it.remove();
+                } else {
+                    entry.getValue().reset();
+                }
+            }
         }
     }
 
@@ -48,11 +115,30 @@ public final class MeshCaptureSink implements GeometrySink {
         return buckets;
     }
 
+    /**
+     * Reassembles {@code pair}'s static mesh from its routes in {@code order} when any of them
+     * changed since the last upload. Returns whether the static mesh needs uploading.
+     */
+    public boolean assembleStatics(Pair pair, Collection<?> order) {
+        if (!pair.staticsDirty) return false;
+        pair.staticsDirty = false;
+        pair.statics.reset();
+        pair.statics.append(pair.ungrouped);
+        for (Object group : order) {
+            MeshBuilder builder = pair.groups.get(group);
+            if (builder != null) pair.statics.append(builder);
+        }
+        return true;
+    }
+
+    /** Route static-geometry emissions (one per route per pass that rebuilt it), over the sink's lifetime. */
+    public long groupRebuilds() {
+        return groupRebuilds;
+    }
+
     public void removeBucket(MeshBucket bucket) {
         Pair pair = buckets.remove(bucket);
-        if (pair == null) return;
-        pair.statics.close();
-        pair.dynamics.close();
+        if (pair != null) pair.close();
     }
 
     @Override
@@ -79,7 +165,24 @@ public final class MeshCaptureSink implements GeometrySink {
 
     @Override
     public boolean staticGeometryNeeded() {
-        return captureStatic;
+        return rebuildAll || !rebuildGroups.isEmpty();
+    }
+
+    @Override
+    public boolean staticGeometryNeeded(Object group) {
+        return rebuildAll || rebuildGroups.contains(group);
+    }
+
+    @Override
+    public void staticGroup(Object group, Runnable body) {
+        Object previous = currentGroup;
+        currentGroup = group;
+        groupRebuilds++;
+        try {
+            body.run();
+        } finally {
+            currentGroup = previous;
+        }
     }
 
     @Override
@@ -88,10 +191,7 @@ public final class MeshCaptureSink implements GeometrySink {
     }
 
     public void close() {
-        for (Pair pair : buckets.values()) {
-            pair.statics.close();
-            pair.dynamics.close();
-        }
+        for (Pair pair : buckets.values()) pair.close();
         buckets.clear();
     }
 
@@ -111,7 +211,15 @@ public final class MeshCaptureSink implements GeometrySink {
 
         private VertexConsumer target() {
             if (inDynamicScope) return pair.dynamics;
-            return captureStatic ? pair.statics : DISCARD;
+            Object group = currentGroup;
+            if (group == null) {
+                if (!rebuildAll) return DISCARD;
+                pair.staticsDirty = true;
+                return pair.ungrouped;
+            }
+            if (!rebuildAll && !rebuildGroups.contains(group)) return DISCARD;
+            pair.staticsDirty = true;
+            return pair.group(group);
         }
 
         @Override public VertexConsumer addVertex(float x, float y, float z) { target().addVertex(x, y, z); return this; }

@@ -23,6 +23,16 @@ public interface GeometrySink {
         return false;
     }
 
+    /** Whether a static scope (a route, or a route's connector lines) is being rebuilt this frame. */
+    default boolean staticGeometryNeeded(Object scope) {
+        return staticGeometryNeeded();
+    }
+
+    /** Runs {@code body}, which emits one scope's static geometry, so a retained sink can keep it apart. */
+    default void staticGroup(Object scope, Runnable body) {
+        body.run();
+    }
+
     static GeometrySink legacy(LevelRenderContext context, PoseStack poseStack) {
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(poseStack, "poseStack");

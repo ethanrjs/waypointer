@@ -17,10 +17,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public final class OverlayRenderer implements AutoCloseable {
 
@@ -39,6 +43,10 @@ public final class OverlayRenderer implements AutoCloseable {
     private MeshCaptureSink captureSink;
     private PoseStack capturePose;
     private SceneKey lastKey = SceneKey.NONE;
+    private SceneKey lastGlobal = SceneKey.NONE;
+    private Map<Object, Long> lastScopeKeys = new IdentityHashMap<>();
+    private boolean forceFullRebuild;
+    private long routeRebuilds;
     private OverlayCompositing effectiveCompositing;
     private OverlayPass.FrameView pendingView;
     private SceneKey pendingKey;
@@ -85,8 +93,14 @@ public final class OverlayRenderer implements AutoCloseable {
         return pass.lastDrawCalls();
     }
 
+    /** Frames that rebuilt every route's static geometry. */
     public long fullRebuilds() {
         return fullRebuilds;
+    }
+
+    /** Frames that rebuilt only the routes whose own key changed. */
+    public long routeRebuilds() {
+        return routeRebuilds;
     }
 
     public OverlayRendererOptions options() {
@@ -110,6 +124,7 @@ public final class OverlayRenderer implements AutoCloseable {
             for (MeshBucket bucket : renderer.pipelines.unregisterPainted(
                     entry.throughWalls(), entry.depthTested())) {
                 OverlayPass.MeshSet set = renderer.meshes.remove(bucket);
+                renderer.forceFullRebuild = true;
                 if (set != null) {
                     closeStep("static paint mesh", set.statics::close);
                     closeStep("dynamic paint mesh", set.dynamics::close);
@@ -188,26 +203,51 @@ public final class OverlayRenderer implements AutoCloseable {
         Vec3 cameraPos = camera.position();
         Vec3 playerPos = mc.player == null ? null : mc.player.position();
         boolean raycastOcclusion = options.occlusion().usesRaycast();
-        long occlusionFingerprint = raycastOcclusion
-                ? worldRenderer.depthVisibilityFingerprintFor(groups, cameraPos)
-                : 0L;
-        long worldVisibilityFingerprint =
-                worldRenderer.worldVisibilityFingerprintFor(groups, cameraPos, playerPos);
-        long blockShapeFingerprint = worldRenderer.blockShapeFingerprintFor(groups);
-        SceneKey key = keyFactory.build(groups, config, cameraPos, level,
-                level.getMinY(), level.getMaxY(), occlusionFingerprint,
-                worldVisibilityFingerprint, blockShapeFingerprint,
+        SceneKey global = keyFactory.buildGlobal(config, cameraPos, level,
+                level.getMinY(), level.getMaxY(), worldRenderer.staticGatesFingerprintFor(groups),
                 HappySnowmanSession.facePaint());
-        boolean fullRebuild = !key.equals(lastKey);
-        if (fullRebuild) fullRebuilds++;
-        if (fullRebuild && options.debugLogging()) {
+        // Each route's static geometry depends on its own key; only changed routes re-emit.
+        long[] groupKeys = new long[groups.size()];
+        Map<WaypointerConfig, Long> styleHashes = new IdentityHashMap<>();
+        for (int i = 0; i < groups.size(); i++) {
+            List<WaypointGroup> one = List.of(groups.get(i));
+            long occlusion = raycastOcclusion ? worldRenderer.depthVisibilityFingerprintFor(one, cameraPos) : 0L;
+            groupKeys[i] = keyFactory.groupKey(groups.get(i), config, styleHashes, occlusion,
+                    worldRenderer.worldVisibilityFingerprintFor(one, cameraPos, playerPos),
+                    worldRenderer.blockShapeFingerprintFor(one));
+        }
+        SceneKey key = SceneKeyFactory.combine(global, groupKeys);
+        boolean rebuildAll = forceFullRebuild || !global.equals(lastGlobal);
+        forceFullRebuild = false;
+        // Static scopes: each route, and each route's far connector lines (which also follow the
+        // camera's cell, see WaypointRenderer.routeLineCellOf).
+        int cellX = WaypointRenderer.routeLineCellOf(cameraPos.x);
+        int cellY = WaypointRenderer.routeLineCellOf(cameraPos.y);
+        int cellZ = WaypointRenderer.routeLineCellOf(cameraPos.z);
+        List<Object> scopes = new ArrayList<>(groups.size() * 2);
+        Set<Object> rebuild = Collections.newSetFromMap(new IdentityHashMap<>());
+        Map<Object, Long> keysNow = new IdentityHashMap<>();
+        for (int i = 0; i < groups.size(); i++) {
+            WaypointGroup group = groups.get(i);
+            Object lines = worldRenderer.routeLineScope(group);
+            long linesKey = SceneKey.builder().mix(groupKeys[i]).mix(cellX).mix(cellY).mix(cellZ).finish().hash();
+            scopes.add(group);
+            scopes.add(lines);
+            noteScope(group, groupKeys[i], keysNow, rebuild);
+            noteScope(lines, linesKey, keysNow, rebuild);
+        }
+        if (rebuildAll) fullRebuilds++;
+        else if (!rebuild.isEmpty()) routeRebuilds++;
+        if ((rebuildAll || !rebuild.isEmpty()) && options.debugLogging()) {
             Waypointer.LOGGER.info("[overlay] rebuild: {}", lastKey == SceneKey.NONE ? "first frame"
-                    : key.hash() != lastKey.hash() ? "scene or visibility changed" : "mesh origin changed");
+                    : rebuildAll ? "whole scene" : rebuild.size() + " of " + scopes.size() + " static scopes");
         }
 
-        capture(ctx, key, fullRebuild);
-        upload(fullRebuild);
+        capture(ctx, key, rebuildAll ? null : rebuild, scopes);
+        upload(scopes);
         lastKey = key;
+        lastGlobal = global;
+        lastScopeKeys = keysNow;
 
         OverlayPass.FrameView view = new OverlayPass.FrameView(
                 OverlayPassCompat.projectionBuffer(ctx), OverlayPassCompat.positionMatrix(ctx),
@@ -239,23 +279,30 @@ public final class OverlayRenderer implements AutoCloseable {
         }
     }
 
-    private void capture(LevelRenderContext ctx, SceneKey key, boolean fullRebuild) {
+    private void noteScope(Object scope, long key, Map<Object, Long> keysNow, Set<Object> rebuild) {
+        keysNow.put(scope, key);
+        Long previous = lastScopeKeys.get(scope);
+        if (previous == null || previous != key) rebuild.add(scope);
+    }
+
+    private void capture(LevelRenderContext ctx, SceneKey key, Set<Object> rebuild,
+                         List<Object> live) {
         if (captureSink == null) {
             capturePose = new PoseStack();
             captureSink = new MeshCaptureSink(pipelines, capturePose);
         }
-        captureSink.beginCapture(fullRebuild);
+        captureSink.beginCapture(rebuild, live);
         Vec3 origin = new Vec3(key.originX(), key.originY(), key.originZ());
         worldRenderer.emitWorldGeometryFor(ctx, capturePose, captureSink, origin,
                 !options.occlusion().usesRaycast());
     }
 
-    private void upload(boolean fullRebuild) {
+    private void upload(List<Object> order) {
         CommandEncoder encoder = GpuMeshCompat.createCommandEncoder();
         for (Map.Entry<MeshBucket, MeshCaptureSink.Pair> entry : captureSink.buckets().entrySet()) {
             OverlayPass.MeshSet set = meshes.computeIfAbsent(entry.getKey(), OverlayPass.MeshSet::create);
             MeshCaptureSink.Pair pair = entry.getValue();
-            if (fullRebuild) {
+            if (captureSink.assembleStatics(pair, order)) {
                 set.statics.upload(pair.statics, encoder);
             }
             set.dynamics.upload(pair.dynamics, encoder);
@@ -272,6 +319,8 @@ public final class OverlayRenderer implements AutoCloseable {
         captureSink = null;
         capturePose = null;
         lastKey = SceneKey.NONE;
+        lastGlobal = SceneKey.NONE;
+        lastScopeKeys = new IdentityHashMap<>();
     }
 
     private void ensureIrisAssignment(boolean shaderPack) {

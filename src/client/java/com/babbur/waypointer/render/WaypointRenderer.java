@@ -102,6 +102,16 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return worldVisibilityFingerprint(groups, cameraPosition, playerPosition);
     }
 
+    /** The camera cell retained connector lines are built for (see ROUTE_LINE_CELL). */
+    public static int routeLineCellOf(double coordinate) {
+        return routeLineCell(coordinate);
+    }
+
+    /** Which geometry passes run (the retained renderer emits with the HUD fallback off). */
+    public long staticGatesFingerprintFor(List<WaypointGroup> groups) {
+        return gates(groups, false).fingerprint();
+    }
+
     public int reserveActivePaintsFor(List<WaypointGroup> groups) {
         return reserveActivePaints(groups);
     }

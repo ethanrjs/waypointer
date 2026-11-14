@@ -63,6 +63,60 @@ public final class SceneKeyFactory {
         return key.finish();
     }
 
+    /**
+     * Everything every route's static geometry depends on: mesh origin, level, base settings,
+     * which geometry passes run at all ({@code staticGates}), runtime paint and compass state.
+     * A change here rebuilds every route.
+     */
+    public SceneKey buildGlobal(WaypointerConfig config, Vec3 camera, Object levelIdentity,
+                                int levelMinY, int levelMaxY, long staticGates,
+                                WaypointPaint runtimePaintOverride) {
+        Objects.requireNonNull(config, "config");
+        Objects.requireNonNull(camera, "camera");
+        updateOrigin(camera, levelIdentity);
+        SceneKey.Builder key = SceneKey.builder()
+                .origin(originX, originY, originZ)
+                .levelIdentity(levelIdentity)
+                .mix(levelMinY)
+                .mix(levelMaxY)
+                .mix(staticGates);
+        mixPaint(key, runtimePaintOverride);
+        key.mixEnum(options.occlusion());
+        mixConfig(key, config);
+        key.mix(CompassMarkerState.version());
+        return key.finish();
+    }
+
+    /**
+     * One route's part of the scene: its content and progress, styles, skip fade and its own
+     * visibility fingerprints. Only routes whose value changes rebuild their static geometry.
+     * Observes the route's skip fade, so call it once per route per frame.
+     */
+    public long groupKey(WaypointGroup group, WaypointerConfig config, Map<WaypointerConfig, Long> styleHashes,
+                         long occlusionFingerprint, long worldVisibilityFingerprint,
+                         long blockShapeFingerprint) {
+        SceneKey.Builder key = SceneKey.builder();
+        WaypointSkipFade fade = WaypointSkipFade.observe(group, config);
+        key.mix(fade != null && fade.active());
+        mixGroup(key, group);
+        key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, null)));
+        key.mix(WaypointStyles.routeColorOverride(config, group));
+        if (group.hasWaypointStyleOverrides()) key.mix(pointStylesHash(styleHashes, config, group));
+        key.mix(occlusionFingerprint).mix(worldVisibilityFingerprint).mix(blockShapeFingerprint);
+        return key.finish().hash();
+    }
+
+    /** The whole scene's key, for drawing and equality, from the global key and every route's key. */
+    public static SceneKey combine(SceneKey global, long[] groupKeys) {
+        SceneKey.Builder key = SceneKey.builder()
+                .origin(global.originX(), global.originY(), global.originZ())
+                .levelIdentity(global.levelIdentity())
+                .mix(global.hash())
+                .mix(groupKeys.length);
+        for (long groupKey : groupKeys) key.mix(groupKey);
+        return key.finish();
+    }
+
     public void reset() {
         hasOrigin = false;
         originLevelIdentity = null;
