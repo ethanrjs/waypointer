@@ -205,6 +205,7 @@
   "waypointer.settings.setting.labelTextColor.label": "Label color",
   "waypointer.settings.setting.labelTextColor.color_picker_title": "Label Color",
   "waypointer.settings.setting.labelColorForAllText.label": "Label color for all text",
+  "waypointer.settings.setting.inWorldLabels.label": "In-world labels",
   "waypointer.settings.setting.showLabelBackdrop.label": "Show label backdrop",
   "waypointer.settings.setting.showLabelTextShadow.label": "Show text shadows",
   "waypointer.settings.setting.scaleWaypointTextWithDistance.label": "Scale text with distance",

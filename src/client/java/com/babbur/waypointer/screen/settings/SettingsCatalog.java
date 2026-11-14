@@ -396,6 +396,12 @@ public final class SettingsCatalog {
                                 (c, d) -> c.labelColorForAllText(),
                                 (c, d, v) -> c.setLabelColorForAllText((Boolean) v))
                                 .enabledWhen(ANY_LABEL_TEXT),
+                        Setting.bool("inWorldLabels", MAIN, "In-world labels",
+                                null,
+                                (c, d) -> c.inWorldLabels(),
+                                (c, d, v) -> c.setInWorldLabels((Boolean) v))
+                                .localOnly()
+                                .aliases("nametag", "name tag", "world", "3d", "occlude"),
                         Setting.bool("showLabelBackdrop", MAIN, "Show label backdrop",
                                 null,
                                 (c, d) -> c.showLabelBackdrop(),

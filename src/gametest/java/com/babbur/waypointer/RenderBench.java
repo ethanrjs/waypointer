@@ -143,6 +143,11 @@ final class RenderBench {
             config.setPreventLabelOverlap(true);
         });
         report.add(measure(context, "progress labels + overlap"));
+        context.runOnClient(client -> config.setInWorldLabels(true));
+        report.add(measure(context, "in-world labels"));
+        context.takeScreenshot("bench-world-labels");
+        context.runOnClient(client -> config.setInWorldLabels(false));
+        context.takeScreenshot("bench-hud-labels");
         context.runOnClient(client -> {
             config.setShowRouteProgress(false);
             config.setPreventLabelOverlap(false);

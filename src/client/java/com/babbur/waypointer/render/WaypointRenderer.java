@@ -121,6 +121,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             long started = RenderCost.start();
             try {
                 onWorldRender(context);
+                submitWorldLabels(context);
             } finally {
                 RenderCost.stop(started);
             }
@@ -177,7 +178,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                     maxStaticDistanceSq, nearHideDistanceSq);
         }
 
-        {
+        if (!config.inWorldLabels()) {
             if (drawIrisHudBoxes && !config.labelFollowCameraEffects()) {
                 labelProjector.prepare(renderer, camera, false);
             }
@@ -193,6 +194,98 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
 
     private int labelScreenW;
     private int labelScreenH;
+
+    /** Font pixels to blocks for in-world labels, the scale vanilla nametags use. */
+    private static final float WORLD_LABEL_SCALE = 0.025f;
+    /** How strongly an in-world label still shows through blocks, like a nametag behind a wall. */
+    private static final float WORLD_LABEL_SEE_THROUGH_ALPHA = 0.3f;
+
+    /**
+     * In-world labels: the same labels the HUD would draw (selection, budget, rows, colors), drawn
+     * in the world like nametags, facing the camera above the waypoint. They shrink with distance
+     * and are hidden by blocks; labels of waypoints drawn through walls keep a faint see-through
+     * layer, as nametags do, so a label never vanishes while its box is still visible.
+     */
+    private void submitWorldLabels(LevelRenderContext ctx) {
+        if (!config.inWorldLabels()) return;
+        var groups = manager.activeGroups();
+        if (groups.isEmpty()) return;
+        Minecraft mc = Minecraft.getInstance();
+        GameRenderer renderer = mc.gameRenderer;
+        Camera camera = MinecraftCompat.mainCamera(renderer);
+        PoseStack base = ctx.poseStack();
+        if (camera == null || !camera.isInitialized() || base == null) return;
+        prepareSkipFades(groups);
+        Font font = mc.font;
+        ClientLevel level = mc.level;
+        Vec3 camPos = camera.position();
+        prepareDepthVisibilityCache(level, camPos);
+        Vec3 playerPos = mc.player == null ? null : mc.player.position();
+        labelProjector.prepare(renderer, camera, config.labelFollowCameraEffects());
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        int screenH = mc.getWindow().getGuiScaledHeight();
+        labelScreenW = screenW;
+        labelScreenH = screenH;
+        clearLabelCandidates();
+        try {
+            for (WaypointGroup group : groups) {
+                drawGroupLabels(null, font, mc, level, camPos, playerPos, screenW, screenH, group);
+            }
+            int budget = config.maxWaypointLabels();
+            if (labelCandidateCount > 0) {
+                selectBudgetedLabels(font, budget > 0 ? Math.min(budget, labelCandidateCount) : labelCandidateCount);
+            }
+            for (LabelCandidate candidate : drawnLabelCandidates) prepareCandidateRows(candidate);
+            // All see-through text first, then all normal text: an immediate buffer (26.1) flushes
+            // whenever the text mode changes, so alternating per row would flush every row.
+            for (LabelCandidate candidate : drawnLabelCandidates) {
+                if (!lineOfSight(candidate.group, candidate.waypoint)) {
+                    submitWorldLabel(ctx, base, font, camera, camPos, candidate, true);
+                }
+            }
+            for (LabelCandidate candidate : drawnLabelCandidates) {
+                submitWorldLabel(ctx, base, font, camera, camPos, candidate, false);
+            }
+            WorldOverlayCompat.flushText(ctx);
+        } finally {
+            clearLabelCandidates();
+        }
+    }
+
+    private void submitWorldLabel(LevelRenderContext ctx, PoseStack base, Font font, Camera camera,
+                                  Vec3 camPos, LabelCandidate c, boolean seeThroughLayer) {
+        if (c.rows.isEmpty()) return;
+        WaypointerConfig a = c.appearance;
+        float scale = WORLD_LABEL_SCALE * (float) clampLabelScale(a.labelScale());
+        int advance = font.lineHeight + DISTANCE_ROW_GAP;
+        base.pushPose();
+        try {
+            base.translate(c.worldX - camPos.x, c.worldY - camPos.y, c.worldZ - camPos.z);
+            base.mulPose(new org.joml.Matrix4f().rotation(camera.rotation()));
+            base.scale(scale, -scale, scale);
+            // Rows stack upwards so the last one sits on the anchor above the waypoint.
+            float y = -c.rows.size() * advance;
+            for (int i = 0; i < c.rows.size(); i++) {
+                FormattedCharSequence text = labelText(c.rows.get(i));
+                float x = -font.width(text) / 2.0f;
+                int color = labelRowColor(a, i == 0 && hasNameRow(a, c.group, c.waypoint), c.nameColor);
+                int background = a.showLabelBackdrop()
+                        ? RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB, c.backgroundAlpha) : 0;
+                if (seeThroughLayer) {
+                    WorldOverlayCompat.submitText(ctx, base, x, y, text,
+                            RenderHelpers.withAlpha(color, c.alpha * WORLD_LABEL_SEE_THROUGH_ALPHA),
+                            a.showLabelBackdrop() ? RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB,
+                                    c.backgroundAlpha * WORLD_LABEL_SEE_THROUGH_ALPHA) : 0, true);
+                } else {
+                    WorldOverlayCompat.submitText(ctx, base, x, y, text,
+                            RenderHelpers.withAlpha(color, c.alpha), background, false);
+                }
+                y += advance;
+            }
+        } finally {
+            base.popPose();
+        }
+    }
 
     /** Static routes' labels can wait for their raycast; none of them decides another label's fate. */
     static boolean deferLabelVisibility(WaypointGroup group, Waypoint waypoint) {
@@ -396,6 +489,9 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             candidate.current = state == State.CURRENT;
             candidate.detail = WaypointLabelAppearance.showDetail(appearance, distanceSq, candidate.focused);
             candidate.losPending = losPending;
+            candidate.worldX = ax;
+            candidate.worldY = ay;
+            candidate.worldZ = az;
             if (!hasLabelRows(appearance, group, w, candidate.detail)
                     && ("NONE".equals(appearance.waypointIcon()) || !labelAlphaVisible(alpha))) {
                 candidate.clear();
@@ -481,6 +577,16 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     private void drawBudgetedLabels(GuiGraphicsExtractor g, Font font, int count) {
+        selectBudgetedLabels(font, count);
+        for (LabelCandidate candidate : drawnLabelCandidates) {
+            prepareCandidateRows(candidate);
+            drawCandidateLabel(g, font, candidate);
+        }
+    }
+
+    /** Picks the labels to draw this frame into {@code drawnLabelCandidates}, farthest first. */
+    private void selectBudgetedLabels(Font font, int count) {
+        drawnLabelCandidates.clear();
         labelCandidateCount = retainDistinctCompassLabels(labelCandidates, labelCandidateCount);
         count = Math.min(count, labelCandidateCount);
         if (count <= 0) return;
@@ -518,10 +624,6 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                     }
                     return true;
                 });
-        for (LabelCandidate candidate : drawnLabelCandidates) {
-            prepareCandidateRows(candidate);
-            drawCandidateLabel(g, font, candidate);
-        }
     }
 
     static void selectLabelsForDrawing(List<LabelCandidate> candidates, int candidateCount, int budget,
@@ -827,6 +929,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         boolean rowsBuilt;
         /** Line of sight still to be checked when selection reaches this label. */
         boolean losPending;
+        /** Where the label sits in the world (in-world labels). */
+        double worldX, worldY, worldZ;
 
         void set(WaypointGroup group, int index, Waypoint waypoint, String routeProgressText,
                  boolean hasSubwaypoints, double screenX,
