@@ -1194,13 +1194,38 @@ class WaypointWorldRenderer {
             WaypointPaint paint = paintFor(group, null);
             return paint == null ? List.of() : List.of(paint);
         }
+        // A frame asks for a route's paints several times (textures, fingerprints, geometry), and
+        // with any per-point style that meant a whole-route walk each time. The answer only
+        // changes with the route's points, its paint settings, its resolved style or the snowman
+        // face, so it is kept until one of those does.
+        WaypointerConfig routeStyle = styleFor(group, null);
+        WaypointPaint snowman = HappySnowmanSession.facePaint();
+        long content = group.contentVersion();
+        boolean cacheable = routeStyle != config; // a resolved snapshot resolves to itself
+        PaintsCache cached = cacheable ? paintsCache.get(group) : null;
+        if (cached != null && cached.content == content && cached.paint == group.paint()
+                && cached.paintEnabled == group.paintEnabled() && cached.routeStyle == routeStyle
+                && cached.snowman == snowman) {
+            return cached.paints;
+        }
         List<WaypointPaint> paints = new ArrayList<>(2);
         for (Waypoint waypoint : group.waypoints()) {
             WaypointPaint paint = paintFor(group, waypoint);
             if (paint != null && !paints.contains(paint)) paints.add(paint);
         }
-        return paints;
+        List<WaypointPaint> result = List.copyOf(paints);
+        if (cacheable) {
+            paintsCache.put(group, new PaintsCache(content, group.paint(), group.paintEnabled(),
+                    routeStyle, snowman, result));
+        }
+        return result;
     }
+
+    private record PaintsCache(long content, WaypointPaint paint, boolean paintEnabled,
+                               WaypointerConfig routeStyle, WaypointPaint snowman,
+                               List<WaypointPaint> paints) {}
+
+    private final java.util.Map<WaypointGroup, PaintsCache> paintsCache = new java.util.WeakHashMap<>();
 
     private WaypointPaint paintFor(WaypointGroup group, Waypoint waypoint) {
         WaypointerConfig style = styleFor(group, waypoint);

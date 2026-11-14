@@ -58,10 +58,7 @@ public final class SceneKeyFactory {
             key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, null)));
             key.mix(WaypointStyles.routeColorOverride(config, group));
             if (!group.hasWaypointStyleOverrides()) continue;
-            for (Waypoint waypoint : group.waypoints()) {
-                key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, waypoint)));
-                key.mix(WaypointStyles.waypointColor(config, group, waypoint));
-            }
+            key.mix(pointStylesHash(styleHashes, config, group));
         }
         return key.finish();
     }
@@ -124,6 +121,34 @@ public final class SceneKeyFactory {
                 .mix(config.beaconWidthScale()).mix(config.beaconMotionSpeed())
                 .mix(config.completedWaypointOpacity()).mix(config.currentWaypointOpacity())
                 .mix(config.upcomingWaypointOpacity()).mix(config.sequenceContextOpacity());
+    }
+
+    private record PointStyles(long content, WaypointerConfig routeStyle, long hash) {}
+
+    private final Map<WaypointGroup, PointStyles> pointStyles = new java.util.WeakHashMap<>();
+
+    /**
+     * Every point's resolved style and color, folded into one value. Points only resolve
+     * differently when the route's points change or its resolved style is rebuilt (base config
+     * generation, route style, preset or zone), so the whole-route pass runs only then.
+     */
+    private long pointStylesHash(Map<WaypointerConfig, Long> styleHashes, WaypointerConfig config,
+                                 WaypointGroup group) {
+        WaypointerConfig routeStyle = WaypointStyles.resolve(config, group, null);
+        long content = group.contentVersion();
+        PointStyles cached = pointStyles.get(group);
+        boolean cacheable = routeStyle != config; // a resolved snapshot resolves to itself
+        if (cacheable && cached != null && cached.content() == content && cached.routeStyle() == routeStyle) {
+            return cached.hash();
+        }
+        SceneKey.Builder points = SceneKey.builder();
+        for (Waypoint waypoint : group.waypoints()) {
+            points.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, waypoint)));
+            points.mix(WaypointStyles.waypointColor(config, group, waypoint));
+        }
+        long hash = points.finish().hash();
+        if (cacheable) pointStyles.put(group, new PointStyles(content, routeStyle, hash));
+        return hash;
     }
 
     private static long styleHash(Map<WaypointerConfig, Long> hashes, WaypointerConfig config) {
