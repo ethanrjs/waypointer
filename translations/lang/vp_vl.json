@@ -7,6 +7,7 @@
   "waypointer.dungeon.waypoint_type.item": "Ting",
   "waypointer.dungeon.waypoint_type.bat": "Ljetamys",
   "waypointer.screen.painter.colors": "Varje",
+  "waypointer.screen.painter.remove": "Keshite",
   "waypointer.screen.debug.refresh": "Gjenlese",
   "waypointer.screen.main.delete.select": "Sentaku"
 }

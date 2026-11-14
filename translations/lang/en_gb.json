@@ -16,7 +16,10 @@
   "waypointer.screen.group_edit.color_mode.color": "Colour",
   "waypointer.screen.group_edit.info.color_swatch.label": "Colour swatch",
   "waypointer.screen.group_edit.info.color_swatch.description": "Edit colour; Shift-click unlocks",
+  "waypointer.screen.export.toggle.colors.label": "Waypoint colours",
+  "waypointer.screen.export.toggle.colors.unsupported": "%1$s codes cannot carry waypoint colours.",
   "waypointer.screen.painter.colors": "Colours",
   "waypointer.screen.painter.palette.tooltip": "Select colour %1$s (#%2$s).",
-  "waypointer.screen.painter.palette.narration": "Paint colour %1$s"
+  "waypointer.screen.painter.palette.narration": "Paint colour %1$s",
+  "waypointer.screen.route_folder.color_picker.tooltip": "Folder colour"
 }

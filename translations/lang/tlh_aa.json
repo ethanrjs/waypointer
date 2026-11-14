@@ -7,6 +7,10 @@
   "waypointer.settings.category.chat": "QIn pat",
   "waypointer.settings.setting.action.presets.label": "DuHmey cherlu'pu'bogh",
   "waypointer.input.share.all": "Hoch",
+  "waypointer.dungeon.packs.use": "lo'",
+  "waypointer.dungeon.packs.hide": "So'",
+  "waypointer.dungeon.packs.state.active": "lo'lu'taH",
+  "waypointer.dungeon.packs.state.hidden": "So'lu'",
   "waypointer.screen.main.delete": "Qaw'",
   "waypointer.screen.group_edit.name": "pong",
   "waypointer.screen.group_edit.remove": "Teq",
@@ -14,8 +18,11 @@
   "waypointer.screen.group_edit.color.end": "HochDIch",
   "waypointer.dungeon.waypoint_type.item": "Doch",
   "waypointer.dungeon.waypoint_type.bat": "valqe'",
+  "waypointer.screen.export.options": "DuHmey",
   "waypointer.screen.painter.colors": "mu'mey nguv",
+  "waypointer.screen.painter.tool": "jan",
   "waypointer.screen.painter.face_view.all": "Hoch",
+  "waypointer.screen.painter.remove": "Teq",
   "waypointer.screen.debug.refresh": "lI'qa'",
   "waypointer.screen.main.delete.select": "wIv"
 }
