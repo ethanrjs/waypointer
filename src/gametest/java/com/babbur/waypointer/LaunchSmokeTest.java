@@ -49,6 +49,10 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                 PerfProbe.run(context, world);
                 return;
             }
+            if (System.getProperty("waypointer.test.renderBench") != null) {
+                RenderBench.run(context, world);
+                return;
+            }
             context.waitFor(client -> client.player != null && client.level != null
                     && WaypointerClient.api() != null
                     && WaypointerClient.api().currentZone() != null
