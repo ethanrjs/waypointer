@@ -46,7 +46,15 @@ public final class RouteCatalogClient {
         this(PRODUCTION_API, new HttpTransport(), "Waypointer/" + version);
     }
 
+    private static volatile RouteCatalogClient production;
+
     public static RouteCatalogClient production() {
+        RouteCatalogClient client = production;
+        if (client == null) production = client = newProduction();
+        return client;
+    }
+
+    private static RouteCatalogClient newProduction() {
         String version = FabricLoader.getInstance().getModContainer("waypointer")
                 .map(container -> container.getMetadata().getVersion().getFriendlyString())
                 .orElse("unknown");
@@ -91,11 +99,20 @@ public final class RouteCatalogClient {
             List.of("recommended", "popular", "newest", "updated", "waypoints", "name");
 
     public CompletableFuture<CatalogRoutePreviewData> getRoutePreview(String routeId) {
+        return getRoutePreview(routeId, 0);
+    }
+
+    /**
+     * The map preview of one route version. Naming the version lets the catalog serve it from
+     * its edge cache; 0 asks for whatever is current.
+     */
+    public CompletableFuture<CatalogRoutePreviewData> getRoutePreview(String routeId, int version) {
         if (!isValidRouteId(routeId)) {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("Invalid catalog route ID"));
         }
-        HttpRequest request = request("routes/" + routeId + "/preview").GET().build();
+        String path = "routes/" + routeId + "/preview" + (version > 0 ? "?v=" + version : "");
+        HttpRequest request = request(path).GET().build();
         return sendJson(request, MAX_LIST_BYTES, 200).thenApply(CatalogJson::parsePreview);
     }
 
@@ -388,10 +405,13 @@ public final class RouteCatalogClient {
     }
 
     private static final class HttpTransport implements Transport {
-        private final HttpClient client = HttpClient.newBuilder()
+        // One client for the whole game session: its pooled HTTP/2 connection makes every
+        // catalog screen after the first skip DNS, TCP and TLS.
+        private static final HttpClient SHARED = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
+        private final HttpClient client = SHARED;
 
         @Override
         public CompletableFuture<Response> send(HttpRequest request, int maximumBytes) {

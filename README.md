@@ -66,9 +66,6 @@ it does not produce one universal jar:
 For Minecraft 26.3, shared renderer sources with relocated GPU imports are generated
 at build time. Version-specific APIs remain in the target's `*Compat` classes.
 
-CODEC Specification
-See [CODEC.md](CODEC.md) for the full specification.
-
 API for Other Mods
 
 Waypointer exposes a Fabric entrypoint API for other client mods:

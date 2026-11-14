@@ -314,6 +314,7 @@ public final class WaypointerScreen extends Screen {
         browseButton = new OverlayButton(0, 0, BROWSE_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.browse"),
                 b -> RouteCatalogScreen.open(this));
+        RouteCatalogScreen.warmUp();
         browseButton.icon(Icons.Icon.GLOBE);
         browseButton.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.main.browse.tooltip")));

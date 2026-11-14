@@ -99,11 +99,9 @@ public final class RouteCatalogScreen extends Screen {
     private static final int SCROLLBAR_INSET = 2;
     private static final int ICON_BTN_W = 24;
     private static final int SEARCH_DEBOUNCE_TICKS = 4;
-    private static final int SEARCH_CACHE_LIMIT = 32;
     private static final int PREVIEW_DELAY_TICKS = 1;
-    private static final int PREVIEW_PREFETCH = 16;
-    private static final int PREVIEW_PARALLEL = 3;
-    private static final int PREVIEW_CACHE_LIMIT = 24;
+    private static final int PREVIEW_PREFETCH = 64;
+    private static final int PREVIEW_PARALLEL = 6;
     private static final int ZONE_ROW_H = GuiTokens.ROW_H;
     private static final int ZONE_DROPDOWN_MIN_W = 150;
     private static final long MANUAL_REFRESH_COOLDOWN_NANOS = 10_000_000_000L;
@@ -131,8 +129,8 @@ public final class RouteCatalogScreen extends Screen {
     private boolean manualRefreshCooldownArmed;
     private long manualRefreshAllowedAtNanos;
     private int displayedRefreshCooldownSeconds = -1;
-    private final LinkedHashMap<String, CatalogPage> searchCache =
-            boundedPageCache(SEARCH_CACHE_LIMIT);
+    private final CatalogSessionCache session;
+    private final LinkedHashMap<String, CatalogPage> searchCache;
     private boolean refocusSearchAfterRebuild;
     private int pendingSearchCursor = -1;
     private int pendingSearchHighlight = -1;
@@ -144,7 +142,7 @@ public final class RouteCatalogScreen extends Screen {
     private boolean showingDetail;
     private boolean wideLayout;
 
-    private final LinkedHashMap<String, CatalogRoutePreview> previews = boundedPageCache(PREVIEW_CACHE_LIMIT);
+    private final LinkedHashMap<String, CatalogRoutePreview> previews;
     private final Set<String> previewFailures = new HashSet<>();
     private String previewWantedId;
     private final Set<String> previewLoading = new HashSet<>();
@@ -195,6 +193,9 @@ public final class RouteCatalogScreen extends Screen {
         this.parent = parent;
         this.catalogClient = catalogClient;
         this.manager = manager;
+        this.session = CatalogSessionCache.forApiRoot(catalogClient.apiRoot());
+        this.searchCache = session.pages;
+        this.previews = session.previews;
         browser.setZoneFilter(initialZoneFilterId(
                 manager == null ? null : manager.currentZone()));
         browser.setHere(playerPlace(manager));
@@ -219,6 +220,27 @@ public final class RouteCatalogScreen extends Screen {
     public static void open(Screen parent) {
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new RouteCatalogScreen(parent, RouteCatalogClient.production()));
+    }
+
+    private static boolean warmingUp;
+
+    /**
+     * Loads the unfiltered catalog list in the background (at most once a minute) so the
+     * community browser opens on it at once. Called when the main Waypointer screen opens.
+     */
+    public static void warmUp() {
+        if (warmingUp) return;
+        RouteCatalogClient client = RouteCatalogClient.production();
+        CatalogSessionCache session = CatalogSessionCache.forApiRoot(client.apiRoot());
+        if (session.pagesFresh(System.nanoTime())) return;
+        warmingUp = true;
+        Minecraft minecraft = Minecraft.getInstance();
+        client.listRoutes().whenComplete((page, failure) -> minecraft.execute(() -> {
+            warmingUp = false;
+            if (failure != null || page == null || session.pagesFresh(System.nanoTime())) return;
+            session.pages.put(searchCacheKey(null, ""), page);
+            session.markPagesFetched(System.nanoTime());
+        }));
     }
 
     @Override
@@ -396,7 +418,7 @@ public final class RouteCatalogScreen extends Screen {
             restartAppendOnReentry = false;
             if (restartAppend) {
                 requestPage(browser.nextCursor(), true);
-            } else {
+            } else if (!showSessionPage()) {
                 refreshCatalog();
             }
         }
@@ -929,13 +951,45 @@ public final class RouteCatalogScreen extends Screen {
         manualRefreshCooldownArmed = true;
         manualRefreshAllowedAtNanos = now + MANUAL_REFRESH_COOLDOWN_NANOS;
         displayedRefreshCooldownSeconds = -1;
-        searchCache.clear();
+        session.clearPages();
         refreshCatalog();
     }
 
     private void loadMore() {
         if (browser.nextCursor() == null || listLoading || appending) return;
         requestPage(browser.nextCursor(), true);
+    }
+
+    /**
+     * Opens on the list this session last showed, then refreshes it quietly when it is older
+     * than {@link CatalogSessionCache#FRESH_NANOS}. Returns false when nothing is cached yet.
+     */
+    private boolean showSessionPage() {
+        browser.submitPendingSearch();
+        CatalogPage cached = cachedSearchPage(searchCache, browser.zoneFilter(),
+                browser.normalizedQuery(), browser.tagFilter(), browser.sort());
+        if (cached == null) return false;
+        showCachedPage(cached);
+        if (!session.pagesFresh(System.nanoTime())) revalidatePage();
+        return true;
+    }
+
+    /** Refreshes the shown list without clearing it, a loading line, or an error if it fails. */
+    private void revalidatePage() {
+        int ticket = requests.beginList(false);
+        listRequested = true;
+        String query = browser.normalizedQuery();
+        String zone = browser.zoneFilter();
+        String tag = browser.tagFilter();
+        CatalogBrowserModel.Sort sort = browser.sort();
+        catalogClient.listRoutes(query, zone, tag, sort.id, null)
+                .whenComplete((page, failure) -> runOnClient(() -> {
+            if (failure != null || !requests.acceptsList(ticket) || listLoading || appending) return;
+            searchCache.put(searchCacheKey(zone, query, tag, sort), page);
+            session.markPagesFetched(System.nanoTime());
+            applyPage(page, false);
+            rebuildWidgets();
+        }));
     }
 
     private void requestPage(String cursor, boolean append) {
@@ -968,7 +1022,10 @@ public final class RouteCatalogScreen extends Screen {
                 browser.markLoadFailed(append);
             } else {
                 lastLoadFailed = false;
-                if (!append) searchCache.put(searchCacheKey(zone, query, tag, sort), page);
+                if (!append) {
+                    searchCache.put(searchCacheKey(zone, query, tag, sort), page);
+                    session.markPagesFetched(System.nanoTime());
+                }
                 applyPage(page, append);
             }
             rebuildWidgets();
@@ -1013,7 +1070,7 @@ public final class RouteCatalogScreen extends Screen {
         previewQueue.clear();
         for (CatalogRouteSummary route : routes) {
             if (previewQueue.size() >= PREVIEW_PREFETCH) break;
-            if (!previews.containsKey(route.id()) && !previewFailures.contains(route.id())) previewQueue.add(route);
+            if (!previews.containsKey(CatalogSessionCache.previewKey(route)) && !previewFailures.contains(route.id())) previewQueue.add(route);
         }
     }
 
@@ -1030,7 +1087,7 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     private boolean needsPreview(CatalogRouteSummary route) {
-        return !previews.containsKey(route.id()) && !previewFailures.contains(route.id())
+        return !previews.containsKey(CatalogSessionCache.previewKey(route)) && !previewFailures.contains(route.id())
                 && !previewLoading.contains(route.id());
     }
 
@@ -1038,7 +1095,7 @@ public final class RouteCatalogScreen extends Screen {
         String id = route.id();
         int ticket = previewTicket;
         previewLoading.add(id);
-        catalogClient.getRoutePreview(id)
+        catalogClient.getRoutePreview(id, route.version())
                 .thenApply(CatalogRoutePreview::of)
                 .exceptionallyCompose(missing -> catalogClient.getRoute(id)
                         .thenApply(details -> validateDetails(route, details))
@@ -1050,7 +1107,7 @@ public final class RouteCatalogScreen extends Screen {
                     if (failure != null || preview == null) {
                         previewFailures.add(id);
                     } else {
-                        previews.put(id, preview);
+                        previews.put(CatalogSessionCache.previewKey(route), preview);
                     }
                 }));
     }
@@ -1397,7 +1454,7 @@ public final class RouteCatalogScreen extends Screen {
 
     private CatalogRoutePreview.Point renderPreview(GuiGraphicsExtractor graphics, CatalogRouteSummary route,
                                                     int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
-        CatalogRoutePreview preview = previews.get(route.id());
+        CatalogRoutePreview preview = previews.get(CatalogSessionCache.previewKey(route));
         if (preview != null) return preview.render(graphics, font, x1, y1, x2, y2, mouseX, mouseY);
         graphics.fill(x1, y1, x2, y2, 0x40000000);
         graphics.fill(x1, y1, x2, y1 + 1, BORDER);
