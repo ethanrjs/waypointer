@@ -231,11 +231,32 @@ public final class WaypointGroup {
     }
 
     public int enabledMainWaypointCount() {
-        int count = 0;
-        for (int i = 0; i < waypoints.size(); i++) {
-            if (!isSubwaypoint(i) && isWaypointEnabled(i)) count++;
+        return mainIndex().enabledMainCount;
+    }
+
+    /** Enabled main waypoints before {@code index}: a progress stage's place in the route. */
+    public int enabledMainsBefore(int index) {
+        int[] through = mainIndex().enabledMainsThrough;
+        if (index <= 0 || through.length == 0) return 0;
+        return through[Math.min(index, through.length) - 1];
+    }
+
+    private long reachedCountVersion = -1;
+    private int reachedCount;
+
+    /** Reached enabled main waypoints of a static route, kept until the route or its reach state changes. */
+    int staticReachedMainCount() {
+        long version = contentVersion();
+        if (version != reachedCountVersion) {
+            int count = 0;
+            for (int i = 0; i < waypoints.size(); i++) {
+                if (isSubwaypoint(i) || isWaypointDisabled(i)) continue;
+                if (isStaticWaypointReached(i)) count++;
+            }
+            reachedCount = count;
+            reachedCountVersion = version;
         }
-        return count;
+        return reachedCount;
     }
 
     public int currentMainIndex() {
@@ -252,12 +273,7 @@ public final class WaypointGroup {
     public int currentMainOrdinal() {
         int current = currentMainIndex();
         if (current < 0) return enabledMainWaypointCount();
-
-        int ordinal = 0;
-        for (int i = 0; i <= current; i++) {
-            if (!isSubwaypoint(i) && isWaypointEnabled(i)) ordinal++;
-        }
-        return ordinal;
+        return mainIndex().enabledMainsThrough[current];
     }
 
     public int mainOrdinal(int index) {
@@ -1555,8 +1571,15 @@ public final class WaypointGroup {
 
         final int[] lastMainThrough;
 
+        final int enabledMainCount;
+        /** Enabled main waypoints at or before each index. */
+        final int[] enabledMainsThrough;
+
         private MainIndex(int version, int mainCount, boolean anyStyleOverride, int subwaypointFlags,
-                          int anyFlags, int everyFlags, int[] mainsThrough, int[] lastMainThrough) {
+                          int anyFlags, int everyFlags, int[] mainsThrough, int[] lastMainThrough,
+                          int enabledMainCount, int[] enabledMainsThrough) {
+            this.enabledMainCount = enabledMainCount;
+            this.enabledMainsThrough = enabledMainsThrough;
             this.version = version;
             this.mainCount = mainCount;
             this.anyStyleOverride = anyStyleOverride;
@@ -1571,6 +1594,8 @@ public final class WaypointGroup {
             int size = waypoints.size();
             int[] mainsThrough = new int[size];
             int[] lastMainThrough = new int[size];
+            int[] enabledMainsThrough = new int[size];
+            int enabledMains = 0;
             int mains = 0;
             int lastMain = -1;
             boolean anyStyleOverride = false;
@@ -1584,15 +1609,17 @@ public final class WaypointGroup {
                 if (!waypoint.isSubwaypoint()) {
                     mains++;
                     lastMain = i;
+                    if (!waypoint.isDisabled()) enabledMains++;
                 } else {
                     subwaypointFlags |= waypoint.flags();
                 }
                 anyStyleOverride |= !waypoint.styleOverride().isEmpty();
                 mainsThrough[i] = mains;
                 lastMainThrough[i] = lastMain;
+                enabledMainsThrough[i] = enabledMains;
             }
             return new MainIndex(waypoints.version, mains, anyStyleOverride, subwaypointFlags,
-                    anyFlags, everyFlags, mainsThrough, lastMainThrough);
+                    anyFlags, everyFlags, mainsThrough, lastMainThrough, enabledMains, enabledMainsThrough);
         }
     }
 
@@ -1631,6 +1658,7 @@ public final class WaypointGroup {
     private void ensureStaticReachState() {
         if (staticReached == null || staticReached.length != waypoints.size()) {
             staticReached = new boolean[waypoints.size()];
+            reachedVersion++;
         }
     }
 

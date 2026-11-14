@@ -151,6 +151,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         labelProjector.prepare(renderer, camera, drawIrisHudBoxes || config.labelFollowCameraEffects());
         int screenW = g.guiWidth();
         int screenH = g.guiHeight();
+        labelScreenW = screenW;
+        labelScreenH = screenH;
         if (drawEditModeSubtitle) {
             drawEditModeSubtitle(g, font, screenW, screenH);
         }
@@ -177,6 +179,16 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             }
         }
         clearLabelCandidates();
+    }
+
+    private int labelScreenW;
+    private int labelScreenH;
+
+    /** Static routes' labels can wait for their raycast; none of them decides another label's fate. */
+    static boolean deferLabelVisibility(WaypointGroup group, Waypoint waypoint) {
+        return group.loadMode() == WaypointGroup.LoadMode.STATIC
+                && !CompassMarkerState.isTarget(waypoint)
+                && !(group.runtimeOnly() && group.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX));
     }
 
     private static void drawEditModeSubtitle(GuiGraphicsExtractor g, Font font,
@@ -339,12 +351,19 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             }
             double sx = labelScreenScratch[0];
             double sy = labelScreenScratch[1];
-            if (lineOfSight(group, w)
-                    && !shouldRenderProjectedDepthCheckedWaypoint(
-                            mc, level, w, sx, sy, screenW, screenH)) {
-                return;
-            }
             if (!WaypointLabelAppearance.nearScreen(sx, sy, screenW, screenH)) return;
+            // Static routes can offer far more labels than the budget draws, so their raycast
+            // waits until selection reaches them (see drawBudgetedLabels). Labels whose presence
+            // decides another's (sequence de-duplication, compass and structure pairs) check now.
+            boolean losPending = false;
+            if (lineOfSight(group, w)) {
+                if (deferLabelVisibility(group, w)) {
+                    losPending = true;
+                } else if (!shouldRenderProjectedDepthCheckedWaypoint(
+                        mc, level, w, sx, sy, screenW, screenH)) {
+                    return;
+                }
+            }
 
             float labelScale = labelScaleForDepth(
                     labelProjector.depth(ax, ay, az),
@@ -366,6 +385,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             candidate.focused = WaypointLabelAppearance.focused(sx, sy, screenW * .5, screenH * .5);
             candidate.current = state == State.CURRENT;
             candidate.detail = WaypointLabelAppearance.showDetail(appearance, distanceSq, candidate.focused);
+            candidate.losPending = losPending;
             if (!hasLabelRows(appearance, group, w, candidate.detail)
                     && ("NONE".equals(appearance.waypointIcon()) || !labelAlphaVisible(alpha))) {
                 candidate.clear();
@@ -455,20 +475,39 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         count = Math.min(count, labelCandidateCount);
         if (count <= 0) return;
         boolean overlap = false;
-        for (int i = 0; i < labelCandidateCount; i++) overlap |= labelCandidates.get(i).appearance.preventLabelOverlap();
+        boolean losPending = false;
+        for (int i = 0; i < labelCandidateCount; i++) {
+            LabelCandidate candidate = labelCandidates.get(i);
+            overlap |= candidate.appearance.preventLabelOverlap();
+            losPending |= candidate.losPending;
+        }
         if (overlap) {
-            for (int i = 0; i < labelCandidateCount; i++) {
-                prepareCandidateRows(labelCandidates.get(i));
-                prepareCandidateBounds(font, labelCandidates.get(i));
-            }
+            // Sorting needs only priority and distance; rows and bounds are built lazily for the
+            // labels selection actually considers, not for every candidate.
             labelCandidates.subList(0, labelCandidateCount).sort(Comparator
                     .comparingInt((LabelCandidate c) -> WaypointLabelAppearance.priority(c.current, c.focused))
                     .thenComparingDouble(c -> c.distanceSquared));
+        } else if (losPending) {
+            labelCandidates.subList(0, labelCandidateCount).sort(LABEL_NEAREST_FIRST);
         } else {
             if (count < labelCandidateCount) selectNearestLabels(count);
             labelCandidates.subList(0, count).sort(LABEL_NEAREST_FIRST);
         }
-        selectLabelsForDrawing(labelCandidates, labelCandidateCount, count, overlap, drawnLabelCandidates);
+        boolean layout = overlap;
+        selectLabelsForDrawing(labelCandidates, labelCandidateCount, count, overlap, drawnLabelCandidates,
+                candidate -> {
+                    if (candidate.losPending) {
+                        if (!shouldRenderProjectedDepthCheckedWaypoint(Minecraft.getInstance(),
+                                Minecraft.getInstance().level, candidate.waypoint,
+                                candidate.screenX, candidate.screenY, labelScreenW, labelScreenH)) return false;
+                        candidate.losPending = false;
+                    }
+                    if (layout) {
+                        prepareCandidateRows(candidate);
+                        prepareCandidateBounds(font, candidate);
+                    }
+                    return true;
+                });
         for (LabelCandidate candidate : drawnLabelCandidates) {
             prepareCandidateRows(candidate);
             drawCandidateLabel(g, font, candidate);
@@ -477,9 +516,17 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
 
     static void selectLabelsForDrawing(List<LabelCandidate> candidates, int candidateCount, int budget,
                                        boolean preventOverlap, List<LabelCandidate> selected) {
+        selectLabelsForDrawing(candidates, candidateCount, budget, preventOverlap, selected, candidate -> true);
+    }
+
+    /** Fills the budget in candidate order; {@code admit} drops a label (occluded) or prepares it first. */
+    static void selectLabelsForDrawing(List<LabelCandidate> candidates, int candidateCount, int budget,
+                                       boolean preventOverlap, List<LabelCandidate> selected,
+                                       java.util.function.Predicate<LabelCandidate> admit) {
         selected.clear();
         for (int i = 0; i < candidateCount && selected.size() < budget; i++) {
             LabelCandidate candidate = candidates.get(i);
+            if (!admit.test(candidate)) continue;
             if (preventOverlap) acceptLabel(candidate, selected);
             else selected.add(candidate);
         }
@@ -669,12 +716,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             return routeProgressText(group);
         }
         int stage = group.isSubwaypoint(index) ? group.parentMainIndex(index) : index;
-        int total = 0, preceding = 0;
-        for (int i = 0; i < group.size(); i++) {
-            if (group.isSubwaypoint(i) || !group.isWaypointEnabled(i)) continue;
-            total++;
-            if (i < stage) preceding++;
-        }
+        int total = group.enabledMainWaypointCount();
+        int preceding = group.enabledMainsBefore(stage);
         return formatProgressPercent(total == 0 ? 0 : preceding * 100.0 / total);
     }
 
@@ -772,6 +815,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         float alpha;
         float scale;
         boolean rowsBuilt;
+        /** Line of sight still to be checked when selection reaches this label. */
+        boolean losPending;
 
         void set(WaypointGroup group, int index, Waypoint waypoint, String routeProgressText,
                  boolean hasSubwaypoints, double screenX,
@@ -794,6 +839,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             appearance = null;
             rows.clear();
             rowsBuilt = false;
+            losPending = false;
             group = null;
             waypoint = null;
             routeProgressText = null;

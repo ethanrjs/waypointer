@@ -1527,6 +1527,26 @@ class WaypointWorldRenderer {
         int currentIdx = g.currentIndex();
         boolean showCompleted = styleFor(g, null).showCompleted();
         int beamIndex = currentBeamIndex(g);
+        if (!g.hasWaypointStyleOverrides()) {
+            // Every point shares the route's beam settings, so OFF draws nothing and CURRENT can
+            // only draw the current point and a fading outgoing one: don't walk the whole route.
+            WaypointerConfig routeStyle = styleFor(g, null);
+            WaypointerConfig.BeaconBeamMode routeMode = effectiveBeaconBeamMode(routeStyle);
+            if (routeMode == WaypointerConfig.BeaconBeamMode.OFF
+                    || routeStyle.useBeaconBeamTextures() != texturedBeams) return;
+            WaypointSkipFade fade = WaypointSkipFade.get(g);
+            // While a skip fade runs, the full walk below also records whether the outgoing point
+            // was normally visible, which marker drawing reads; fades last a fraction of a second.
+            boolean fading = fade != null && fade.active() && routeStyle.showCurrentSequenceWaypoint();
+            if (routeMode == WaypointerConfig.BeaconBeamMode.CURRENT && !fading) {
+                if (beamIndex >= 0 && beamIndex < g.size()) {
+                    emitBeaconBeamIfVisible(ps, quads, g, beamIndex,
+                            currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                            nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level, texturedBeams);
+                }
+                return;
+            }
+        }
         boolean[] currentVisited = {false};
         forEachFadingVisibleIndex(g, i -> {
             if (i == beamIndex) currentVisited[0] = true;
