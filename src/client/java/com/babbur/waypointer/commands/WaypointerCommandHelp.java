@@ -122,6 +122,8 @@ final class WaypointerCommandHelp {
                                     "export", "export routes", "export bare"),
                             new HelpRow(" import [payload]", "waypointer.command.help.import",
                                     "import", "import WP:..."),
+                            new HelpRow(" import relative [payload]", "waypointer.command.help.import_relative",
+                                    "import relative"),
                             new HelpRow(" importfile <path>", "waypointer.command.help.importfile",
                                     "importfile C:\\routes\\waypoints.json"),
                             new HelpRow(" importchat <handle>", "waypointer.command.help.importchat",

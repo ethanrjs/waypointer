@@ -180,6 +180,12 @@ public record Waypoint(
                 preciseBlockCenter(nz), styleOverride);
     }
 
+    /** The same waypoint moved by whole blocks, keeping its position within the block. */
+    public Waypoint translated(int dx, int dy, int dz) {
+        return withPreciseSixteenths(preciseX + dx * PRECISE_SCALE, preciseY + dy * PRECISE_SCALE,
+                preciseZ + dz * PRECISE_SCALE);
+    }
+
     public Waypoint withPreciseSixteenths(int nextPreciseX, int nextPreciseY, int nextPreciseZ) {
         return new Waypoint(x, y, z, name, color, flags, customRadius,
                 tempMode, expiresAtMillis, nextPreciseX, nextPreciseY, nextPreciseZ, styleOverride);

@@ -17,6 +17,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.RelativePlacement;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.DungeonRoutePacks;
@@ -379,6 +380,52 @@ final class WaypointerShareCommands {
 
     int scheduleImport(FabricClientCommandSource src, String payload, String origin) {
         return scheduleImport(src, payload, origin, null);
+    }
+
+    int runImportRelativeFromClipboard(FabricClientCommandSource src) {
+        String text = getClipboard();
+        if (text == null || text.isBlank()) {
+            error(src, Component.translatable(
+                    "waypointer.command.import.clipboard_empty",
+                    WaypointCodec.MAGIC));
+            return 0;
+        }
+        return scheduleRelativeImport(src, text, "clipboard");
+    }
+
+    int runImportRelativeArgument(FabricClientCommandSource src, String payload) {
+        String cached = chatImportCache.get(payload);
+        return scheduleRelativeImport(src, cached != null ? cached : payload, cached != null ? "chat" : "argument");
+    }
+
+    /**
+     * /wp import relative: imports routes so the first waypoint lands on the block the player is
+     * standing on (where they stood when they ran the command), keeping the routes' shape.
+     */
+    int scheduleRelativeImport(FabricClientCommandSource src, String payload, String origin) {
+        Zone targetZone = manager.currentZone();
+        var position = src.getPosition();
+        int x = (int) Math.floor(position.x);
+        int y = (int) Math.floor(position.y) - 1;
+        int z = (int) Math.floor(position.z);
+        if (!CodecWorker.run(() -> WaypointImporter.relativeImport(() -> WaypointCommandImport.decode(payload)),
+                result -> finishRelativeImport(src, result, origin, targetZone, x, y, z))) {
+            codecBusy(src);
+            return 0;
+        }
+        return 1;
+    }
+
+    void finishRelativeImport(FabricClientCommandSource src, WaypointCommandImport.Result result,
+                              String origin, Zone targetZone, int x, int y, int z) {
+        if (result != null && result.error() == null) {
+            if (!(result.decoded() instanceof UniversalShareCodec.Waypoints waypoints)) {
+                error(src, Component.translatable("waypointer.command.import.relative.routes_only"));
+                return;
+            }
+            RelativePlacement.placeFirstWaypointAt(waypoints.result().groups(), x, y, z);
+        }
+        finishImport(src, result, origin, targetZone, null);
     }
 
     int scheduleImport(FabricClientCommandSource src, String payload, String origin,

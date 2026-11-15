@@ -195,6 +195,11 @@ public final class WaypointerCommands {
                                 .executes(ctx -> shareCommands.runExport(ctx.getSource(), WaypointCodec.Options.NO_NAMES))))
                 .then(literal("import")
                         .executes(ctx -> shareCommands.runImportFromClipboard(ctx.getSource()))
+                        .then(literal("relative")
+                                .executes(ctx -> shareCommands.runImportRelativeFromClipboard(ctx.getSource()))
+                                .then(argument("payload", StringArgumentType.greedyString())
+                                        .executes(ctx -> shareCommands.runImportRelativeArgument(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "payload")))))
                         .then(argument("payload", StringArgumentType.greedyString())
                                 .suggests(suggestions.suggestImportPayloads())
                                 .executes(ctx -> shareCommands.runImportArgument(ctx.getSource(),

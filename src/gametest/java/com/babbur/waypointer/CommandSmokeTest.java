@@ -62,6 +62,33 @@ final class CommandSmokeTest {
             check(manager.get(route.id()) == null, "route delete confirm removes the target route");
             wp(client, "folder delete Smoke folder");
         });
+        importRelative(context, manager);
+    }
+
+    /** A ColeWeight list copied to the clipboard lands with its first waypoint under the player. */
+    private static void importRelative(ClientGameTestContext context, ActiveGroupManager manager) {
+        java.util.Set<String> before = context.computeOnClient(client -> new java.util.HashSet<>(
+                manager.allGroups().stream().map(WaypointGroup::id).toList()));
+        int[] expected = context.computeOnClient(client -> {
+            client.keyboardHandler.setClipboard("[{\"x\":552,\"y\":47,\"z\":555,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":\"1\"}},"
+                    + "{\"x\":546,\"y\":48,\"z\":553,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":\"2\"}}]");
+            wp(client, "import relative");
+            return new int[]{(int) Math.floor(client.player.getX()), (int) Math.floor(client.player.getY()) - 1,
+                    (int) Math.floor(client.player.getZ())};
+        });
+        context.waitFor(client -> manager.allGroups().stream().anyMatch(g -> !before.contains(g.id())), 100);
+        context.runOnClient(client -> {
+            WaypointGroup imported = manager.allGroups().stream().filter(g -> !before.contains(g.id()))
+                    .findFirst().orElseThrow();
+            check(imported.size() == 2, "relative import keeps both waypoints");
+            Waypoint first = imported.get(0);
+            Waypoint second = imported.get(1);
+            check(first.x() == expected[0] && first.y() == expected[1] && first.z() == expected[2],
+                    "first waypoint should be on the block under the player");
+            check(second.x() - first.x() == -6 && second.y() - first.y() == 1 && second.z() - first.z() == -2,
+                    "the route keeps its shape");
+            manager.remove(imported.id());
+        });
     }
 
     private static WaypointGroup target(ActiveGroupManager manager, String name) {
