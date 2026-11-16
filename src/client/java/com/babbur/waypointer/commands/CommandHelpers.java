@@ -4,6 +4,7 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.RouteIds;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -50,10 +51,11 @@ public final class CommandHelpers {
     static MutableComponent routeName(WaypointGroup route) {
         String name = route == null || route.name().isBlank() ? "?" : route.name();
         if (route == null) return Component.literal(name).withStyle(ChatFormatting.AQUA);
-        return Component.literal(name).withStyle(Style.EMPTY
+        String id = RouteIds.routeId(route);
+        return Component.literal(id == null ? name : name + " (" + id + ")").withStyle(Style.EMPTY
                 .withColor(ChatFormatting.AQUA)
                 .withClickEvent(new ClickEvent.RunCommand(
-                        "/waypointer gui " + StringArgumentType.escapeIfRequired(route.id())))
+                        "/waypointer gui " + StringArgumentType.escapeIfRequired(id == null ? route.id() : id)))
                 .withHoverEvent(new HoverEvent.ShowText(
                         Component.translatable("waypointer.command.route.open_hover"))));
     }

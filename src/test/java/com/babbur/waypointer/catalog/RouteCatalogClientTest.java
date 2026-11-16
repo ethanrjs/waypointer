@@ -135,6 +135,10 @@ class RouteCatalogClientTest {
         assertEquals(1, preview.groups().size());
         assertEquals(new CatalogRoutePreviewData.Point(5, 71, 3, 0x0000FF, true),
                 preview.groups().getFirst().points().get(1));
+
+        client(transport).getRoutePreview("Abcdefghijklmnopqrstuv", 3).join();
+        assertEquals("https://catalog.example/api/routes/Abcdefghijklmnopqrstuv/preview?v=3",
+                transport.request.uri().toString());
     }
 
     @Test

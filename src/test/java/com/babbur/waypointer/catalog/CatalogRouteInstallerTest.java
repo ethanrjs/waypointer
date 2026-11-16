@@ -186,6 +186,7 @@ class CatalogRouteInstallerTest {
         assertEquals(List.of("hub", "garden"), manager.allGroupsList().stream()
                 .map(WaypointGroup::zoneId).toList());
         WaypointGroup updatedGarden = manager.get(updated.groupIds().get(1));
+        assertEquals(garden.routeNumber(), updatedGarden.routeNumber(), "catalog updates keep local route IDs");
         assertEquals(false, updatedGarden.enabled());
         assertEquals(folder, manager.folderForGroup(updatedGarden.id()));
         assertEquals(3, updatedGarden.size());
@@ -236,6 +237,7 @@ class CatalogRouteInstallerTest {
         assertEquals(2, manager.allGroups().size());
         assertEquals(null, manager.get(oldGroup.id()));
         WaypointGroup updatedGroup = manager.get(updated.groupIds().getFirst());
+        assertEquals(oldGroup.routeNumber(), updatedGroup.routeNumber(), "catalog updates keep local route IDs");
         assertEquals(2, updatedGroup.catalogProvenance().routeVersion());
         assertEquals(false, updatedGroup.enabled());
         assertEquals(oldGroup.stylePresetId(), updatedGroup.stylePresetId());

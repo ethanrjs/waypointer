@@ -1,48 +1,58 @@
-Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
 
-### Features
+Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
+<img width="2560" height="1369" alt="2026-11-15_02 21 56" src="https://github.com/user-attachments/assets/3e9e5119-6e8b-4f70-9dd8-030f452afd15" />
+
+## Features
 
 - Per-zone waypoints
-- Dungeon routes support
-- Crystal Hollows structure detection + Map
+- Dungeon rooms support
+- Crystal Hollows structure detection
 - In-Game Route Browser
 - Ordered routes
 - Subwaypoints
 - Waypoint Painting
-- Global/Zone/Route/Waypoint level customization
-- Share from chat
 - Keybindings
 - Waypoint skipping
 - Wishing Compass solver
+- Customizable waypoint visuals
 - Works with shaders
 - ...and so much more!
 
-Waypoint Import/Export Compatibility
+Supports ALL waypoint mods! (i think)
 
-- Waypointer codes (I/E)
-- Coleweight/SkyHanni (I/E)
-- Skytils 1.x V1 (I/E) and V2 (I)
-- Skyblocker V1 (I/E)
-- ChunkLogger RouteSkipper (I)
-- Soopy V1 (I)
-- Firmament (I)
-- Skysoft (I/E) and JSON libraries (I)
-- Odin (I/E)
-- Generic JSON-based (I)
+Waypointer route-library codes preserve folder membership and folder colors.
+Config export uses universal `WP:` V10 kind-3 codes. Legacy `WPC:` versions 1-6 remain importable.
 
-### Community routes
+## Route and waypoint IDs
+
+`@mod:1` names route 1 in Mines of Divan; `@mod:1#5` names its fifth main waypoint.
+A subwaypoint uses a suffix such as `@mod:1#5.1`. Route lists show these IDs by default,
+and route and waypoint menus always offer **Copy ID**.
+
+- `/wp route @mod:1 rename Divan loop` edits that route without changing the recording target.
+- `/wp waypoint @mod:1#5 rename Chest` edits a waypoint from any zone.
+- `/wp move @mod:1#1 @mod:1#5` reorders waypoints within the same route.
+- `/wp edit @mod:1`, `/wp waypoints @mod:1`, and `/wp export @mod:1#5` accept IDs too.
+
+IDs belong to your local installation. Imported routes receive their own local IDs;
+use an exported code or a catalog link to share a route with someone else. Route numbers
+survive restarts and are not reused after deletion. Moving a route to another zone
+gives it a new ID. Waypoint suffixes follow the editor's numbering, so inserting,
+removing, or reordering waypoints can change them. Tab completion helps find IDs.
+
+## Community routes
 
 The 'Community' button next to the route search opens the catalog of routes
 other players published. Pick a route to preview and install it. Publish your
-own routes with the **Publish** button in the route editor.
+own routes with the `Publish` button in the route editor.
 
-### Skyblocker structure sharing
+## Skyblocker structure sharing
 
 This mod interoperates with the Skyblocker API and has safeguards to prevent abuse and spam. If you are on the Skyblocker team and want me to shut off access to the Skyblocker web socket for users, please create an issue. I can disable it immediately, remotely.
 
-### Requirements
+Requirements
 
-- Minecraft 26.1 to 26.3
+- Minecraft 26.1.x -> 26.3
 - Java 25+
 - Fabric Loader 0.19.3+
 - [Fabric API](https://modrinth.com/mod/fabric-api):
@@ -51,27 +61,12 @@ This mod interoperates with the Skyblocker API and has safeguards to prevent abu
   - Minecraft 26.3: 0.162.0+26.3 or newer compatible 26.3 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
-### Building
+Building
 ```powersh
 ./gradlew buildAllTargets
 ```
-- `build/libs/waypointer-<mod-version>-mc26.1.2.jar`
-- `build/libs/waypointer-<mod-version>-mc26.2.jar`
-- `build/libs/waypointer-<mod-version>-mc26.3.jar`
 
-### API for Other Mods
-
-Waypointer exposes a Fabric entrypoint API for other client mods:
-```json
-{
-  "entrypoints": {
-    "waypointer:api": [
-      "com.example.routes.ExampleWaypointerIntegration"
-    ]
-  }
-}
-```
-
+## API
 See [API.md](API.md) for more details and examples.
 
 ## License

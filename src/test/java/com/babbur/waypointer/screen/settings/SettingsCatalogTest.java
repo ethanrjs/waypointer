@@ -26,7 +26,7 @@ class SettingsCatalogTest {
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
             "namedStyles", "preferredStyleId", "crystalHollowsStyles", "zoneStyles",
-            "beaconMotionSpeed", "beaconWidthScale", "completedWaypointOpacity", "currentWaypointOpacity", "labelBackdropOpacity", "labelDetailDistance", "labelDetailOnDemand", "labelShowCoordinates", "labelShowRouteName", "preventLabelOverlap", "routeLineDashed", "routeLineOpacity", "routeLineWidth", "sequenceContextOpacity", "showWaypointRoleBadge", "tracerCenterGap", "tracerEdgeArrow", "upcomingWaypointOpacity", "waypointIcon",
+            "beaconMotionSpeed", "beaconWidthScale", "completedWaypointOpacity", "currentWaypointOpacity", "labelBackdropOpacity", "labelDetailDistance", "labelDetailOnDemand", "labelShowCoordinates", "labelShowRouteName", "preventLabelOverlap", "routeLineDashed", "routeLineWidth", "sequenceContextOpacity", "showWaypointRoleBadge", "tracerCenterGap", "tracerEdgeArrow", "upcomingWaypointOpacity", "waypointIcon",
             "crystalHollowsCompassRays",
             "minimapScale", "minimapCustomPosition", "minimapPositionX", "minimapPositionY",
             "crystalHollowsDetections",
@@ -106,7 +106,7 @@ class SettingsCatalogTest {
         Setting hideStructures = SettingsCatalog.byId("crystalHollowsHideStructuresFolder");
         assertNotNull(hideStructures);
         assertEquals("Hide Structures folder", hideStructures.label());
-        assertEquals("Hide the Structures folder and its generated waypoints.",
+        assertEquals("",
                 hideStructures.tooltip());
         assertEquals(false, hideStructures.get(config, null));
         hideStructures.set(config, null, true);
@@ -173,7 +173,7 @@ class SettingsCatalogTest {
         WaypointerConfig config = new WaypointerConfig();
         Setting sharing = SettingsCatalog.byId("crystalHollowsSkyblockerSharing");
         assertNotNull(sharing);
-        assertEquals("Share Crystal Hollows structures through the Skyblocker websocket. Skyblocker data can be inaccurate.\n\n"
+        assertEquals("Skyblocker data can be inaccurate.\n\n"
                 + "API.AzureAaron.net receives your Minecraft UUID and profile key proof to authenticate.", sharing.tooltip());
         assertEquals("mining", categoryContaining(sharing.id()));
         assertEquals(true, sharing.get(config, null));
@@ -482,7 +482,7 @@ class SettingsCatalogTest {
 
         assertNotNull(routeIndices);
         assertEquals("Show route indices", routeIndices.label());
-        assertEquals("In the route list, show each route's index number for commands.",
+        assertEquals("",
                 routeIndices.tooltip());
         assertEquals(false, routeIndices.get(new WaypointerConfig(), null));
         assertEquals("routes", SettingsCatalog.categories().stream()
@@ -504,7 +504,7 @@ class SettingsCatalogTest {
 
         assertNotNull(setting);
         assertEquals("Allow stepping back", setting.label());
-        assertEquals("Reaching an earlier waypoint moves the route back to it",
+        assertEquals("",
                 setting.tooltip());
         assertEquals(false, setting.get(new WaypointerConfig(), null));
         assertEquals(Setting.Impact.LOW, setting.impact());
@@ -551,7 +551,7 @@ class SettingsCatalogTest {
 
         assertNotNull(setting);
         assertEquals("Etherwarp alignment sound", setting.label());
-        assertEquals("Minecraft sound ID, e.g. block.note_block.pling. Leave blank to disable.",
+        assertEquals("A Minecraft sound ID, like block.note_block.pling. Blank for none.",
                 setting.tooltip());
         assertEquals(Setting.Kind.TEXT, setting.kind());
         assertTrue(setting.acceptsText("block.note_block.pling"));
@@ -576,7 +576,7 @@ class SettingsCatalogTest {
         assertEquals("All", previous.formatValue((double) SequenceVisibility.ALL));
         assertEquals("32", previous.formatValue(32.0D));
         assertNull(next.numberDisplayValue());
-        assertEquals("Amount of surroundings you want to see. 0-32", next.tooltip());
+        assertEquals("0-32, or All.", next.tooltip());
         assertFalse(previous.tooltip().contains("33"));
         assertEquals(Setting.Kind.BOOL,
                 SettingsCatalog.byId("showCurrentSequenceWaypoint").kind());
@@ -625,7 +625,7 @@ class SettingsCatalogTest {
     void conciseSettingsCopyMatchesTheRenderedControls() {
         assertEquals("Focus mode for temporary waypoints",
                 SettingsCatalog.byId("focusTempWaypoints").label());
-        assertEquals("Show only the temporary waypoint that is active.",
+        assertEquals("",
                 SettingsCatalog.byId("focusTempWaypoints").tooltip());
         assertEquals("Dim prev/next waypoints",
                 SettingsCatalog.byId("dimSequenceContextWaypoints").label());
@@ -655,7 +655,7 @@ class SettingsCatalogTest {
                 SettingsCatalog.byId("autoAddChatTempWaypoints").label());
         assertEquals("Chat share buttons",
                 SettingsCatalog.byId("showWaypointChatShareButtons").label());
-        assertEquals("Overrides imported waypoint colors.",
+        assertEquals("",
                 SettingsCatalog.byId("importedRouteColorMode").tooltip());
         assertEquals("", SettingsCatalog.byId("dungeonEntryPathColor").colorSwatchTooltip());
         assertEquals("", SettingsCatalog.byId("importedRouteDefaultColor").colorSwatchTooltip());

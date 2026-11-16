@@ -7,6 +7,7 @@ import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
@@ -920,8 +921,10 @@ final class WaypointerRouteList {
             icon = Icons.Icon.ROUTE;
         }
         Component title = Component.translatable(key);
-        Component hint = Component.translatable(key.endsWith(".zone")
-                ? "waypointer.screen.main.empty.zone_hint" : key + "_hint");
+        // An empty search needs no hint: the search field is right there.
+        Component hint = key.endsWith(".search") ? Component.empty()
+                : Component.translatable(key.endsWith(".zone")
+                        ? "waypointer.screen.main.empty.zone_hint" : key + "_hint");
 
         int iconSize = Icons.SIZE * EMPTY_ICON_SCALE;
         int lineH = font().lineHeight;
@@ -994,8 +997,8 @@ final class WaypointerRouteList {
             titleColor = ACCENT;
         }
         graphics.text(font(), font().plainSubstrByWidth(title, textMaxWidth), textX, y1 + 4, titleColor, false);
-        String subtitle = RouteListPresentation.roomRouteSubtitle(
-                group.name(), row.roomSecretCount, row.currentRoom);
+        String subtitle = withRouteId(group, RouteListPresentation.roomRouteSubtitle(
+                group.name(), row.roomSecretCount, row.currentRoom));
         graphics.text(font(), font().plainSubstrByWidth(subtitle, textMaxWidth),
                 textX, y1 + 14, TEXT_DIM, false);
         renderRouteToggleChip(graphics, group.enabled(), x2, y1);
@@ -1091,7 +1094,7 @@ final class WaypointerRouteList {
 
     private String routeRowSubtitle(WaypointGroup group) {
         if (group.isEmpty() && !group.temp()) {
-            return Component.translatable("waypointer.screen.main.route.subtitle.empty").getString();
+            return withRouteId(group, Component.translatable("waypointer.screen.main.route.subtitle.empty").getString());
         }
         List<String> parts = new ArrayList<>();
         int secrets = group.routeKind() == WaypointGroup.RouteKind.DUNGEON
@@ -1105,7 +1108,14 @@ final class WaypointerRouteList {
         }
         String progress = progressSummary(group);
         if (!progress.isEmpty()) parts.add(progress);
-        return RouteListPresentation.joinParts(parts);
+        return withRouteId(group, RouteListPresentation.joinParts(parts));
+    }
+
+    private String withRouteId(WaypointGroup group, String subtitle) {
+        String id = screen.config.showRouteIdsInMenus()
+                ? RouteIds.routeId(DungeonRoomRouteLibrary.durableEditTarget(screen.manager, group)) : null;
+        if (id == null) return subtitle;
+        return subtitle == null || subtitle.isEmpty() ? id : RouteListPresentation.joinParts(List.of(id, subtitle));
     }
 
     private static String progressSummary(WaypointGroup group) {

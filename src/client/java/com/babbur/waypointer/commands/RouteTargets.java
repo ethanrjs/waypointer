@@ -2,6 +2,7 @@ package com.babbur.waypointer.commands;
 
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.screen.RouteFolderListModel;
@@ -19,6 +20,8 @@ final class RouteTargets {
     enum Reason { PINNED, EDITED, FIRST }
 
     record Target(WaypointGroup route, Reason reason) {}
+
+    record WaypointAt(WaypointGroup route, int index) {}
 
     record Lookup<T>(T value, Component error) {
         static <T> Lookup<T> of(T value) { return new Lookup<>(value, null); }
@@ -39,7 +42,8 @@ final class RouteTargets {
         if (route == null) return null;
         Zone zone = manager.currentZone();
         Reason reason = route == manager.recordingTarget() ? Reason.PINNED
-                : zone != null && route == manager.lastEditedRoute(zone.id()) ? Reason.EDITED
+                : zone != null && (route == manager.lastEditedRoute(zone.id())
+                        || route == manager.lastEditedRoute(Zone.routeZoneKey(zone.id()))) ? Reason.EDITED
                 : Reason.FIRST;
         return new Target(route, reason);
     }
@@ -57,6 +61,12 @@ final class RouteTargets {
             for (WaypointGroup route : RouteFolderListModel.orderedRoutes(manager, zone.id())) {
                 if (!route.temp() && !route.runtimeOnly()) out.add(route);
             }
+            String sharedZoneId = Zone.routeZoneKey(zone.id());
+            if (!sharedZoneId.equals(zone.id())) {
+                for (WaypointGroup route : RouteFolderListModel.orderedRoutes(manager, sharedZoneId)) {
+                    if (!route.temp() && !route.runtimeOnly()) out.add(route);
+                }
+            }
         }
         WaypointGroup target = manager.targetRoute();
         if (target != null && !out.contains(target)) out.add(target);
@@ -69,6 +79,7 @@ final class RouteTargets {
 
     Lookup<WaypointGroup> route(String rawReference) {
         String reference = unquote(rawReference);
+        if (RouteIds.looksLikeReference(reference)) return routeById(manager, reference);
         List<WaypointGroup> routes = listed();
         if (reference.isEmpty()) {
             return Lookup.fail(Component.translatable("waypointer.command.error.route_missing"));
@@ -82,6 +93,30 @@ final class RouteTargets {
         return byName(routes, reference, WaypointGroup::name,
                 count -> Component.translatable("waypointer.command.error.route_ambiguous", reference, count),
                 () -> Component.translatable("waypointer.command.error.route_not_found", reference, zoneName()));
+    }
+
+    /** A route by ID such as {@code @mod:1}, from any zone. A waypoint ID names its route. */
+    static Lookup<WaypointGroup> routeById(ActiveGroupManager manager, String id) {
+        RouteIds.Reference reference = RouteIds.parse(id);
+        if (reference == null) {
+            return Lookup.fail(Component.translatable("waypointer.command.error.route_id_invalid", id));
+        }
+        WaypointGroup route = manager.findRoute(reference);
+        return route == null
+                ? Lookup.fail(Component.translatable("waypointer.command.error.route_id", id))
+                : Lookup.of(route);
+    }
+
+    /** A waypoint by ID such as {@code @mod:1#15} or {@code @mod:1#2.1}. */
+    static Lookup<WaypointAt> waypointById(ActiveGroupManager manager, String id) {
+        Lookup<WaypointGroup> route = routeById(manager, id);
+        if (!route.ok()) return Lookup.fail(route.error());
+        RouteIds.Reference reference = RouteIds.parse(id);
+        if (!reference.hasWaypoint()) {
+            return Lookup.fail(Component.translatable("waypointer.command.error.waypoint_id_missing", id));
+        }
+        Lookup<Integer> index = waypoint(route.value(), reference.waypointLabel());
+        return index.ok() ? Lookup.of(new WaypointAt(route.value(), index.value())) : Lookup.fail(index.error());
     }
 
     Lookup<RouteFolder> folder(String rawReference) {

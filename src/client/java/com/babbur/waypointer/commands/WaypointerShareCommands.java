@@ -16,7 +16,10 @@ import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteIds;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.RelativePlacement;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.DungeonRoutePacks;
@@ -33,6 +36,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -96,6 +100,52 @@ final class WaypointerShareCommands {
             return 0;
         }
         return scheduleExport(src, toExport, opts, true);
+    }
+
+    int runExportIds(FabricClientCommandSource src, String ids, WaypointCodec.Options opts) {
+        ExportSelection selection = exportSelection(manager, ids);
+        if (selection.error() != null) {
+            error(src, selection.error());
+            return 0;
+        }
+        return scheduleExport(src, selection.groups(), opts, selection.groups().size() > 1);
+    }
+
+    record ExportSelection(List<WaypointGroup> groups, Component error) {
+        static ExportSelection failed(Component error) {
+            return new ExportSelection(List.of(), error);
+        }
+    }
+
+    /** Routes and single waypoints named by IDs such as {@code @mod:1 @mod:2#15}, in the order given. */
+    static ExportSelection exportSelection(ActiveGroupManager manager, String ids) {
+        List<WaypointGroup> groups = new ArrayList<>();
+        for (String id : (ids == null ? "" : ids.trim()).split("[\\s,]+")) {
+            if (id.isEmpty()) continue;
+            RouteIds.Reference reference = RouteIds.parse(id);
+            if (reference != null && reference.hasWaypoint()) {
+                RouteTargets.Lookup<RouteTargets.WaypointAt> waypoint = RouteTargets.waypointById(manager, id);
+                if (!waypoint.ok()) return ExportSelection.failed(waypoint.error());
+                groups.add(singleWaypointRoute(waypoint.value().route(), waypoint.value().index()));
+                continue;
+            }
+            RouteTargets.Lookup<WaypointGroup> route = RouteTargets.routeById(manager, id);
+            if (!route.ok()) return ExportSelection.failed(route.error());
+            if (groups.stream().noneMatch(group -> group == route.value())) groups.add(route.value());
+        }
+        if (groups.isEmpty()) {
+            return ExportSelection.failed(Component.translatable("waypointer.command.error.route_id_missing"));
+        }
+        return new ExportSelection(List.copyOf(groups), null);
+    }
+
+    static WaypointGroup singleWaypointRoute(WaypointGroup route, int index) {
+        WaypointGroup copy = route.exportSnapshot();
+        Waypoint chosen = route.get(index).withSubwaypoint(false);
+        for (int i = copy.size() - 1; i >= 0; i--) copy.remove(i);
+        copy.add(chosen);
+        copy.setName(route.name() + " " + route.displayIndexLabel(index));
+        return copy;
     }
 
     private int scheduleExport(FabricClientCommandSource src,
@@ -379,6 +429,52 @@ final class WaypointerShareCommands {
 
     int scheduleImport(FabricClientCommandSource src, String payload, String origin) {
         return scheduleImport(src, payload, origin, null);
+    }
+
+    int runImportRelativeFromClipboard(FabricClientCommandSource src) {
+        String text = getClipboard();
+        if (text == null || text.isBlank()) {
+            error(src, Component.translatable(
+                    "waypointer.command.import.clipboard_empty",
+                    WaypointCodec.MAGIC));
+            return 0;
+        }
+        return scheduleRelativeImport(src, text, "clipboard");
+    }
+
+    int runImportRelativeArgument(FabricClientCommandSource src, String payload) {
+        String cached = chatImportCache.get(payload);
+        return scheduleRelativeImport(src, cached != null ? cached : payload, cached != null ? "chat" : "argument");
+    }
+
+    /**
+     * /wp import relative: imports routes so the first waypoint lands on the block the player is
+     * standing on (where they stood when they ran the command), keeping the routes' shape.
+     */
+    int scheduleRelativeImport(FabricClientCommandSource src, String payload, String origin) {
+        Zone targetZone = manager.currentZone();
+        var position = src.getPosition();
+        int x = (int) Math.floor(position.x);
+        int y = (int) Math.floor(position.y) - 1;
+        int z = (int) Math.floor(position.z);
+        if (!CodecWorker.run(() -> WaypointImporter.relativeImport(() -> WaypointCommandImport.decode(payload)),
+                result -> finishRelativeImport(src, result, origin, targetZone, x, y, z))) {
+            codecBusy(src);
+            return 0;
+        }
+        return 1;
+    }
+
+    void finishRelativeImport(FabricClientCommandSource src, WaypointCommandImport.Result result,
+                              String origin, Zone targetZone, int x, int y, int z) {
+        if (result != null && result.error() == null) {
+            if (!(result.decoded() instanceof UniversalShareCodec.Waypoints waypoints)) {
+                error(src, Component.translatable("waypointer.command.import.relative.routes_only"));
+                return;
+            }
+            RelativePlacement.placeFirstWaypointAt(waypoints.result().groups(), x, y, z);
+        }
+        finishImport(src, result, origin, targetZone, null);
     }
 
     int scheduleImport(FabricClientCommandSource src, String payload, String origin,

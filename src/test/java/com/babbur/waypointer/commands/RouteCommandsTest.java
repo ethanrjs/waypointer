@@ -2,6 +2,9 @@ package com.babbur.waypointer.commands;
 
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteIds;
+import com.mojang.brigadier.suggestion.Suggestion;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
@@ -16,6 +19,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -258,4 +262,104 @@ class RouteCommandsTest {
                     });
         }
     }
+    @Test
+    void routeAndWaypointIdsReachRoutesInAnyZone() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup here = route("Here", 2);
+        WaypointGroup divan = route("Divan", 3);
+        divan.setZoneId("crystal_hollows_structure_mines_of_divan");
+        manager.fireDataChanged();
+
+        assertEquals("@mod:1", RouteIds.routeId(divan));
+        assertSame(divan, targets.route("@mod:1").value());
+        assertSame(divan, targets.route("@MOD:1#2").value(), "a waypoint ID names its route");
+        assertFalse(targets.route("@mod:2").ok());
+        assertFalse(targets.route("@nope").ok());
+
+        assertEquals(1, waypoints.runRename(messages.source(), "@mod:1#2", "Lever"));
+        assertEquals("Lever", divan.get(1).name());
+        assertEquals("", here.get(1).name(), "the target route is untouched");
+        assertEquals(0, waypoints.runRename(messages.source(), "@mod:1", "Lever"), "a route ID alone names no waypoint");
+        assertEquals(0, waypoints.runRename(messages.source(), "@mod:1#9", "Lever"));
+    }
+
+    @Test
+    void exportIdsSelectRoutesAndSingleWaypointsInOrder() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup first = route("First", 2);
+        WaypointGroup second = route("Second", 3);
+        second.toggleSubwaypoint(1);
+
+        WaypointerShareCommands.ExportSelection selection =
+                WaypointerShareCommands.exportSelection(manager, "@hub:2#1.1, @hub:1 @hub:1");
+
+        assertNull(selection.error());
+        assertEquals(2, selection.groups().size(), "a repeated route is exported once");
+        WaypointGroup single = selection.groups().get(0);
+        assertEquals("Second #1.1", single.name());
+        assertEquals(1, single.size());
+        assertFalse(single.isSubwaypoint(0));
+        assertEquals(second.get(1).x(), single.get(0).x());
+        assertSame(first, selection.groups().get(1));
+        assertEquals(3, second.size(), "exporting one waypoint leaves the route alone");
+
+        assertNotNull(WaypointerShareCommands.exportSelection(manager, "@hub:9").error());
+        assertNotNull(WaypointerShareCommands.exportSelection(manager, "hub:1").error());
+        assertNotNull(WaypointerShareCommands.exportSelection(manager, "  ").error());
+    }
+
+    @Test
+    void idSuggestionsCompleteRoutesThenWaypoints() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        route("First", 2);
+        WaypointGroup divan = route("Divan", 2);
+        divan.setZoneId("crystal_hollows_structure_mines_of_divan");
+        manager.fireDataChanged();
+
+        assertEquals(List.of("@mod:1"), suggestions("@m", false));
+        assertEquals(List.of("@hub:1#"), suggestions("@h", true));
+        assertEquals(List.of("@mod:1#1", "@mod:1#2"), suggestions("@mod:1#", true));
+        assertEquals(List.of("@hub:1", "@mod:1"), suggestions("@", false));
+    }
+
+    @Test
+    void moveAcceptsFullIdsAtBothEndsAndRejectsAnotherRoute() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup current = route("Current", 2);
+        manager.setRecordingTarget(current);
+        WaypointGroup divan = route("Divan", 5);
+        divan.setZoneId("crystal_hollows_structure_mines_of_divan");
+        manager.fireDataChanged();
+        int firstX = divan.get(0).x();
+        assertEquals(1, waypoints.runMoveTo(messages.source(), "@mod:1#1", "@mod:1#5"));
+        assertEquals(firstX, divan.get(4).x());
+        assertSame(current, manager.recordingTarget());
+        assertEquals(0, waypoints.runMoveTo(messages.source(), "@mod:1#1", "@hub:1#2"));
+        assertEquals(1, messages.errors.size());
+        assertEquals(1, waypoints.runMoveTo(messages.source(), "@mod:1#5", "1"));
+        assertEquals(firstX, divan.get(0).x());
+    }
+
+    @Test
+    void explicitRouteActionsDoNotChangeTheRecordingTarget() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup current = route("Current", 2);
+        WaypointGroup other = route("Other", 2);
+        manager.setRecordingTarget(current);
+        assertEquals(1, routes.forRoute(messages.source(), "@hub:2", () -> routes.runRename(messages.source(), "Renamed")));
+        assertEquals("Renamed", other.name());
+        assertEquals("Current", current.name());
+        assertSame(current, manager.recordingTarget());
+        assertEquals(1, routes.runRename(messages.source(), "Still current"));
+        assertEquals("Still current", current.name());
+        assertEquals(0, routes.forRoute(messages.source(), "@hub:99", () -> { throw new AssertionError(); }));
+    }
+
+    private List<String> suggestions(String typed, boolean forWaypoint) {
+        SuggestionsBuilder builder = new SuggestionsBuilder(typed, 0);
+        WaypointerCommandSuggestions.suggestIds(manager, builder, forWaypoint);
+        return builder.build().getList().stream().map(Suggestion::getText).toList();
+    }
+
+
 }

@@ -18,6 +18,7 @@ import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointStyle;
@@ -50,6 +51,7 @@ public final class ScreenGallery {
                     client.resizeGui();
                 });
                 shootAll(context, routeId, scale);
+                checkIdMenus(context, routeId, scale);
             }
         } finally {
             context.runOnClient(client -> {
@@ -58,6 +60,59 @@ public final class ScreenGallery {
                 client.resizeGui();
             });
         }
+    }
+
+    private static void checkIdMenus(ClientGameTestContext context, String routeId, int scale) {
+        ActiveGroupManager manager = WaypointerClient.manager();
+        var config = WaypointerClient.config();
+        boolean labels = config.showRouteIdsInMenus();
+        String clipboard = context.computeOnClient(client -> client.keyboardHandler.getClipboard());
+        try {
+            context.runOnClient(client -> config.setShowRouteIdsInMenus(false));
+            shoot(context, "id-labels-hidden", scale,
+                    () -> new GroupEditScreen(null, manager, config, manager.get(routeId), 2));
+            context.runOnClient(client -> {
+                GroupEditScreen editor = (GroupEditScreen) MinecraftCompat.screen(client);
+                invoke(editor, "openWaypointMenu", new Class<?>[]{int.class, double.class, double.class},
+                        2, editor.width * 0.45, editor.height * 0.3);
+                copyIdFromMenu(editor, RouteIds.waypointId(manager.get(routeId), 2));
+                if (!client.keyboardHandler.getClipboard().equals(RouteIds.waypointId(manager.get(routeId), 2))) {
+                    throw new AssertionError("Copy waypoint ID failed with labels hidden");
+                }
+            });
+            context.waitTicks(2);
+            context.takeScreenshot("gallery-id-waypoint-copy-hidden-s" + scale);
+            shoot(context, "id-route-copy-hidden", scale, () -> new WaypointerScreen(manager, config));
+            context.runOnClient(client -> {
+                WaypointerScreen screen = (WaypointerScreen) MinecraftCompat.screen(client);
+                screen.openRouteRowMenu(manager.get(routeId), screen.width * 0.35, screen.height * 0.3);
+                copyIdFromMenu(screen, RouteIds.routeId(manager.get(routeId)));
+                if (!client.keyboardHandler.getClipboard().equals(RouteIds.routeId(manager.get(routeId)))) {
+                    throw new AssertionError("Copy route ID failed with labels hidden");
+                }
+            });
+            context.waitTicks(2);
+            context.takeScreenshot("gallery-id-route-copy-hidden-s" + scale);
+        } finally {
+            context.runOnClient(client -> {
+                config.setShowRouteIdsInMenus(labels);
+                client.keyboardHandler.setClipboard(clipboard);
+            });
+        }
+    }
+
+    private static void copyIdFromMenu(Screen screen, String expected) {
+        ContextMenuOverlay menu = (ContextMenuOverlay) field(screen, "contextMenu");
+        if ((int) field(menu, "y") + (int) field(menu, "height") > screen.height) {
+            throw new AssertionError("Copy ID menu extends below the screen");
+        }
+        @SuppressWarnings("unchecked")
+        List<ContextMenuOverlay.Item> items = (List<ContextMenuOverlay.Item>) field(menu, "items");
+        ContextMenuOverlay.Item item = items.stream().filter(row -> expected.equals(row.hint()))
+                .findFirst().orElseThrow(() -> new AssertionError("Missing Copy ID for " + expected));
+        if (!item.enabled()) throw new AssertionError("Copy ID is disabled for " + expected);
+        item.action().run();
+        menu.keyPressed(com.babbur.waypointer.compat.InputCompat.KEY_UP);
     }
 
     private static void shootAll(ClientGameTestContext context, String routeId, int scale) {

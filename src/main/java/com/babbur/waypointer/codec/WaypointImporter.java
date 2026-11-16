@@ -99,6 +99,22 @@ public final class WaypointImporter {
 
     private WaypointImporter() {}
 
+    private static final ThreadLocal<Boolean> RELATIVE_IMPORT = ThreadLocal.withInitial(() -> false);
+
+    /**
+     * Runs {@code decode} for a relative import (/wp import relative), where routes are placed
+     * from the player's position, so shares that only carry offsets (Firmament relative) are accepted.
+     */
+    public static <T> T relativeImport(java.util.function.Supplier<T> decode) {
+        boolean previous = RELATIVE_IMPORT.get();
+        RELATIVE_IMPORT.set(true);
+        try {
+            return decode.get();
+        } finally {
+            RELATIVE_IMPORT.set(previous);
+        }
+    }
+
     public static ImportResult importAny(String payload) {
         return importAny(payload, DEFAULT_IMPORTED_ROUTE_NAME);
     }
@@ -769,9 +785,9 @@ public final class WaypointImporter {
                 || !root.getAsJsonPrimitive("isOrdered").isBoolean()) {
             throw new IllegalArgumentException("Firmament waypoint payload is missing required fields");
         }
-        if (root.has("isRelativeTo") && !root.get("isRelativeTo").isJsonNull()) {
+        if (root.has("isRelativeTo") && !root.get("isRelativeTo").isJsonNull() && !RELATIVE_IMPORT.get()) {
             throw new IllegalArgumentException(
-                    "relative Firmament waypoints require the sender's import origin and cannot be placed safely");
+                    "relative Firmament waypoints have no fixed position; use /wp import relative to place them from where you stand");
         }
 
         String label = WaypointCodec.Options.sanitizeLabel(root.get("label").getAsString());

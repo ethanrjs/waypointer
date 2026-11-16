@@ -1,1 +1,17 @@
-{}
+{
+  "waypointer.dungeon.packs.button": "Pachet",
+  "waypointer.dungeon.packs.use": "Dòvra",
+  "waypointer.dungeon.packs.rooms": "%1$s stanz",
+  "waypointer.dungeon.packs.unlabeled": "Alter percors",
+  "waypointer.screen.main.delete.tooltip": "Dopi clic per confermà.",
+  "waypointer.screen.main.delete.confirm.tooltip": "Dopi clic per scancelà %1$s.",
+  "waypointer.screen.group_edit.move_up.tooltip": "Sposta in sü",
+  "waypointer.screen.group_edit.move_down.tooltip": "Sposta in giò",
+  "waypointer.screen.export.options": "Opzion",
+  "waypointer.screen.export.options.title": "Opzion de esportazion",
+  "waypointer.screen.route_publish.field.description.tooltip": "10-500 caràter.",
+  "waypointer.settings.setting.sequencePreviousWaypointCount.tooltip": "0-32, o Tucc.",
+  "waypointer.settings.setting.sequenceNextWaypointCount.tooltip": "0-32, o Tucc.",
+  "waypointer.screen.main.move_up.tooltip": "Sposta in sü",
+  "waypointer.screen.main.move_down.tooltip": "Sposta in giò"
+}

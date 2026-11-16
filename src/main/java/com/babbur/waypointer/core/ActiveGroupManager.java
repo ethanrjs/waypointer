@@ -6,6 +6,8 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,6 +23,7 @@ import java.util.regex.Pattern;
 public final class ActiveGroupManager {
 
     private final Map<String, WaypointGroup> byId = new LinkedHashMap<>();
+    private final Map<String, Integer> routeNumberHighWatermarks = new LinkedHashMap<>();
     private final Collection<WaypointGroup> allGroupsView = Collections.unmodifiableCollection(byId.values());
     private final Map<String, RouteFolder> foldersById = new LinkedHashMap<>();
     private final Map<String, String> folderIdByGroupId = new LinkedHashMap<>();
@@ -177,6 +180,21 @@ public final class ActiveGroupManager {
         for (WaypointGroup group : allGroups()) {
             if (group.temp() || group.runtimeOnly()) continue;
             if (group.followDefaultRadius(previous, current)) changed.add(group);
+        }
+        if (changed.isEmpty()) return false;
+        fireDataChangedFor(changed);
+        return true;
+    }
+
+    /**
+     * Saved routes of unknown origin on the built-in reach radius take the global default
+     * (issue #191: imports and older saves never followed it). Returns whether any changed.
+     */
+    public boolean adoptDefaultReachRadius(double current) {
+        List<WaypointGroup> changed = new ArrayList<>();
+        for (WaypointGroup group : allGroups()) {
+            if (group.temp() || group.runtimeOnly()) continue;
+            if (group.adoptDefaultRadius(current)) changed.add(group);
         }
         if (changed.isEmpty()) return false;
         fireDataChangedFor(changed);
@@ -935,6 +953,15 @@ public final class ActiveGroupManager {
         for (WaypointGroup group : additions) persistent |= isPersistent(group);
         if (!changed) return;
 
+        // A catalog update replaces the stored object but keeps the user's local route reference.
+        for (Map.Entry<String, String> anchor : replacementAnchors.entrySet()) {
+            WaypointGroup previous = byId.get(anchor.getKey());
+            WaypointGroup replacement = additionsById.get(anchor.getValue());
+            if (isPersistent(previous) && isPersistent(replacement) && previous.routeNumberMatchesZone()
+                    && previous.zoneId().equals(replacement.zoneId())) {
+                replacement.setRouteNumber(previous.routeNumber());
+            }
+        }
         for (String id : removals) folderIdByGroupId.remove(id);
         if (replacementAnchors.isEmpty()) {
             for (String id : removals) byId.remove(id);
@@ -1044,12 +1071,50 @@ public final class ActiveGroupManager {
     }
 
     private void fireDataChanged(boolean persistent) {
+        if (assignRouteNumbers()) persistent = true;
         reconcileFolderMemberships();
         cachedActive = null;
         for (Runnable l : List.copyOf(dataListeners)) l.run();
         if (persistent) {
             for (Runnable l : List.copyOf(persistentDataListeners)) l.run();
         }
+    }
+
+    /** Gives saved routes without a number, or with one already taken in their zone, the next free number. */
+    private boolean assignRouteNumbers() {
+        Map<String, Set<Integer>> used = new HashMap<>();
+        List<WaypointGroup> unnumbered = new ArrayList<>();
+        for (WaypointGroup group : byId.values()) {
+            if (!isPersistent(group)) continue;
+            int number = group.routeNumber();
+            if (!group.routeNumberMatchesZone()
+                    || !used.computeIfAbsent(group.zoneId(), zone -> new HashSet<>()).add(number)) {
+                unnumbered.add(group);
+            } else {
+                routeNumberHighWatermarks.merge(group.zoneId(), number, Math::max);
+            }
+        }
+        for (WaypointGroup group : unnumbered) {
+            int next = Math.incrementExact(routeNumberHighWatermarks.getOrDefault(group.zoneId(), 0));
+            routeNumberHighWatermarks.put(group.zoneId(), next);
+            group.setRouteNumber(next);
+        }
+        return !unnumbered.isEmpty();
+    }
+
+    public WaypointGroup findRoute(RouteIds.Reference reference) {
+        return RouteIds.find(byId.values(), reference);
+    }
+
+    public Map<String, Integer> routeNumberHighWatermarks() {
+        return Collections.unmodifiableMap(routeNumberHighWatermarks);
+    }
+
+    public void restoreRouteNumberHighWatermarks(Map<String, Integer> saved) {
+        saved.forEach((zone, number) -> {
+            if (number < 0) throw new IllegalArgumentException("Negative route number for " + zone);
+            routeNumberHighWatermarks.merge(Zone.canonicalId(zone), number, Math::max);
+        });
     }
 
     private void reconcileFolderMemberships() {

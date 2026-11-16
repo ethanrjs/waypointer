@@ -77,6 +77,14 @@ public final class TracerRenderer implements HudElement {
                 && group.loadMode() == WaypointGroup.LoadMode.STATIC
                 && !isDungeonRoomRoute(group)
                 && player != null) {
+            // Without per-point styles every point resolves to the route's style, and the check
+            // after the search would drop the tracer anyway: skip scanning the whole route.
+            if (!group.hasWaypointStyleOverrides()) {
+                WaypointerConfig routeStyle = WaypointStyles.resolve(config, group, null);
+                if (!tracersEnabled(group, routeStyle, dungeonConfig) || routeStyle.hideTracerOnStaticRoutes()) {
+                    return null;
+                }
+            }
             target = nearestStaticTracerTarget(
                     group, player.getX(), player.getY(), player.getZ(), 0,
                     config.hideReachedStaticWaypointsUntilCycleComplete(), 0,

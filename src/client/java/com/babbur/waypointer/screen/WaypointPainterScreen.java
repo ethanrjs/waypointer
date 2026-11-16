@@ -126,18 +126,16 @@ public final class WaypointPainterScreen extends Screen {
         colorButton = addRenderableWidget(styledButton(layout.paletteX(), layout.editColorY(),
                 PALETTE_W, BTN_H, Component.translatable("waypointer.screen.painter.colors"),
                 b -> editSelectedColor(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.painter.colors.tooltip"))));
+                null));
 
         toolButton = addRenderableWidget(styledButton(layout.paletteX(), layout.toolY(),
                 PALETTE_W, BTN_H, toolComponent(), b -> toggleTool(),
-                Tooltip.create(Component.translatable("waypointer.screen.painter.tool.tooltip"))));
+                null));
 
         faceViewButton = styledButton(layout.paletteX(), layout.faceViewY(),
                 PALETTE_W, BTN_H, faceViewComponent(),
                 b -> toggleFaceView(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.painter.face_view.tooltip")));
+                null);
         addRenderableWidget(faceViewButton);
 
         canvasButton = new CanvasButton(layout.canvasLeft(), layout.contentTop(),
@@ -152,12 +150,10 @@ public final class WaypointPainterScreen extends Screen {
                 b -> importFromFiles(), null));
         applyButton = addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
                 72, BTN_H, Component.translatable("waypointer.screen.painter.apply"),
-                b -> apply(), Tooltip.create(Component.translatable(
-                        "waypointer.screen.painter.apply." + scopeKey() + ".tooltip"))));
+                b -> apply(), null));
         removeButton = addRenderableWidget(styledButton(width - PAD_OUTER - 72 - GAP - 72, height - FOOTER_H,
                 72, BTN_H, Component.translatable("waypointer.screen.painter.remove"),
-                b -> removeOwnPaint(), Tooltip.create(Component.translatable(
-                        "waypointer.screen.painter.remove." + scopeKey() + ".tooltip"))));
+                b -> removeOwnPaint(), null));
         undoButton = addRenderableWidget(new HistoryButton(width - PAD_OUTER - 48, 4, false, () -> moveHistory(false)));
         redoButton = addRenderableWidget(new HistoryButton(width - PAD_OUTER - 22, 4, true, () -> moveHistory(true)));
         refreshEditingState();

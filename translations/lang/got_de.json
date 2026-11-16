@@ -5,11 +5,18 @@
   "waypointer.screen.color_picker.save": "𐌲𐌰𐍆𐌰𐍃𐍄𐌰𐌽",
   "waypointer.settings.category.chat": "𐌲𐌰𐍅𐌰𐌿𐍂𐌳𐌹",
   "waypointer.input.share.all": "𐌰𐌻𐌻",
+  "waypointer.dungeon.packs.use": "𐌱𐍂𐌿𐌺𐌾𐌰𐌽",
+  "waypointer.dungeon.packs.hide": "𐍆𐌹𐌻𐌷𐌰𐌽",
+  "waypointer.dungeon.packs.state.hidden": "𐍆𐌿𐌻𐌲𐌹𐌽",
   "waypointer.screen.main.delete": "𐍆𐍂𐌰𐌵𐌹𐍃𐍄𐌾𐌰𐌽",
   "waypointer.screen.group_edit.name": "𐌽𐌰𐌼𐍉",
   "waypointer.screen.group_edit.remove": "𐌰𐍆𐌽𐌹𐌼𐌰𐌽",
   "waypointer.screen.group_edit.color.start": "𐍆𐍂𐌿𐌼𐌹𐍃𐍄𐌹",
+  "waypointer.screen.painter.tool.fill": "𐍆𐌿𐌻𐌻𐌾𐌰𐌽",
   "waypointer.screen.painter.face_view.all": "𐌰𐌻𐌻",
+  "waypointer.screen.painter.remove": "𐌰𐍆𐌽𐌹𐌼𐌰𐌽",
   "waypointer.screen.debug.refresh": "𐌰𐌽𐌰𐌽𐌹𐌿𐌾𐌰𐌽",
-  "waypointer.screen.main.delete.select": "𐌲𐌰𐍅𐌰𐌻𐌾𐌰𐌽"
+  "waypointer.screen.main.delete.select": "𐌲𐌰𐍅𐌰𐌻𐌾𐌰𐌽",
+  "waypointer.settings.setting.sequencePreviousWaypointCount.tooltip": "0-32, 𐌰𐌹𐌸𐌸𐌰𐌿 𐌰𐌻𐌻.",
+  "waypointer.settings.setting.sequenceNextWaypointCount.tooltip": "0-32, 𐌰𐌹𐌸𐌸𐌰𐌿 𐌰𐌻𐌻."
 }

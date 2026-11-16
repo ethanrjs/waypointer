@@ -33,6 +33,11 @@ final class V10Transport {
 
     static boolean looksLikeWireVersion(String transport, int version) {
         if (transport == null || transport.length() < 2) return false;
+        if (standardHeaderMatches(transport, version)) return true;
+        return bracketFreeCandidate(transport) && bracketFreeHeaderMatches(transport, version);
+    }
+
+    private static boolean standardHeaderMatches(String transport, int version) {
         String raw = unescapeContextual(transport.substring(0, Math.min(transport.length(), 4)));
         if (raw.length() < 2) return false;
         int first = AsciiStreamCodec.alphabetIndex(raw.charAt(0));
@@ -40,6 +45,47 @@ final class V10Transport {
         if (first < 0 || second < 0) return false;
         int pair = first + second * AsciiStreamCodec.alphabetSize();
         return (pair & HEADER_VERSION_MASK) == version;
+    }
+
+    private static boolean bracketFreeHeaderMatches(String transport, int version) {
+        String prefix = unescapeContextual(transport.substring(0,
+                Math.min(transport.length(), Base89BlockCodec.blockDigits() * 2)));
+        int digits = Math.min(prefix.length(), Base89BlockCodec.blockDigits());
+        try {
+            byte[] block = Base89BlockCodec.decode(prefix.substring(0, digits));
+            return block.length > 0 && (block[0] & HEADER_VERSION_MASK) == version;
+        } catch (IllegalArgumentException notBase89) {
+            return false;
+        }
+    }
+
+    static boolean hasAngleBracket(String text) {
+        return text.indexOf('<') >= 0 || text.indexOf('>') >= 0;
+    }
+
+    /** Only text without angle brackets can be the bracket-free spelling. */
+    private static boolean bracketFreeCandidate(String transport) {
+        return !hasAngleBracket(transport);
+    }
+
+    /**
+     * The spelling for codes people paste into places that refuse {@code <} and {@code >}: the
+     * standard base-91 text when it has no angle bracket, otherwise the base-89 block spelling.
+     */
+    static String bracketFree(String transport) throws IOException {
+        if (!hasAngleBracket(transport)) return transport;
+        return encodeBracketFree(decode(transport).payload());
+    }
+
+    static String encodeBracketFree(byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            throw new IllegalArgumentException("empty v10 payload");
+        }
+        String transport = escapeContextual(Base89BlockCodec.encode(payload));
+        if (transport.length() > MAX_TRANSPORT_CHARS) {
+            throw new IllegalArgumentException("v10 transport exceeds text limit");
+        }
+        return transport;
     }
 
     static String encode(byte[] payload) {
@@ -67,6 +113,60 @@ final class V10Transport {
         return encode(payload);
     }
 
+    /** Reads the bracket-free spelling; canonical only when the standard spelling has an angle bracket. */
+    static Frame decodeBracketFree(String transport) throws IOException {
+        if (transport == null || transport.isEmpty()
+                || transport.length() > MAX_TRANSPORT_CHARS) {
+            throw new IOException("v10 transport length is outside limit");
+        }
+        if (hasAngleBracket(transport)) {
+            throw new IOException("bracket-free v10 transport contains an angle bracket");
+        }
+        byte[] payload;
+        try {
+            payload = Base89BlockCodec.decode(unescapeContextual(transport));
+        } catch (IllegalArgumentException failure) {
+            throw new IOException("invalid v10 base-89 payload: " + failure.getMessage(), failure);
+        }
+        if (payload.length == 0 || payload.length > MAX_FRAME_BYTES) {
+            throw new IOException("decoded v10 payload length is outside limit");
+        }
+        if (!encodeBracketFree(payload).equals(transport) || !hasAngleBracket(encode(payload))) {
+            throw new IOException("non-canonical v10 bracket-free transport");
+        }
+        return new Frame(modeOf(payload[0]), payload);
+    }
+
+    /** The frame of whichever spelling verifies as wire {@code version}. */
+    static Frame decode(String transport, int version) throws IOException {
+        try {
+            Frame frame = decode(transport);
+            verify(frame, version);
+            return frame;
+        } catch (IOException standardFailure) {
+            if (!bracketFreeCandidate(transport)) throw standardFailure;
+            try {
+                Frame frame = decodeBracketFree(transport);
+                verify(frame, version);
+                return frame;
+            } catch (IOException bracketFreeFailure) {
+                standardFailure.addSuppressed(bracketFreeFailure);
+                throw standardFailure;
+            }
+        }
+    }
+
+    /** Header bytes for a quick peek: no checksum, just the spelling whose version nibble matches. */
+    static byte[] peekPayload(String transport, int version) {
+        if (standardHeaderMatches(transport, version)) {
+            return AsciiStreamCodec.decode(unescapeContextual(transport));
+        }
+        if (bracketFreeCandidate(transport) && bracketFreeHeaderMatches(transport, version)) {
+            return Base89BlockCodec.decode(unescapeContextual(transport));
+        }
+        throw new IllegalArgumentException("not a v" + version + " transport");
+    }
+
     static Frame decode(String transport) throws IOException {
         if (transport == null || transport.isEmpty()
                 || transport.length() > MAX_TRANSPORT_CHARS) {
@@ -92,7 +192,20 @@ final class V10Transport {
     }
 
     static CheckedFrame probe(String transport, int version) throws IOException {
-        Frame frame = decode(transport);
+        try {
+            return verify(decode(transport), version);
+        } catch (IOException standardFailure) {
+            if (!bracketFreeCandidate(transport)) throw standardFailure;
+            try {
+                return verify(decodeBracketFree(transport), version);
+            } catch (IOException bracketFreeFailure) {
+                standardFailure.addSuppressed(bracketFreeFailure);
+                throw standardFailure;
+            }
+        }
+    }
+
+    private static CheckedFrame verify(Frame frame, int version) throws IOException {
         byte[] payload = frame.payload();
         if ((payload[0] & HEADER_VERSION_MASK) != version) {
             throw new IOException("v" + version + " version nibble did not match");

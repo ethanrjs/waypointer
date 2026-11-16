@@ -76,6 +76,22 @@ public final class MeshBuilder implements VertexConsumer, AutoCloseable {
         return view.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
     }
 
+    /** Copies every vertex of {@code other} (same layout and topology) after this builder's. */
+    public void append(MeshBuilder other) {
+        if (!layout.equals(other.layout) || topology != other.topology) {
+            throw new IllegalArgumentException("Cannot append a mesh with a different layout or topology");
+        }
+        finishVertex();
+        int bytes = other.byteSize();
+        if (bytes == 0) return;
+        int stride = layout.stride();
+        int start = storedVertices * stride;
+        ensureCapacity(start + bytes);
+        buffer.put(start, other.buffer, 0, bytes);
+        storedVertices += other.storedVertices;
+        logicalVertices += other.logicalVertices;
+    }
+
     public void reset() {
         storedVertices = 0;
         logicalVertices = 0;

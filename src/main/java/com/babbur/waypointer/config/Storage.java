@@ -115,8 +115,13 @@ public final class Storage {
         }
         writesBlocked = false;
         pendingCanonicalRewriteGroups = parsedGroups.canonicalizedZoneCount();
-        pendingSchemaRewrite = parsedGroups.requiresRewrite();
+        pendingSchemaRewrite = parsedGroups.requiresRewrite()
+                || parsedGroups.groups().stream().anyMatch(group -> group.routeNumber() <= 0);
+        manager.restoreRouteNumberHighWatermarks(parsedGroups.routeNumbers());
+        List<Integer> savedNumbers = parsedGroups.groups().stream().map(WaypointGroup::routeNumber).toList();
         manager.replaceAll(parsedGroups.groups(), parsedGroups.folders(), parsedGroups.memberships());
+        pendingSchemaRewrite |= !savedNumbers.equals(
+                parsedGroups.groups().stream().map(WaypointGroup::routeNumber).toList());
         Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", parsedGroups.groups().size(), file);
     }
 
@@ -220,6 +225,9 @@ public final class Storage {
         if (manager == null) return null;
         JsonObject root = new JsonObject();
         root.addProperty("schema", SCHEMA_VERSION);
+        JsonObject routeNumbers = new JsonObject();
+        manager.routeNumberHighWatermarks().forEach(routeNumbers::addProperty);
+        root.add("routeNumberHighWatermarks", routeNumbers);
         JsonArray groups = new JsonArray();
         for (WaypointGroup g : manager.allGroups()) {
             if (!g.temp() && !g.runtimeOnly()) groups.add(groupToJson(g));
@@ -260,6 +268,7 @@ public final class Storage {
 
     private record ParsedGroups(List<WaypointGroup> groups, List<RouteFolder> folders,
                                 Map<String, String> memberships,
+                                Map<String, Integer> routeNumbers,
                                 int canonicalizedZoneCount, boolean requiresRewrite) {
     }
 
@@ -314,7 +323,7 @@ public final class Storage {
             groups.add(group);
         }
         if (schema == 1) {
-            return new ParsedGroups(List.copyOf(groups), List.of(), Map.of(),
+            return new ParsedGroups(List.copyOf(groups), List.of(), Map.of(), Map.of(),
                     canonicalizedZoneCount, true);
         }
 
@@ -365,8 +374,18 @@ public final class Storage {
             }
             folders.add(folder);
         }
+        Map<String, Integer> routeNumbers = new LinkedHashMap<>();
+        if (root.has("routeNumberHighWatermarks")) {
+            JsonObject saved = root.getAsJsonObject("routeNumberHighWatermarks");
+            for (Map.Entry<String, JsonElement> entry : saved.entrySet()) {
+                int number = entry.getValue().getAsBigDecimal().intValueExact();
+                if (number < 0) throw new IllegalArgumentException("Negative route number for " + entry.getKey());
+                routeNumbers.put(entry.getKey(), number);
+            }
+        }
         return new ParsedGroups(List.copyOf(groups), List.copyOf(folders),
-                Map.copyOf(memberships), canonicalizedZoneCount, canonicalizedZoneCount > 0);
+                Map.copyOf(memberships), Map.copyOf(routeNumbers), canonicalizedZoneCount,
+                canonicalizedZoneCount > 0 || !root.has("routeNumberHighWatermarks"));
     }
 
     private static boolean persistableFolderMember(WaypointGroup group, RouteFolder folder) {
@@ -396,6 +415,7 @@ public final class Storage {
         o.remove("catalogSource");
         o.remove("routePack");
         o.remove("radiusSource");
+        o.remove("routeNumber");
         return o;
     }
 
@@ -406,6 +426,7 @@ public final class Storage {
         copy.remove("enabled");
         copy.remove("catalogSource");
         copy.remove("routePack");
+        copy.remove("routeNumber");
         return groupFromJson(copy);
     }
 
@@ -427,6 +448,7 @@ public final class Storage {
         if (g.radiusSource() != WaypointGroup.RadiusSource.UNKNOWN) {
             o.addProperty("radiusSource", g.radiusSource().name());
         }
+        if (g.routeNumber() > 0) o.addProperty("routeNumber", g.routeNumber());
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
         o.addProperty("staticColor", g.staticColor());
         o.addProperty("gradientStartColor", g.gradientStartColor());
@@ -495,6 +517,10 @@ public final class Storage {
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
         if (o.has("radiusSource") && o.get("radiusSource").isJsonPrimitive()) parseEnum(WaypointGroup.RadiusSource.class,
                 o.get("radiusSource").getAsString()).ifPresent(g::setRadiusSource);
+        if (o.has("routeNumber") && o.get("routeNumber").isJsonPrimitive()
+                && o.get("routeNumber").getAsJsonPrimitive().isNumber()) {
+            g.setRouteNumber(o.get("routeNumber").getAsBigDecimal().intValueExact());
+        }
         if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
         if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,
                 o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);

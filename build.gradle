@@ -155,6 +155,12 @@ tasks.named('runClientGameTest') {
 	if (providers.gradleProperty('screenGallery').isPresent()) {
 		systemProperty 'waypointer.test.screenGallery', 'true'
 	}
+	if (providers.gradleProperty('renderBench').isPresent()) {
+		// Synthetic renderer benchmark (src/gametest/.../RenderBench.java); run it through
+		// `devstore bench` so the numbers come from a calm machine.
+		systemProperty 'waypointer.test.renderBench', layout.buildDirectory.dir('reports/render-bench').get().asFile.absolutePath
+		systemProperty 'waypointer.test.singleplayerZone', 'crystal_hollows'
+	}
 	if (providers.gradleProperty('perfProbe').isPresent()) {
 		def probeSource = file(providers.gradleProperty('perfProbe').get())
 		def reports = layout.buildDirectory.dir('reports/perf').get().asFile

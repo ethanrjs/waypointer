@@ -334,7 +334,7 @@ public final class SettingsScreen extends Screen {
                             ? "waypointer.screen.appearance.reset.confirm"
                             : "waypointer.screen.appearance.reset", target.name()).getString(),
                     -1, this::resetLook,
-                    Tooltip.create(Component.translatable("waypointer.screen.appearance.reset.tooltip"))));
+                    null));
         }
         if (peekAvailable()) {
             out.add(new GuiTokens.ButtonSpec(Component.translatable(peeking
@@ -457,8 +457,7 @@ public final class SettingsScreen extends Screen {
 
         searchClearButton = styledButton(x + searchW + GAP_TIGHT, layout.top() + 4,
                 SEARCH_CLEAR_W, BTN_H, Component.translatable("waypointer.common.clear"),
-                b -> clearSearch(), Tooltip.create(Component.translatable(
-                        "waypointer.screen.settings.search.clear.tooltip")));
+                b -> clearSearch(), null);
         updateClearButton();
         addRenderableWidget(searchClearButton);
     }
@@ -492,7 +491,7 @@ public final class SettingsScreen extends Screen {
     private GuiTokens.ButtonSpec doneSpec() {
         return new GuiTokens.ButtonSpec(
                 Component.translatable("gui.done").getString(), -1, this::onClose,
-                Tooltip.create(Component.translatable("waypointer.screen.settings.done.tooltip")));
+                null);
     }
 
     @Override
@@ -1017,10 +1016,7 @@ public final class SettingsScreen extends Screen {
                     "waypointer.screen.settings.preset." + preset.id(), preset.label());
             Button button = styledButton(actionGridButtonX(
                             controlRight, actionClusterWidth, columns, i), 0, buttonW, BTN_H, label,
-                    b -> applyPreset(preset.id()), SettingsText.tooltip(setting,
-                            Component.translatableWithFallback(
-                                    "waypointer.screen.settings.preset." + preset.id() + ".tooltip",
-                                    preset.description())));
+                    b -> applyPreset(preset.id()), null);
             registerRowWidget(row, button, rowTop + 2);
         }
     }
@@ -1598,8 +1594,6 @@ public final class SettingsScreen extends Screen {
             int textX = layout.mainLeft() + GAP;
             g.text(font, Component.translatable("waypointer.screen.settings.empty"),
                     textX, layout.rowsTop() + 8, TEXT, false);
-            g.text(font, Component.translatable("waypointer.screen.settings.empty.hint"),
-                    textX, layout.rowsTop() + 8 + 14, TEXT_DIM, false);
         }
         return tooltip;
     }

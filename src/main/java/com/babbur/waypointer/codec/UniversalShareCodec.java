@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 public final class UniversalShareCodec {
 
@@ -63,33 +64,65 @@ public final class UniversalShareCodec {
 
     public static String encodeWaypoints(List<WaypointGroup> groups,
                                          WaypointCodec.Options options) {
-        return V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty());
+        return shared(V11Codec.encodeBest(groups, options, RouteLibraryMetadata.empty()));
     }
 
     public static String encodeWaypoints(
             List<WaypointGroup> groups,
             WaypointCodec.Options options,
             RouteLibraryMetadata metadata) {
-        return V11Codec.encodeBest(groups, options, metadata);
+        return shared(V11Codec.encodeBest(groups, options, metadata));
     }
 
     public static String encodeConfig(WaypointerConfig config) {
         try {
-            return V10ConfigCodec.encode(config);
+            return shared(V10ConfigCodec.encode(config));
         } catch (IOException failure) {
             throw new IllegalStateException("v10 config encode failed", failure);
         }
     }
 
     public static String encodeDungeon(Collection<WaypointGroup> routes) {
-        return V11Codec.encodeBestDungeon(routes);
+        return shared(V11Codec.encodeBestDungeon(routes));
     }
 
     public static String encodeCatalogReference(String routeId) {
         try {
-            return WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId);
+            return shared(WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId));
         } catch (IOException failure) {
             throw new IllegalStateException("v10 catalog reference encode failed", failure);
+        }
+    }
+
+    private static volatile BooleanSupplier bracketFreeShares = () -> false;
+
+    /**
+     * Decides whether shared codes use the bracket-free spelling. Off unless the player opts in:
+     * clients older than 1.14 and the website cannot read that spelling yet. Import always reads both.
+     */
+    public static void shareWithoutAngleBracketsWhen(BooleanSupplier setting) {
+        bracketFreeShares = setting == null ? () -> false : setting;
+    }
+
+    static String shared(String code) {
+        return bracketFreeShares.getAsBoolean() ? withoutAngleBrackets(code) : code;
+    }
+
+    /**
+     * Re-spells a verified V10/V11 share so it has no {@code <} or {@code >} (YouTube rejects them).
+     * Anything else, and codes that already have no angle bracket, come back unchanged.
+     */
+    public static String withoutAngleBrackets(String code) {
+        if (code == null || !code.startsWith(WaypointCodec.MAGIC)) return code;
+        String transport = code.substring(WaypointCodec.MAGIC.length());
+        if (!V10Transport.hasAngleBracket(transport)) return code;
+        int version = V10Transport.looksLikeWireVersion(transport, V11Codec.WIRE_VERSION)
+                ? V11Codec.WIRE_VERSION : WaypointCodec.V10_WIRE_VERSION;
+        try {
+            V10Transport.probe(transport, version);
+            return WaypointCodec.MAGIC + V10Transport.bracketFree(transport);
+        } catch (IOException | IllegalArgumentException notAFrame) {
+            return code;
         }
     }
 

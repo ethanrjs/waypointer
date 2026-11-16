@@ -67,6 +67,8 @@ public final class WaypointGroup {
     private boolean paintEnabled = true;
     private CatalogRouteProvenance catalogProvenance;
     private RoutePack routePack;
+    private int routeNumber;
+    private transient String routeNumberZoneId;
     private transient boolean[] staticReached;
     private transient boolean[] stepDone;
     private transient boolean showAllWaypoints;
@@ -157,6 +159,19 @@ public final class WaypointGroup {
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
     public CatalogRouteProvenance catalogProvenance() { return catalogProvenance; }
+
+    /** This route's number within its zone, as in route ID {@code @mod:1}; 0 until assigned. */
+    public int routeNumber() { return routeNumber; }
+
+    public void setRouteNumber(int number) {
+        routeNumber = Math.max(0, number);
+        routeNumberZoneId = zoneId;
+    }
+
+    /** False once the route moved to another zone, where its number may mean another route. */
+    public boolean routeNumberMatchesZone() {
+        return routeNumber > 0 && zoneId.equals(routeNumberZoneId);
+    }
     public RoutePack routePack()    { return routePack; }
     public int visibleMainSteps()   { return visibleMainSteps; }
     public String runtimeSourceGroupId() { return runtimeSourceGroupId; }
@@ -231,11 +246,32 @@ public final class WaypointGroup {
     }
 
     public int enabledMainWaypointCount() {
-        int count = 0;
-        for (int i = 0; i < waypoints.size(); i++) {
-            if (!isSubwaypoint(i) && isWaypointEnabled(i)) count++;
+        return mainIndex().enabledMainCount;
+    }
+
+    /** Enabled main waypoints before {@code index}: a progress stage's place in the route. */
+    public int enabledMainsBefore(int index) {
+        int[] through = mainIndex().enabledMainsThrough;
+        if (index <= 0 || through.length == 0) return 0;
+        return through[Math.min(index, through.length) - 1];
+    }
+
+    private long reachedCountVersion = -1;
+    private int reachedCount;
+
+    /** Reached enabled main waypoints of a static route, kept until the route or its reach state changes. */
+    int staticReachedMainCount() {
+        long version = contentVersion();
+        if (version != reachedCountVersion) {
+            int count = 0;
+            for (int i = 0; i < waypoints.size(); i++) {
+                if (isSubwaypoint(i) || isWaypointDisabled(i)) continue;
+                if (isStaticWaypointReached(i)) count++;
+            }
+            reachedCount = count;
+            reachedCountVersion = version;
         }
-        return count;
+        return reachedCount;
     }
 
     public int currentMainIndex() {
@@ -252,12 +288,7 @@ public final class WaypointGroup {
     public int currentMainOrdinal() {
         int current = currentMainIndex();
         if (current < 0) return enabledMainWaypointCount();
-
-        int ordinal = 0;
-        for (int i = 0; i <= current; i++) {
-            if (!isSubwaypoint(i) && isWaypointEnabled(i)) ordinal++;
-        }
-        return ordinal;
+        return mainIndex().enabledMainsThrough[current];
     }
 
     public int mainOrdinal(int index) {
@@ -356,10 +387,16 @@ public final class WaypointGroup {
     public void setRadiusSource(RadiusSource source)    { this.radiusSource = Objects.requireNonNull(source); }
     public void setCustomRadius(double r)               { setDefaultRadius(r); radiusSource = RadiusSource.CUSTOM; }
 
+    /**
+     * Moves the route to a new global default reach radius unless it was set by hand. A route of
+     * unknown origin follows while it still matches the previous default or the built-in one
+     * (imports that carry no radius of their own land on the built-in value).
+     */
     public boolean followDefaultRadius(double previousDefault, double newDefault) {
         if (radiusSource == RadiusSource.CUSTOM) return false;
         if (radiusSource == RadiusSource.UNKNOWN
-                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0) {
+                && Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(previousDefault)) != 0
+                && !onBuiltInRadius()) {
             return false;
         }
         boolean adopted = radiusSource != RadiusSource.DEFAULT;
@@ -367,6 +404,24 @@ public final class WaypointGroup {
         if (Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(newDefault)) == 0) return adopted;
         setDefaultRadius(newDefault);
         return true;
+    }
+
+    /**
+     * A route of unknown origin still on the built-in reach radius came from an import or an
+     * older save that carried no radius of its own, so it takes the global default from now on.
+     * Returns whether anything changed.
+     */
+    public boolean adoptDefaultRadius(double currentDefault) {
+        if (radiusSource != RadiusSource.UNKNOWN || !onBuiltInRadius()) return false;
+        radiusSource = RadiusSource.DEFAULT;
+        if (Double.compare(defaultRadius, Waypoint.normalizeDefaultRadius(currentDefault)) != 0) {
+            setDefaultRadius(currentDefault);
+        }
+        return true;
+    }
+
+    private boolean onBuiltInRadius() {
+        return Double.compare(defaultRadius, Waypoint.DEFAULT_REACH_RADIUS) == 0;
     }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
@@ -826,23 +881,28 @@ public final class WaypointGroup {
         applyColorMode();
     }
 
-        public void move(int from, int to) {
-        if (from == to || from < 0 || from >= waypoints.size() || to < 0 || to >= waypoints.size()) return;
+        public int move(int from, int to) {
+        if (from == to || from < 0 || from >= waypoints.size() || to < 0 || to >= waypoints.size()) return from;
         Waypoint current = currentWaypointReference();
 
+        int landed;
         if (isSubwaypoint(from)) {
             int parent = parentMainIndex(from);
             int firstChild = parent + 1;
             int lastChild = childEndExclusive(parent) - 1;
             int clamped = Math.max(firstChild, Math.min(lastChild, to));
+            if (clamped == from) return from;
             moveSingle(from, clamped);
+            landed = clamped;
         } else {
             int blockEnd = childEndExclusive(from);
-            if (to >= from && to < blockEnd) return;
+            if (to >= from && to < blockEnd) return from;
 
             int targetBlockStart = isSubwaypoint(to) ? parentMainIndex(to) : to;
             int insertAt = to < from ? targetBlockStart : childEndExclusive(targetBlockStart);
+            if (insertAt >= from && insertAt <= blockEnd) return from;
             moveRange(from, blockEnd, insertAt);
+            landed = insertAt > from ? insertAt - (blockEnd - from) : insertAt;
         }
 
         restoreCurrentIndex(current);
@@ -851,6 +911,7 @@ public final class WaypointGroup {
         activeSubwaypointParentIndex = -1;
         afterWaypointStructureChanged();
         applyColorMode();
+        return landed;
     }
 
     public int moveBy(int index, int delta) {
@@ -1531,8 +1592,15 @@ public final class WaypointGroup {
 
         final int[] lastMainThrough;
 
+        final int enabledMainCount;
+        /** Enabled main waypoints at or before each index. */
+        final int[] enabledMainsThrough;
+
         private MainIndex(int version, int mainCount, boolean anyStyleOverride, int subwaypointFlags,
-                          int anyFlags, int everyFlags, int[] mainsThrough, int[] lastMainThrough) {
+                          int anyFlags, int everyFlags, int[] mainsThrough, int[] lastMainThrough,
+                          int enabledMainCount, int[] enabledMainsThrough) {
+            this.enabledMainCount = enabledMainCount;
+            this.enabledMainsThrough = enabledMainsThrough;
             this.version = version;
             this.mainCount = mainCount;
             this.anyStyleOverride = anyStyleOverride;
@@ -1547,6 +1615,8 @@ public final class WaypointGroup {
             int size = waypoints.size();
             int[] mainsThrough = new int[size];
             int[] lastMainThrough = new int[size];
+            int[] enabledMainsThrough = new int[size];
+            int enabledMains = 0;
             int mains = 0;
             int lastMain = -1;
             boolean anyStyleOverride = false;
@@ -1560,15 +1630,17 @@ public final class WaypointGroup {
                 if (!waypoint.isSubwaypoint()) {
                     mains++;
                     lastMain = i;
+                    if (!waypoint.isDisabled()) enabledMains++;
                 } else {
                     subwaypointFlags |= waypoint.flags();
                 }
                 anyStyleOverride |= !waypoint.styleOverride().isEmpty();
                 mainsThrough[i] = mains;
                 lastMainThrough[i] = lastMain;
+                enabledMainsThrough[i] = enabledMains;
             }
             return new MainIndex(waypoints.version, mains, anyStyleOverride, subwaypointFlags,
-                    anyFlags, everyFlags, mainsThrough, lastMainThrough);
+                    anyFlags, everyFlags, mainsThrough, lastMainThrough, enabledMains, enabledMainsThrough);
         }
     }
 
@@ -1607,6 +1679,7 @@ public final class WaypointGroup {
     private void ensureStaticReachState() {
         if (staticReached == null || staticReached.length != waypoints.size()) {
             staticReached = new boolean[waypoints.size()];
+            reachedVersion++;
         }
     }
 

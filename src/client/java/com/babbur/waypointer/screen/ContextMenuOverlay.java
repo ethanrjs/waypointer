@@ -77,6 +77,8 @@ final class ContextMenuOverlay {
     private int width;
     private int height;
     private int cursor = -1;
+    private int firstVisible;
+    private int visibleRows;
     private boolean hintsHidden;
 
     boolean isOpen() {
@@ -129,7 +131,9 @@ final class ContextMenuOverlay {
         if (menuItems == null || menuItems.isEmpty()) return;
         items = List.copyOf(menuItems);
         width = menuWidth(widestItemWidth);
-        height = menuHeight(items.size());
+        visibleRows = Math.max(1, Math.min(items.size(), (maxBottom - minY - 2) / ROW_H));
+        firstVisible = 0;
+        height = menuHeight(visibleRows);
         x = clampedX(anchorX, minX, maxRight, width);
         y = openY(anchorY, height, minY, maxBottom);
         cursor = -1;
@@ -149,7 +153,9 @@ final class ContextMenuOverlay {
         if (menuItems == null || menuItems.isEmpty()) return;
         items = List.copyOf(menuItems);
         width = menuWidth(widestItemWidth);
-        height = menuHeight(items.size());
+        visibleRows = Math.max(1, Math.min(items.size(), (anchorBottomY - minY - 2) / ROW_H));
+        firstVisible = 0;
+        height = menuHeight(visibleRows);
         x = clampedX(anchorX, minX, maxRight, width);
         y = Math.max(minY, anchorBottomY - height);
         cursor = -1;
@@ -193,9 +199,9 @@ final class ContextMenuOverlay {
         GuiTokens.drawTooltipPanel(g, x, y, x + width, y + height);
         int hovered = itemIndexAt(mouseX, mouseY);
         int labelX = x + GAP + (hasIcons(items) ? ICON_COLUMN : 0);
-        for (int i = 0; i < items.size(); i++) {
+        for (int i = firstVisible; i < Math.min(items.size(), firstVisible + visibleRows); i++) {
             Item item = items.get(i);
-            int rowY = y + 1 + i * ROW_H;
+            int rowY = y + 1 + (i - firstVisible) * ROW_H;
             boolean isCursor = i == cursor;
             boolean isHovered = i == hovered && item.enabled();
             if (isCursor) {
@@ -221,6 +227,21 @@ final class ContextMenuOverlay {
             g.text(font, font.plainSubstrByWidth(item.label().getString(), labelMaxW),
                     labelX, rowY + 7, labelColor, false);
         }
+        if (visibleRows < items.size()) {
+            int track = height - 2;
+            int thumb = Math.max(8, track * visibleRows / items.size());
+            int top = y + 1 + (track - thumb) * firstVisible / (items.size() - visibleRows);
+            g.fill(x + width - 3, y + 1, x + width - 1, y + height - 1, TEXT_MUTED & 0x40FFFFFF);
+            g.fill(x + width - 3, top, x + width - 1, top + thumb, TEXT_DIM);
+        }
+    }
+
+    boolean mouseScrolled(double delta) {
+        if (!open) return false;
+        cursor = -1;
+        firstVisible = Math.max(0, Math.min(items.size() - visibleRows,
+                firstVisible + (delta > 0 ? -1 : delta < 0 ? 1 : 0)));
+        return true;
     }
 
     boolean mouseClicked(double mouseX, double mouseY) {
@@ -279,6 +300,8 @@ final class ContextMenuOverlay {
                     : Math.floorMod(next + delta, items.size());
             if (items.get(next).enabled()) {
                 cursor = next;
+                if (cursor < firstVisible) firstVisible = cursor;
+                if (cursor >= firstVisible + visibleRows) firstVisible = cursor - visibleRows + 1;
                 return;
             }
         }
@@ -286,7 +309,8 @@ final class ContextMenuOverlay {
 
     private int itemIndexAt(double mouseX, double mouseY) {
         if (mouseX < x || mouseX >= x + width) return -1;
-        int index = (int) ((mouseY - y - 1) / ROW_H);
+        if (mouseY < y + 1 || mouseY >= y + height - 1) return -1;
+        int index = firstVisible + (int) ((mouseY - y - 1) / ROW_H);
         return mouseY >= y + 1 && index >= 0 && index < items.size() ? index : -1;
     }
 }

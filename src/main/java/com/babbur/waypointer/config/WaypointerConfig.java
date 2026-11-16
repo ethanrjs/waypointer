@@ -91,12 +91,15 @@ public final class WaypointerConfig {
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
     private boolean routesFollowDefaultReachRadius = true;
+    private boolean shareCodesWithoutAngleBrackets = false;
+    private boolean inWorldLabels = false;
     private transient DefaultReachRadiusListener defaultReachRadiusListener;
 
     private double editModePlacementReach = DEFAULT_EDIT_MODE_PLACEMENT_REACH;
     private boolean resetProgressOnWorldJoin = true;
     private boolean restartRouteWhenComplete = true;
     private boolean showRouteIndicesInGui = false;
+    private boolean showRouteIdsInMenus = true;
     private boolean keepSubwaypointsVisibleUntilNextWaypoint = true;
     private boolean allowBackwardProgress = false;
 
@@ -673,10 +676,13 @@ public final class WaypointerConfig {
     public int configSchemaVersion()               { return configSchemaVersion; }
     public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
     public boolean routesFollowDefaultReachRadius() { return routesFollowDefaultReachRadius; }
+    public boolean shareCodesWithoutAngleBrackets() { return shareCodesWithoutAngleBrackets; }
+    public boolean inWorldLabels() { return inWorldLabels; }
     public double editModePlacementReach()    { return normalizeEditModePlacementReach(editModePlacementReach); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public boolean showRouteIndicesInGui()    { return showRouteIndicesInGui; }
+    public boolean showRouteIdsInMenus()      { return showRouteIdsInMenus; }
     public boolean keepSubwaypointsVisibleUntilNextWaypoint() {
         return keepSubwaypointsVisibleUntilNextWaypoint;
     }
@@ -887,6 +893,8 @@ public final class WaypointerConfig {
 
     public void setDefaultReachRadius(double v)        { changeDefaultReachRadius(v); save(); }
     public void setRoutesFollowDefaultReachRadius(boolean v) { this.routesFollowDefaultReachRadius = v; save(); }
+    public void setShareCodesWithoutAngleBrackets(boolean v) { this.shareCodesWithoutAngleBrackets = v; save(); }
+    public void setInWorldLabels(boolean v) { this.inWorldLabels = v; save(); }
 
     public interface DefaultReachRadiusListener {
         void changed(double previous, double current);
@@ -908,6 +916,7 @@ public final class WaypointerConfig {
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setShowRouteIndicesInGui(boolean v)    { this.showRouteIndicesInGui = v; save(); }
+    public void setShowRouteIdsInMenus(boolean v)      { this.showRouteIdsInMenus = v; save(); }
     public void setKeepSubwaypointsVisibleUntilNextWaypoint(boolean v) {
         this.keepSubwaypointsVisibleUntilNextWaypoint = v;
         save();
@@ -1505,10 +1514,13 @@ public final class WaypointerConfig {
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         changeDefaultReachRadius(defaults.defaultReachRadius);
         routesFollowDefaultReachRadius = defaults.routesFollowDefaultReachRadius;
+        shareCodesWithoutAngleBrackets = defaults.shareCodesWithoutAngleBrackets;
+        inWorldLabels = defaults.inWorldLabels;
         editModePlacementReach = defaults.editModePlacementReach;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
         showRouteIndicesInGui = defaults.showRouteIndicesInGui;
+        showRouteIdsInMenus = defaults.showRouteIdsInMenus;
         keepSubwaypointsVisibleUntilNextWaypoint =
                 defaults.keepSubwaypointsVisibleUntilNextWaypoint;
         allowBackwardProgress = defaults.allowBackwardProgress;

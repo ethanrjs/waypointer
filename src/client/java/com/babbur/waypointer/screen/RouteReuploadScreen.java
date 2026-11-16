@@ -95,8 +95,7 @@ final class RouteReuploadScreen extends Screen implements RoutePickerHost {
         addButton = styledButton(contentX, actionsY, half, BTN_H,
                 Component.translatable("waypointer.screen.route_reupload.action.add_routes"),
                 button -> openPicker(minecraft),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_reupload.action.add_routes.tooltip")));
+                null);
         clearButton = styledButton(contentX + half + GAP, actionsY, half, BTN_H,
                 Component.translatable("waypointer.screen.route_reupload.action.clear"),
                 button -> { routes.clear(); refreshButtons(); }, null);

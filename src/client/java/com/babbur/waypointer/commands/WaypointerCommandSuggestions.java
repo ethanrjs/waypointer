@@ -10,6 +10,7 @@ import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
@@ -40,12 +41,18 @@ final class WaypointerCommandSuggestions {
 
     SuggestionProvider<FabricClientCommandSource> suggestRoutes() {
         return (ctx, builder) -> {
-            List<WaypointGroup> routes = new RouteTargets(manager).listed();
             String typed = builder.getRemainingLowerCase();
+            if (RouteIds.looksLikeReference(typed)) {
+                suggestIds(manager, builder, false);
+                return builder.buildFuture();
+            }
+            List<WaypointGroup> routes = new RouteTargets(manager).listed();
             for (int i = 0; i < routes.size(); i++) {
                 WaypointGroup route = routes.get(i);
                 Component tip = Component.literal(route.name() + "  ")
                         .append(Counts.of("waypoint", route.size()));
+                String id = RouteIds.routeId(route);
+                if (typed.isEmpty() && id != null) builder.suggest(id, tip);
                 if (typed.isEmpty() || Integer.toString(i + 1).startsWith(typed)) {
                     if (!typed.isEmpty() || i < 9) builder.suggest(Integer.toString(i + 1), tip);
                 }
@@ -73,9 +80,84 @@ final class WaypointerCommandSuggestions {
 
     SuggestionProvider<FabricClientCommandSource> suggestWaypointLabels() {
         return (ctx, builder) -> {
-            suggestWaypointLabels(manager.targetRoute(), builder);
+            if (RouteIds.looksLikeReference(builder.getRemaining())) {
+                suggestIds(manager, builder, true);
+            } else {
+                suggestWaypointLabels(manager.targetRoute(), builder);
+            }
             return builder.buildFuture();
         };
+    }
+
+    SuggestionProvider<FabricClientCommandSource> suggestMoveDestination() {
+        return (ctx, builder) -> {
+            String source = StringArgumentType.getString(ctx, "waypoint");
+            WaypointGroup route = manager.targetRoute();
+            if (RouteIds.looksLikeReference(source)) {
+                var found = RouteTargets.waypointById(manager, source);
+                route = found.ok() ? found.value().route() : null;
+            }
+            if (route == null) return builder.buildFuture();
+            String typed = builder.getRemainingLowerCase();
+            if (RouteIds.looksLikeReference(typed)) {
+                int hash = typed.indexOf('#');
+                String prefix = hash < 0 ? null : typed.substring(0, hash);
+                if (prefix != null && manager.findRoute(RouteIds.parse(prefix)) != route) {
+                    return builder.buildFuture();
+                }
+                for (int i = 0; i < route.size(); i++) {
+                    String id = prefix == null ? RouteIds.waypointId(route, i)
+                            : prefix + "#" + RouteTargets.label(route, i);
+                    if (id != null && id.startsWith(typed)) {
+                        builder.suggest(id, Component.literal(describeWaypoint(route.get(i))));
+                    }
+                }
+            } else {
+                suggestWaypointLabels(route, builder);
+            }
+            return builder.buildFuture();
+        };
+    }
+
+    /** IDs for the last of several space- or comma-separated route and waypoint IDs. */
+    SuggestionProvider<FabricClientCommandSource> suggestRouteIds() {
+        return (ctx, builder) -> {
+            String remaining = builder.getRemaining();
+            int start = Math.max(remaining.lastIndexOf(' '), remaining.lastIndexOf(',')) + 1;
+            SuggestionsBuilder last = builder.createOffset(builder.getStart() + start);
+            suggestIds(manager, last, false);
+            return last.buildFuture();
+        };
+    }
+
+    /**
+     * Route IDs that start with what was typed, or, once a route ID and {@code #} are typed, that
+     * route's waypoint IDs. With {@code forWaypoint} set, route IDs end in {@code #} to continue.
+     */
+    static int suggestIds(ActiveGroupManager manager, SuggestionsBuilder builder, boolean forWaypoint) {
+        String typed = builder.getRemainingLowerCase();
+        int hash = typed.indexOf('#');
+        int count = 0;
+        if (hash >= 0) {
+            RouteIds.Reference reference = RouteIds.parse(typed.substring(0, hash));
+            WaypointGroup route = reference == null ? null : manager.findRoute(reference);
+            if (route == null) return 0;
+            for (int i = 0; i < route.size(); i++) {
+                String id = typed.substring(0, hash) + "#" + RouteTargets.label(route, i);
+                if (!id.startsWith(typed)) continue;
+                builder.suggest(id, Component.literal(describeWaypoint(route.get(i))));
+                count++;
+            }
+            return count;
+        }
+        for (WaypointGroup route : manager.allGroupsList()) {
+            String id = RouteIds.routeId(route);
+            if (id == null || !id.startsWith(typed)) continue;
+            builder.suggest(forWaypoint ? id + "#" : id, Component.literal(route.name() + "  ")
+                    .append(Counts.of("waypoint", route.size())));
+            count++;
+        }
+        return count;
     }
 
     static int suggestWaypointLabels(WaypointGroup route, SuggestionsBuilder builder) {

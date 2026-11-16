@@ -41,7 +41,7 @@ public final class RouteProgress {
             currentOrdinal = total;
         } else if (group.loadMode() == WaypointGroup.LoadMode.STATIC) {
             if (group.hasStaticReachState()) {
-                completed = countStaticReachedMainWaypoints(group);
+                completed = group.staticReachedMainCount();
                 currentOrdinal = Math.min(total, completed + 1);
             } else {
                 currentOrdinal = MathUtil.clamp(group.currentMainOrdinal(), 1, total);
@@ -71,15 +71,6 @@ public final class RouteProgress {
         int completed = ordinal - 1;
         double percent = (completed * 100.0) / total;
         return "Next (" + ordinal + "/" + total + ", " + formatPercent(percent) + ")";
-    }
-
-    private static int countStaticReachedMainWaypoints(WaypointGroup group) {
-        int count = 0;
-        for (int i = 0; i < group.size(); i++) {
-            if (group.isSubwaypoint(i) || group.isWaypointDisabled(i)) continue;
-            if (group.isStaticWaypointReached(i)) count++;
-        }
-        return count;
     }
 
     private static String formatPercent(double percent) {

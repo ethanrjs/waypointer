@@ -3,6 +3,7 @@ package com.babbur.waypointer.commands;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
@@ -25,6 +26,8 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
@@ -102,7 +105,11 @@ final class WaypointerWaypointCommands {
 
 
     LiteralArgumentBuilder<FabricClientCommandSource> waypointsCommand() {
-        return literal("waypoints").executes(ctx -> runListWaypoints(ctx.getSource()));
+        return literal("waypoints").executes(ctx -> runListWaypoints(ctx.getSource()))
+                .then(argument("route", RouteTokenArgument.token())
+                        .suggests(suggestions.suggestRoutes())
+                        .executes(ctx -> routes.forRoute(ctx.getSource(), labelArg(ctx, "route"),
+                                () -> runListWaypoints(ctx.getSource()))));
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> addCommand() {
@@ -136,7 +143,9 @@ final class WaypointerWaypointCommands {
     LiteralArgumentBuilder<FabricClientCommandSource> moveCommand() {
         return literal("move")
                 .then(label("waypoint")
-                        .then(label("to").executes(ctx -> runMoveTo(ctx.getSource(),
+                        .then(argument("to", RouteTokenArgument.token())
+                                .suggests(suggestions.suggestMoveDestination())
+                                .executes(ctx -> runMoveTo(ctx.getSource(),
                                 labelArg(ctx, "waypoint"), labelArg(ctx, "to")))));
     }
 
@@ -222,7 +231,7 @@ final class WaypointerWaypointCommands {
     }
 
     private RequiredArgumentBuilder<FabricClientCommandSource, String> label(String name) {
-        return argument(name, StringArgumentType.word()).suggests(suggestions.suggestWaypointLabels());
+        return argument(name, RouteTokenArgument.token()).suggests(suggestions.suggestWaypointLabels());
     }
 
     private static String labelArg(CommandContext<FabricClientCommandSource> ctx, String name) {
@@ -282,8 +291,13 @@ final class WaypointerWaypointCommands {
                 : index < route.currentIndex() ? ChatFormatting.GRAY
                 : index == route.currentIndex() ? ChatFormatting.YELLOW
                 : ChatFormatting.WHITE;
+        String id = RouteIds.waypointId(route, index);
         MutableComponent line = Component.literal((route.isSubwaypoint(index) ? "     " : "  ")
-                + route.displayIndexLabel(index) + "  ").withStyle(ChatFormatting.DARK_GRAY);
+                + (id == null ? route.displayIndexLabel(index) : id) + "  ").withStyle(ChatFormatting.DARK_GRAY);
+        if (id != null) line.withStyle(style -> style
+                .withClickEvent(new ClickEvent.SuggestCommand("/wp waypoint " + id + " "))
+                .withHoverEvent(new HoverEvent.ShowText(
+                        Component.translatable("waypointer.command.id.waypoint_hover", id))));
         line.append(Component.literal(coordinates(waypoint)).withStyle(tone));
         if (waypoint.hasName()) {
             line.append(Component.literal("  " + waypoint.name()).withStyle(ChatFormatting.GRAY));
@@ -401,17 +415,35 @@ final class WaypointerWaypointCommands {
     int runMoveTo(FabricClientCommandSource src, String label, String toLabel) {
         Found found = find(src, label);
         if (found == null) return 0;
-        RouteTargets.Lookup<Integer> to = RouteTargets.waypoint(found.route(), toLabel);
+        RouteTargets.Lookup<Integer> to;
+        if (RouteIds.looksLikeReference(toLabel)) {
+            RouteTargets.Lookup<RouteTargets.WaypointAt> destination = RouteTargets.waypointById(manager, toLabel);
+            if (!destination.ok()) {
+                error(src, destination.error());
+                return 0;
+            }
+            if (destination.value().route() != found.route()) {
+                error(src, Component.translatable("waypointer.command.error.move_other_route"));
+                return 0;
+            }
+            to = RouteTargets.Lookup.of(destination.value().index());
+        } else {
+            to = RouteTargets.waypoint(found.route(), toLabel);
+        }
         if (!to.ok()) {
             error(src, to.error());
             return 0;
         }
         WaypointGroup route = found.route();
         String before = route.displayIndexLabel(found.index());
-        route.move(found.index(), to.value());
+        int landed = route.move(found.index(), to.value());
+        if (landed == found.index()) {
+            error(src, Component.translatable("waypointer.command.error.move_unchanged", before));
+            return 0;
+        }
         routes.changed(route);
         routeSuccess(src, route, Component.translatable("waypointer.command.waypoint.moved_to",
-                before, route.displayIndexLabel(to.value())));
+                before, route.displayIndexLabel(landed)));
         return 1;
     }
 
@@ -695,6 +727,14 @@ final class WaypointerWaypointCommands {
     private record Found(WaypointGroup route, int index) {}
 
     private Found find(FabricClientCommandSource src, String label) {
+        if (RouteIds.looksLikeReference(label)) {
+            RouteTargets.Lookup<RouteTargets.WaypointAt> found = RouteTargets.waypointById(manager, label);
+            if (!found.ok()) {
+                error(src, found.error());
+                return null;
+            }
+            return new Found(found.value().route(), found.value().index());
+        }
         WaypointGroup route = routes.targetOrError(src);
         if (route == null) return null;
         RouteTargets.Lookup<Integer> index = RouteTargets.waypoint(route, label);

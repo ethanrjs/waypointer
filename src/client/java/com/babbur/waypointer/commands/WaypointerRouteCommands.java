@@ -7,6 +7,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.RouteIcon;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
@@ -23,6 +24,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.mojang.brigadier.tree.CommandNode;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -39,6 +41,7 @@ import net.minecraft.world.item.Items;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.IntSupplier;
 
 import static com.babbur.waypointer.commands.CommandHelpers.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
@@ -50,6 +53,7 @@ final class WaypointerRouteCommands {
     private final WaypointerConfig config;
     private final WaypointerCommandSuggestions suggestions;
     private final RouteTargets targets;
+    private WaypointGroup explicitRoute;
 
     WaypointerRouteCommands(ActiveGroupManager manager, WaypointerConfig config,
                             WaypointerCommandSuggestions suggestions) {
@@ -85,7 +89,7 @@ final class WaypointerRouteCommands {
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> routeCommand() {
-        return literal("route")
+        LiteralArgumentBuilder<FabricClientCommandSource> command = literal("route")
                 .executes(ctx -> runShowTarget(ctx.getSource()))
                 .then(literal("new")
                         .then(argument("name", StringArgumentType.greedyString())
@@ -155,6 +159,52 @@ final class WaypointerRouteCommands {
                                 .suggests(suggestions.suggestFolders(false))
                                 .executes(ctx -> runSetFolder(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "folder")))));
+        var addressed = argument("routeId", RouteTokenArgument.token())
+                .suggests(suggestions.suggestRouteIds())
+                .executes(ctx -> forRoute(ctx.getSource(), StringArgumentType.getString(ctx, "routeId"), () -> {
+                    info(ctx.getSource(), routeName(explicitRoute));
+                    return 1;
+                }));
+        for (var child : command.build().getChildren()) {
+            if (!child.getName().equals("new")) addressed.then(addressedNode(child));
+        }
+        return command.then(addressed);
+    }
+
+    private CommandNode<FabricClientCommandSource> addressedNode(CommandNode<FabricClientCommandSource> node) {
+        var builder = node.createBuilder();
+        var action = node.getCommand();
+        if (action != null) builder.executes(ctx -> {
+            RouteTargets.Lookup<WaypointGroup> found = targets.route(StringArgumentType.getString(ctx, "routeId"));
+            if (!found.ok()) {
+                error(ctx.getSource(), found.error());
+                return 0;
+            }
+            WaypointGroup previous = explicitRoute;
+            explicitRoute = found.value();
+            try {
+                return action.run(ctx);
+            } finally {
+                explicitRoute = previous;
+            }
+        });
+        for (var child : node.getChildren()) builder.then(addressedNode(child));
+        return builder.build();
+    }
+
+    int forRoute(FabricClientCommandSource src, String reference, IntSupplier action) {
+        RouteTargets.Lookup<WaypointGroup> found = targets.route(reference);
+        if (!found.ok()) {
+            error(src, found.error());
+            return 0;
+        }
+        WaypointGroup previous = explicitRoute;
+        explicitRoute = found.value();
+        try {
+            return action.getAsInt();
+        } finally {
+            explicitRoute = previous;
+        }
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> folderCommand() {
@@ -186,7 +236,10 @@ final class WaypointerRouteCommands {
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> editCommand() {
-        return literal("edit").executes(ctx -> runOpenEditor(ctx.getSource()));
+        return literal("edit").executes(ctx -> runOpenEditor(ctx.getSource()))
+                .then(argument("route", RouteTokenArgument.token()).suggests(suggestions.suggestRoutes())
+                        .executes(ctx -> forRoute(ctx.getSource(), StringArgumentType.getString(ctx, "route"),
+                                () -> runOpenEditor(ctx.getSource()))));
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> appearanceCommand(WaypointerWaypointCommands waypoints) {
@@ -198,7 +251,7 @@ final class WaypointerRouteCommands {
                                 .executes(ctx -> runOpenRouteAppearance(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "route")))))
                 .then(literal("waypoint")
-                        .then(argument("waypoint", StringArgumentType.word())
+                        .then(argument("waypoint", RouteTokenArgument.token())
                                 .suggests(suggestions.suggestWaypointLabels())
                                 .executes(ctx -> waypoints.runOpenAppearance(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "waypoint")))))
@@ -227,7 +280,10 @@ final class WaypointerRouteCommands {
     }
 
     LiteralArgumentBuilder<FabricClientCommandSource> publishCommand() {
-        return literal("publish").executes(ctx -> runOpenPublish(ctx.getSource()));
+        return literal("publish").executes(ctx -> runOpenPublish(ctx.getSource()))
+                .then(argument("route", RouteTokenArgument.token()).suggests(suggestions.suggestRoutes())
+                        .executes(ctx -> forRoute(ctx.getSource(), StringArgumentType.getString(ctx, "route"),
+                                () -> runOpenPublish(ctx.getSource()))));
     }
 
 
@@ -252,11 +308,14 @@ final class WaypointerRouteCommands {
         row.append(Component.literal(number + ". ").withStyle(ChatFormatting.DARK_GRAY));
         Style nameStyle = Style.EMPTY
                 .withColor(route.enabled() ? ChatFormatting.WHITE : ChatFormatting.GRAY)
-                .withClickEvent(new ClickEvent.RunCommand("/wp target " + number))
+                .withClickEvent(new ClickEvent.RunCommand("/wp target "
+                        + (RouteIds.routeId(route) == null ? number : RouteIds.routeId(route))))
                 .withHoverEvent(new HoverEvent.ShowText(Component.translatable(target
                         ? "waypointer.command.list.target_hover"
                         : "waypointer.command.list.pick_hover")));
         row.append(Component.literal(route.name()).withStyle(nameStyle));
+        String id = RouteIds.routeId(route);
+        if (id != null) row.append(Component.literal("  " + id).withStyle(ChatFormatting.DARK_GRAY));
         row.append(Component.literal("  ").append(Counts.of(
                 "waypoint", route.size())).withStyle(ChatFormatting.DARK_GRAY));
         if (!route.enabled()) {
@@ -787,6 +846,7 @@ final class WaypointerRouteCommands {
 
 
     WaypointGroup targetOrError(FabricClientCommandSource src) {
+        if (explicitRoute != null) return explicitRoute;
         RouteTargets.Lookup<WaypointGroup> target = targets.targetOrError();
         if (!target.ok()) error(src, target.error());
         return target.value();

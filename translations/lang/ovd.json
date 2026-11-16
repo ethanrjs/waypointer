@@ -5,6 +5,8 @@
   "waypointer.screen.settings.preset.default": "Standard",
   "waypointer.screen.settings.preset.minimal": "So litn eð gą̊r",
   "waypointer.settings.setting.action.presets.label": "Mömster",
+  "waypointer.dungeon.packs.hide": "Gem",
+  "waypointer.dungeon.packs.state.hidden": "Gemd",
   "waypointer.command.help.section.debug": "Felsökning",
   "waypointer.screen.main.settings": "Instellningger",
   "waypointer.screen.group_edit.name": "Namn",
@@ -13,6 +15,7 @@
   "waypointer.dungeon.waypoint_type.item": "Föremǫl",
   "waypointer.dungeon.waypoint_type.bat": "Leðer",
   "waypointer.screen.painter.colors": "Fergur",
+  "waypointer.screen.painter.remove": "Tag dieðǫ",
   "waypointer.screen.debug.refresh": "Fesk ą̊",
   "waypointer.screen.main.delete.select": "Wel"
 }

@@ -1,1 +1,24 @@
-{}
+{
+  "waypointer.screen.settings.config.import.tooltip": "Ọ na-edochi ntọala gị.",
+  "waypointer.screen.settings.config.confirm.one": "Ntọala %1$s ga-agbanwe.",
+  "waypointer.screen.settings.config.confirm.many": "Ntọala %1$s ga-agbanwe.",
+  "waypointer.dungeon.packs.use": "Jiri",
+  "waypointer.dungeon.packs.hide": "Zoo",
+  "waypointer.dungeon.packs.rooms": "Ọnụ ụlọ %1$s",
+  "waypointer.dungeon.packs.unlabeled": "Ụzọ ndị ọzọ",
+  "waypointer.screen.main.delete.tooltip": "Pịa ugboro abụọ iji kwado.",
+  "waypointer.screen.main.delete.confirm.tooltip": "Pịa ugboro abụọ iji hichapụ %1$s.",
+  "waypointer.screen.group_edit.move_up.tooltip": "Bulie elu",
+  "waypointer.screen.group_edit.move_down.tooltip": "Wedata ala",
+  "waypointer.screen.export.options": "Nhọrọ",
+  "waypointer.screen.export.toggle.zone.label": "Agwaetiti",
+  "waypointer.screen.export.toggle.group_meta.label": "Ntọala ụzọ",
+  "waypointer.screen.painter.tool": "Ngwaọrụ",
+  "waypointer.screen.painter.remove": "Wepụ",
+  "waypointer.screen.route_catalog.state.unsupported": "Achọrọ mmelite",
+  "waypointer.screen.route_catalog.state.unsupported_line": "Melite Waypointer iji jiri ụzọ a",
+  "waypointer.settings.setting.sequencePreviousWaypointCount.tooltip": "0-32, ma ọ bụ Ha niile.",
+  "waypointer.settings.setting.sequenceNextWaypointCount.tooltip": "0-32, ma ọ bụ Ha niile.",
+  "waypointer.screen.main.move_up.tooltip": "Bulie elu",
+  "waypointer.screen.main.move_down.tooltip": "Wedata ala"
+}

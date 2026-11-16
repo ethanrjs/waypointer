@@ -205,9 +205,9 @@ class TranslationCatalogTest {
 
         assertTrue(english.keySet().containsAll(required));
         assertEquals("New Folder", english.get("waypointer.screen.main.folder"));
-        assertEquals("Move the selected route up.",
+        assertEquals("Move up",
                 english.get("waypointer.screen.main.move_up.tooltip"));
-        assertEquals("Move the selected route down.",
+        assertEquals("Move down",
                 english.get("waypointer.screen.main.move_down.tooltip"));
     }
 

@@ -191,14 +191,19 @@ class WaypointWorldRenderer {
                 irisHudFallbackActive);
     }
 
-    boolean emitWorldGeometry(LevelRenderContext ctx, PoseStack ps, GeometrySink sink,
-                              Vec3 origin, boolean irisHudFallbackActive) {
-        var groups = manager.activeGroups();
-        if (groups.isEmpty()) {
-            clearPreparedDungeonEntryPaths();
-            return false;
+    /** Which world geometry passes run this frame, across every active route. */
+    record Gates(boolean paint, boolean lines, boolean fill, boolean texturedBeams, boolean flatBeams,
+                 boolean routeLines, boolean dungeonEntryPaths, boolean depthChecked, boolean throughWall) {
+        long fingerprint() {
+            long bits = 0;
+            boolean[] all = {paint, lines, fill, texturedBeams, flatBeams, routeLines, dungeonEntryPaths,
+                    depthChecked, throughWall};
+            for (int i = 0; i < all.length; i++) if (all[i]) bits |= 1L << i;
+            return bits;
         }
+    }
 
+    Gates gates(List<WaypointGroup> groups, boolean irisHudFallbackActive) {
         boolean drawPaint = anyPainted(groups);
         boolean drawLines = anyStyle(groups, c -> worldBoxOutlinesEnabled(c.effectiveBoxStyle(), irisHudFallbackActive)
                 && c.waypointOutlineOpacity() > 0);
@@ -209,14 +214,33 @@ class WaypointWorldRenderer {
                 && c.useBeaconBeamTextures() && c.beaconOpacity() > 0);
         boolean drawFlatBeams = anyStyle(groups, c -> effectiveBeaconBeamMode(c) != WaypointerConfig.BeaconBeamMode.OFF
                 && !c.useBeaconBeamTextures() && c.beaconOpacity() > 0);
+        return new Gates(drawPaint, drawLines, drawFill, drawTexturedBeams, drawFlatBeams,
+                anyRouteLines(groups), config.showDungeonEntryPathToFirstWaypoint(),
+                anyLineOfSight(groups), anyThroughWall(groups));
+    }
+
+    boolean emitWorldGeometry(LevelRenderContext ctx, PoseStack ps, GeometrySink sink,
+                              Vec3 origin, boolean irisHudFallbackActive) {
+        var groups = manager.activeGroups();
+        if (groups.isEmpty()) {
+            clearPreparedDungeonEntryPaths();
+            return false;
+        }
+
+        Gates gates = gates(groups, irisHudFallbackActive);
+        boolean drawPaint = gates.paint();
+        boolean drawLines = gates.lines();
+        boolean drawFill = gates.fill();
+        boolean drawTexturedBeams = gates.texturedBeams();
+        boolean drawFlatBeams = gates.flatBeams();
         boolean drawBeams = drawTexturedBeams || drawFlatBeams;
-        boolean drawRouteLines = anyRouteLines(groups);
-        boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
+        boolean drawRouteLines = gates.routeLines();
+        boolean drawDungeonEntryPaths = gates.dungeonEntryPaths();
         if (!drawDungeonEntryPaths) clearPreparedDungeonEntryPaths();
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
                 && !drawDungeonEntryPaths) return false;
-        boolean hasDepthCheckedWaypoints = anyLineOfSight(groups);
-        boolean hasThroughWallWaypoints = anyThroughWall(groups);
+        boolean hasDepthCheckedWaypoints = gates.depthChecked();
+        boolean hasThroughWallWaypoints = gates.throughWall();
         if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints && !drawDungeonEntryPaths) return false;
 
         if (ps == null || sink == null || origin == null) return false;
@@ -337,14 +361,8 @@ class WaypointWorldRenderer {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             sink.submit(lineType, (lines, submittedPose) -> {
                 if (drawRouteLines) {
-                    sink.dynamic(() -> {
-                        DashBudget dashes = new DashBudget(MAX_DASHES_PER_PASS);
-                        for (WaypointGroup g : groups) {
-                            emitRouteLines(submittedPose, lines, g, camPos, playerPos,
-                                    maxStaticDistanceSq, nearHideDistanceSq,
-                                    false, mc, level, dashes);
-                        }
-                    });
+                    emitRouteLinePass(sink, submittedPose, lines, groups, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, false, mc, level);
                 }
                 if ((emitStatic || emitFading) && drawLines) {
                     for (WaypointGroup g : groups) {
@@ -368,14 +386,8 @@ class WaypointWorldRenderer {
                 }
                 if (!depthTestedLines) return;
                 if (drawRouteLines) {
-                    sink.dynamic(() -> {
-                        DashBudget dashes = new DashBudget(MAX_DASHES_PER_PASS);
-                        for (WaypointGroup g : groups) {
-                            emitRouteLines(submittedPose, lines, g, camPos, playerPos,
-                                    maxStaticDistanceSq, nearHideDistanceSq,
-                                    true, mc, level, dashes);
-                        }
-                    });
+                    emitRouteLinePass(sink, submittedPose, lines, groups, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, true, mc, level);
                 }
                 if ((emitStatic || emitFading) && drawLines) {
                     for (WaypointGroup g : groups) {
@@ -513,12 +525,32 @@ class WaypointWorldRenderer {
     private boolean routeLinesPossible(WaypointGroup group) {
         if (routeLinesEnabled(group, null, config, dungeonConfig)) return true;
         if (!group.hasWaypointStyleOverrides()) return false;
+        // Per-point styles: the answer only changes with the points, the route's resolved style or
+        // the dungeon route-line setting, so the whole-route walk runs only then.
+        WaypointerConfig routeStyle = styleFor(group, null);
+        boolean dungeonLines = dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
+        long content = group.contentVersion();
+        RouteLinesCache cached = routeStyle != config ? routeLinesCache.get(group) : null;
+        if (cached != null && cached.content() == content && cached.routeStyle() == routeStyle
+                && cached.dungeonLines() == dungeonLines) return cached.possible();
+        boolean possible = false;
         for (Waypoint waypoint : group.waypoints()) {
             if (!waypoint.styleOverride().isEmpty()
-                    && routeLinesEnabled(group, waypoint, config, dungeonConfig)) return true;
+                    && routeLinesEnabled(group, waypoint, config, dungeonConfig)) {
+                possible = true;
+                break;
+            }
         }
-        return false;
+        if (routeStyle != config) {
+            routeLinesCache.put(group, new RouteLinesCache(content, routeStyle, dungeonLines, possible));
+        }
+        return possible;
     }
+
+    private record RouteLinesCache(long content, WaypointerConfig routeStyle, boolean dungeonLines,
+                                   boolean possible) {}
+
+    private final java.util.Map<WaypointGroup, RouteLinesCache> routeLinesCache = new java.util.WeakHashMap<>();
 
     static boolean isDungeonRoomRoute(WaypointGroup group) {
         return group != null
@@ -526,11 +558,81 @@ class WaypointWorldRenderer {
                 && group.usesDungeonSteps();
     }
 
+    /** Which connectors one emission covers when a retained sink splits them. */
+    enum RouteLinePart { ALL, NEAR, FAR }
+
+    /** Retained connectors are rebuilt when the camera enters another cell this size (blocks). */
+    public static final int ROUTE_LINE_CELL = 8;
+    /**
+     * A connector whose start is this close to the camera cell's centre may need clipping
+     * around the camera somewhere in the cell, so it stays per-frame; every farther connector
+     * is unclipped anywhere in the cell and can be retained.
+     */
+    static final double ROUTE_LINE_NEAR_CELL_DISTANCE_SQ = square(
+            ROUTE_LINE_CAMERA_CLEARANCE + ROUTE_LINE_CELL * Math.sqrt(3) / 2 + 1.0);
+
+    private static double square(double value) {
+        return value * value;
+    }
+
+    public static int routeLineCell(double coordinate) {
+        return Math.floorDiv((int) Math.floor(coordinate), ROUTE_LINE_CELL);
+    }
+
+    private static Vec3 routeLineCellCenter(Vec3 camera) {
+        return new Vec3((routeLineCell(camera.x) + 0.5) * ROUTE_LINE_CELL,
+                (routeLineCell(camera.y) + 0.5) * ROUTE_LINE_CELL,
+                (routeLineCell(camera.z) + 0.5) * ROUTE_LINE_CELL);
+    }
+
+    private final java.util.Map<WaypointGroup, Object> routeLineScopes = new java.util.WeakHashMap<>();
+
+    /** The retained-geometry scope holding a route's far connector lines (stable per route). */
+    public Object routeLineScope(WaypointGroup group) {
+        return routeLineScopes.computeIfAbsent(group, g -> new Object());
+    }
+
+    /**
+     * One pass's connector lines. A retained sink keeps each route's far connectors as static
+     * geometry (rebuilt with the route or when the camera changes cell) and emits only the few
+     * near the camera, which need per-frame clipping, every frame. During a skip fade a route's
+     * lines stay per-frame, as before.
+     */
+    private void emitRouteLinePass(GeometrySink sink, PoseStack ps, VertexConsumer lines,
+                                   List<WaypointGroup> groups, Vec3 camPos, Vec3 playerPos,
+                                   double maxStaticDistanceSq, double nearHideDistanceSq,
+                                   boolean depthCheckedPass, Minecraft mc, ClientLevel level) {
+        boolean retained = sink.retainsStaticGeometry();
+        Vec3 cellCenter = routeLineCellCenter(camPos);
+        sink.dynamic(() -> {
+            DashBudget dashes = new DashBudget(MAX_DASHES_PER_PASS);
+            for (WaypointGroup g : groups) {
+                RouteLinePart part = !retained || routeFading(g) ? RouteLinePart.ALL : RouteLinePart.NEAR;
+                emitRouteLines(ps, lines, g, camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
+                        depthCheckedPass, mc, level, dashes, part, cellCenter);
+            }
+        });
+        if (!retained) return;
+        for (WaypointGroup g : groups) {
+            if (routeFading(g)) continue;
+            Object scope = routeLineScope(g);
+            if (!sink.staticGeometryNeeded(scope)) continue;
+            sink.staticGroup(scope, () -> emitRouteLines(ps, lines, g, camPos, playerPos,
+                    maxStaticDistanceSq, nearHideDistanceSq, depthCheckedPass, mc, level,
+                    new DashBudget(MAX_DASHES_PER_PASS), RouteLinePart.FAR, cellCenter));
+        }
+    }
+
+    private static boolean routeFading(WaypointGroup group) {
+        WaypointSkipFade fade = WaypointSkipFade.get(group);
+        return fade != null && fade.active();
+    }
+
     private void emitRouteLines(PoseStack ps, VertexConsumer lines, WaypointGroup g,
                                 Vec3 camPos, Vec3 playerPos,
                                 double maxStaticDistanceSq, double nearHideDistanceSq,
                                 boolean depthCheckedPass, Minecraft mc, ClientLevel level,
-                                DashBudget dashes) {
+                                DashBudget dashes, RouteLinePart part, Vec3 cellCenter) {
         if (!routeLinesPossible(g)) return;
         boolean segmentStyles = g.hasWaypointStyleOverrides();
         int currentIdx = g.currentIndex();
@@ -556,9 +658,15 @@ class WaypointWorldRenderer {
                     waypointBoxBoundsScratch[1],
                     waypointBoxBoundsScratch[2]);
 
-            if (!viewCuller.mayBeVisible(Math.min(start.x, end.x), Math.min(start.y, end.y), Math.min(start.z, end.z),
+            if (part != RouteLinePart.ALL) {
+                boolean near = start.distanceToSqr(cellCenter) <= ROUTE_LINE_NEAR_CELL_DISTANCE_SQ;
+                if (near != (part == RouteLinePart.NEAR)) return;
+            }
+            // Retained connectors are drawn from any direction, so only per-frame ones are culled.
+            if (part != RouteLinePart.FAR
+                    && !viewCuller.mayBeVisible(Math.min(start.x, end.x), Math.min(start.y, end.y), Math.min(start.z, end.z),
                     Math.max(start.x, end.x), Math.max(start.y, end.y), Math.max(start.z, end.z))) return;
-            start = clipLineStartOutsideCamera(
+            if (part != RouteLinePart.FAR) start = clipLineStartOutsideCamera(
                     start, end, camPos, screenDown,
                     ROUTE_LINE_CAMERA_CLEARANCE, ROUTE_LINE_CAMERA_SCREEN_OFFSET);
             boolean walkingPath = isStepPathPoint(g, fromIndex) && isStepPathPoint(g, toIndex);
@@ -1194,13 +1302,38 @@ class WaypointWorldRenderer {
             WaypointPaint paint = paintFor(group, null);
             return paint == null ? List.of() : List.of(paint);
         }
+        // A frame asks for a route's paints several times (textures, fingerprints, geometry), and
+        // with any per-point style that meant a whole-route walk each time. The answer only
+        // changes with the route's points, its paint settings, its resolved style or the snowman
+        // face, so it is kept until one of those does.
+        WaypointerConfig routeStyle = styleFor(group, null);
+        WaypointPaint snowman = HappySnowmanSession.facePaint();
+        long content = group.contentVersion();
+        boolean cacheable = routeStyle != config; // a resolved snapshot resolves to itself
+        PaintsCache cached = cacheable ? paintsCache.get(group) : null;
+        if (cached != null && cached.content == content && cached.paint == group.paint()
+                && cached.paintEnabled == group.paintEnabled() && cached.routeStyle == routeStyle
+                && cached.snowman == snowman) {
+            return cached.paints;
+        }
         List<WaypointPaint> paints = new ArrayList<>(2);
         for (Waypoint waypoint : group.waypoints()) {
             WaypointPaint paint = paintFor(group, waypoint);
             if (paint != null && !paints.contains(paint)) paints.add(paint);
         }
-        return paints;
+        List<WaypointPaint> result = List.copyOf(paints);
+        if (cacheable) {
+            paintsCache.put(group, new PaintsCache(content, group.paint(), group.paintEnabled(),
+                    routeStyle, snowman, result));
+        }
+        return result;
     }
+
+    private record PaintsCache(long content, WaypointPaint paint, boolean paintEnabled,
+                               WaypointerConfig routeStyle, WaypointPaint snowman,
+                               List<WaypointPaint> paints) {}
+
+    private final java.util.Map<WaypointGroup, PaintsCache> paintsCache = new java.util.WeakHashMap<>();
 
     private WaypointPaint paintFor(WaypointGroup group, Waypoint waypoint) {
         WaypointerConfig style = styleFor(group, waypoint);
@@ -1527,6 +1660,26 @@ class WaypointWorldRenderer {
         int currentIdx = g.currentIndex();
         boolean showCompleted = styleFor(g, null).showCompleted();
         int beamIndex = currentBeamIndex(g);
+        if (!g.hasWaypointStyleOverrides()) {
+            // Every point shares the route's beam settings, so OFF draws nothing and CURRENT can
+            // only draw the current point and a fading outgoing one: don't walk the whole route.
+            WaypointerConfig routeStyle = styleFor(g, null);
+            WaypointerConfig.BeaconBeamMode routeMode = effectiveBeaconBeamMode(routeStyle);
+            if (routeMode == WaypointerConfig.BeaconBeamMode.OFF
+                    || routeStyle.useBeaconBeamTextures() != texturedBeams) return;
+            WaypointSkipFade fade = WaypointSkipFade.get(g);
+            // While a skip fade runs, the full walk below also records whether the outgoing point
+            // was normally visible, which marker drawing reads; fades last a fraction of a second.
+            boolean fading = fade != null && fade.active() && routeStyle.showCurrentSequenceWaypoint();
+            if (routeMode == WaypointerConfig.BeaconBeamMode.CURRENT && !fading) {
+                if (beamIndex >= 0 && beamIndex < g.size()) {
+                    emitBeaconBeamIfVisible(ps, quads, g, beamIndex,
+                            currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                            nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level, texturedBeams);
+                }
+                return;
+            }
+        }
         boolean[] currentVisited = {false};
         forEachFadingVisibleIndex(g, i -> {
             if (i == beamIndex) currentVisited[0] = true;
@@ -1888,7 +2041,7 @@ class WaypointWorldRenderer {
     private static void emitGroupGeometry(GeometrySink sink, WaypointGroup group, Runnable body) {
         WaypointSkipFade fade = WaypointSkipFade.get(group);
         if (fade != null && fade.active()) sink.dynamic(body);
-        else if (sink.staticGeometryNeeded()) body.run();
+        else if (sink.staticGeometryNeeded(group)) sink.staticGroup(group, body);
     }
 
     protected void forEachFadingVisibleIndex(WaypointGroup group, IntConsumer action) {

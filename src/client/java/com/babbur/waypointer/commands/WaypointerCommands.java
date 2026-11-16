@@ -13,12 +13,14 @@ import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteIds;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
+import com.babbur.waypointer.screen.GroupEditScreen;
 import com.babbur.waypointer.screen.CrystalHollowsMinimapEditorScreen;
 import com.babbur.waypointer.screen.RouteCatalogScreen;
 import com.babbur.waypointer.screen.SettingsScreen;
@@ -97,8 +99,9 @@ public final class WaypointerCommands {
                         .executes(ctx -> { scheduleOpenGui(); return 1; })
                         .then(literal("dungeon")
                                 .executes(ctx -> { scheduleOpenDungeonGui(); return 1; }))
-                        .then(argument("groupId", StringArgumentType.string())
-                                .executes(ctx -> runOpenFocusedGui(
+                        .then(argument("groupId", RouteTokenArgument.token())
+                                .suggests(suggestions.suggestRouteIds())
+                                .executes(ctx -> runOpenFocusedGui(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "groupId")))))
                 .then(literal("settings").executes(ctx -> {
                     SettingsScreen.open(config);
@@ -192,9 +195,18 @@ public final class WaypointerCommands {
                         .then(literal("names")
                                 .executes(ctx -> shareCommands.runExport(ctx.getSource(), WaypointCodec.Options.WITH_NAMES)))
                         .then(literal("nonames")
-                                .executes(ctx -> shareCommands.runExport(ctx.getSource(), WaypointCodec.Options.NO_NAMES))))
+                                .executes(ctx -> shareCommands.runExport(ctx.getSource(), WaypointCodec.Options.NO_NAMES)))
+                        .then(argument("ids", StringArgumentType.greedyString())
+                                .suggests(suggestions.suggestRouteIds())
+                                .executes(ctx -> shareCommands.runExportIds(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "ids"), exportOptionsFromConfig()))))
                 .then(literal("import")
                         .executes(ctx -> shareCommands.runImportFromClipboard(ctx.getSource()))
+                        .then(literal("relative")
+                                .executes(ctx -> shareCommands.runImportRelativeFromClipboard(ctx.getSource()))
+                                .then(argument("payload", StringArgumentType.greedyString())
+                                        .executes(ctx -> shareCommands.runImportRelativeArgument(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "payload")))))
                         .then(argument("payload", StringArgumentType.greedyString())
                                 .suggests(suggestions.suggestImportPayloads())
                                 .executes(ctx -> shareCommands.runImportArgument(ctx.getSource(),
@@ -244,7 +256,26 @@ public final class WaypointerCommands {
                 () -> WaypointerScreen.openDungeonRooms(manager, config));
     }
 
-    private int runOpenFocusedGui(String groupId) {
+    private int runOpenFocusedGui(FabricClientCommandSource src, String groupId) {
+        if (RouteIds.looksLikeReference(groupId)) {
+            RouteIds.Reference reference = RouteIds.parse(groupId);
+            if (reference != null && reference.hasWaypoint()) {
+                var found = RouteTargets.waypointById(manager, groupId);
+                if (!found.ok()) {
+                    error(src, found.error());
+                    return 0;
+                }
+                Minecraft client = Minecraft.getInstance();
+                client.execute(() -> MinecraftCompat.setScreen(client, new GroupEditScreen(null, manager, config,
+                        found.value().route(), found.value().index())));
+                return 1;
+            }
+            var found = RouteTargets.routeById(manager, groupId);
+            if (!found.ok()) {
+                error(src, found.error());
+                return 0;
+            }
+        }
         Minecraft.getInstance().execute(() -> {
             WaypointGroup focus = resolveGuiFocus(manager, groupId);
             if (focus == null) {
@@ -257,8 +288,11 @@ public final class WaypointerCommands {
     }
 
     static WaypointGroup resolveGuiFocus(ActiveGroupManager manager, String groupId) {
-        return manager == null || groupId == null || groupId.isBlank()
-                ? null : manager.get(groupId);
+        if (manager == null || groupId == null || groupId.isBlank()) return null;
+        if (RouteIds.looksLikeReference(groupId)) {
+            return manager.findRoute(RouteIds.parse(groupId));
+        }
+        return manager.get(groupId);
     }
 
     private void scheduleOpenRouteCatalog() {

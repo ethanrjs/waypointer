@@ -8,6 +8,9 @@
   "waypointer.settings.setting.beaconBeamMode.option.1": "Silúmëa",
   "waypointer.settings.setting.beaconBeamMode.option.current": "Silúmëa",
   "waypointer.settings.setting.action.presets.label": "Nótulcaler",
+  "waypointer.dungeon.packs.use": "Yuhta",
+  "waypointer.dungeon.packs.hide": "Nurta",
+  "waypointer.dungeon.packs.state.hidden": "Nurtaina",
   "waypointer.screen.main.delete": "Haita",
   "waypointer.screen.main.settings": "Cilmi",
   "waypointer.screen.group_edit.name": "Essë",
@@ -15,7 +18,10 @@
   "waypointer.screen.group_edit.color.start": "Yesta",
   "waypointer.dungeon.waypoint_type.item": "Nat",
   "waypointer.dungeon.waypoint_type.bat": "Quildarë",
+  "waypointer.screen.export.toggle.zone.label": "Tol",
   "waypointer.screen.painter.colors": "Quiler",
+  "waypointer.screen.painter.tool": "Carma",
+  "waypointer.screen.painter.remove": "Haita",
   "waypointer.screen.debug.refresh": "Ceuta",
   "waypointer.screen.main.delete.select": "Cilë"
 }

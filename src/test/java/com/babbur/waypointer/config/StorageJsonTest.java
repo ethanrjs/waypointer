@@ -1180,4 +1180,61 @@ class StorageJsonTest {
             return matches.get(0);
         }
     }
+    @Test
+    void routeNumbersAreSavedButNeverShared() throws Exception {
+        Path file = tempDir.resolve("waypoints.json");
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 70, 1));
+        route.setRouteNumber(7);
+        manager.add(route);
+        new Storage(file).save(manager);
+
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+
+        assertEquals(7, loaded.get(route.id()).routeNumber());
+        assertFalse(Storage.routeToShareJson(route).has("routeNumber"));
+    }
+
+    @Test
+    void deletedRouteNumbersStayReservedAfterRestart() throws Exception {
+        Path file = tempDir.resolve("waypoints.json");
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = WaypointGroup.create("Deleted", "hub");
+        manager.add(route);
+        manager.remove(route.id());
+        new Storage(file).save(manager);
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+        WaypointGroup replacement = WaypointGroup.create("Replacement", "hub");
+        loaded.add(replacement);
+        assertEquals(2, replacement.routeNumber());
+        assertNull(loaded.findRoute(com.babbur.waypointer.core.RouteIds.parse("@hub:1")));
+    }
+
+    @Test
+    void routesSavedBeforeRouteIdsAreNumberedAndRewritten() throws Exception {
+        Path file = tempDir.resolve("waypoints.json");
+        ActiveGroupManager original = new ActiveGroupManager();
+        original.add(WaypointGroup.create("First", "hub"));
+        original.add(WaypointGroup.create("Second", "hub"));
+        new Storage(file).save(original);
+        JsonObject legacy = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        legacy.remove("routeNumberHighWatermarks");
+        legacy.getAsJsonArray("groups").forEach(group -> group.getAsJsonObject().remove("routeNumber"));
+        Files.writeString(file, legacy.toString());
+
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(file);
+        storage.load(manager);
+        storage.attach(manager);
+        storage.flush();
+
+        assertEquals(List.of(1, 2), manager.allGroupsList().stream().map(WaypointGroup::routeNumber).toList());
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals(2, saved.getAsJsonArray("groups").get(1).getAsJsonObject().get("routeNumber").getAsInt());
+    }
+
+
 }

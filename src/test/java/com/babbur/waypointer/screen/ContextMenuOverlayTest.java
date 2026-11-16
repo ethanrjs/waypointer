@@ -17,6 +17,26 @@ import static com.babbur.waypointer.compat.InputCompat.KEY_UP;
 
 class ContextMenuOverlayTest {
 
+    @Test
+    void tallMenusScrollAndKeyboardNavigationRevealsTheLastAction() {
+        AtomicInteger picked = new AtomicInteger(-1);
+        List<ContextMenuOverlay.Item> items = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(i -> item("Item " + i, () -> picked.set(i))).toList();
+        ContextMenuOverlay menu = new ContextMenuOverlay();
+        menu.openMeasured(items, 100, 40, 40, 0, 0, 400, 90);
+        assertTrue(menu.mouseScrolled(-1));
+        assertTrue(menu.mouseClicked(45, 4), "the top visible row follows scrolling");
+        assertEquals(1, picked.get());
+        menu.openMeasured(items, 100, 40, 40, 0, 0, 400, 90);
+        assertTrue(menu.keyPressed(KEY_UP));
+        assertTrue(menu.keyPressed(KEY_ENTER));
+        assertEquals(11, picked.get(), "the last row remains keyboard accessible");
+        menu.openMeasured(items, 100, 40, 40, 0, 0, 400, 90);
+        assertTrue(menu.mouseClicked(45, 94));
+        assertFalse(menu.isOpen(), "clicking below the visible menu dismisses it");
+        assertEquals(11, picked.get(), "invisible rows cannot be clicked");
+    }
+
     private static ContextMenuOverlay.Item item(String label, Runnable action) {
         ContextMenuOverlay.Item hinted = ContextMenuOverlay.Item.of(
                 Component.literal(label), "Space", action);

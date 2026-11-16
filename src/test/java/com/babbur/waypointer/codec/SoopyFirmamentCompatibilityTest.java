@@ -70,7 +70,18 @@ class SoopyFirmamentCompatibilityTest {
                 () -> WaypointImporter.importAny(fixture("firmament-current-relative-share.txt")));
 
         assertTrue(error.getMessage().contains("relative Firmament"));
-        assertTrue(error.getMessage().contains("origin"));
+        assertTrue(error.getMessage().contains("/wp import relative"));
+    }
+
+    @Test
+    void relativeImportAcceptsFirmamentRelativeShares() throws IOException {
+        String share = fixture("firmament-current-relative-share.txt");
+        WaypointImporter.ImportResult result = WaypointImporter.relativeImport(() -> WaypointImporter.importAny(share));
+
+        assertEquals(1, result.groups().size());
+        assertEquals(1, result.groups().getFirst().get(0).x());
+        assertThrows(IllegalArgumentException.class, () -> WaypointImporter.importAny(share),
+                "the relative allowance ends with the relative import");
     }
 
     private static String fixture(String name) throws IOException {

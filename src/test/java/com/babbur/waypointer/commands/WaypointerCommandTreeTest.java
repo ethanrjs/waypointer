@@ -103,7 +103,13 @@ class WaypointerCommandTreeTest {
                 "wp chattemp 1 2 3 Babbur party", "wp blacklist", "wp blacklist add Babbur",
                 "wp blacklist remove Babbur",
                 "wp export", "wp export routes", "wp export config", "wp export dungeon", "wp export bare",
-                "wp export names", "wp export nonames", "wp import", "wp import WP:abc",
+                "wp export names", "wp export nonames", "wp export @mod:1", "wp export @mod:1 @mod:2#15,@f7:3",
+                "wp target @mod:1", "wp waypoint @mod:1#15 rename Lever", "wp remove @mod:1#2.1",
+                "wp gui @mod:1", "wp edit @mod:1", "wp publish @mod:1", "wp waypoints @mod:1",
+                "wp appearance waypoint @mod:1#5", "wp move @mod:1#1 @mod:1#5",
+                "wp route @mod:1 rename Divan", "wp route @mod:1 color 123456",
+                "wp route @mod:1 mode static", "wp route @mod:1 delete confirm",
+                "wp import", "wp import WP:abc",
                 "wp importfile C:\\routes\\waypoints.json", "wp importchat A1b2",
                 "wp importchat config A1b2", "wp importchat dungeon A1b2", "wp importchat catalog A1b2");
 
@@ -490,10 +496,55 @@ class WaypointerCommandTreeTest {
         return (WaypointCodec.Options) exportOptions.invoke(commands);
     }
 
+    @Test
+    void addressedCommandsExecuteAgainstTheirRouteAndCompleteOnlyItsMoveDestinations() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointGroup pinned = WaypointGroup.create("Pinned", "hub");
+        pinned.add(Waypoint.at(0, 0, 0));
+        manager.add(pinned);
+        manager.setRecordingTarget(pinned);
+        WaypointGroup divan = WaypointGroup.create("Divan", "crystal_hollows_structure_mines_of_divan");
+        for (int i = 0; i < 5; i++) divan.add(Waypoint.at(i, 70, i));
+        manager.add(divan);
+        var dispatcher = registeredDispatcher(manager);
+        List<Component> errors = new ArrayList<>();
+        FabricClientCommandSource source = (FabricClientCommandSource) Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{FabricClientCommandSource.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "sendError" -> { errors.add((Component) args[0]); yield null; }
+                    case "sendFeedback" -> null;
+                    default -> throw new AssertionError(method.getName());
+                });
+        assertEquals(1, dispatcher.execute("wp route @mod:1 rename New name", source));
+        assertEquals("New name", divan.name());
+        assertEquals(1, dispatcher.execute("wp route @mod:1 radius 3.5", source));
+        assertEquals(3.5, divan.defaultRadius());
+        assertEquals(1, dispatcher.execute("wp route @mod:1 mode static", source));
+        assertEquals(WaypointGroup.LoadMode.STATIC, divan.loadMode());
+        assertSame(pinned, manager.recordingTarget());
+        assertSame(divan, WaypointerCommands.resolveGuiFocus(manager, "@mod:1"));
+        assertEquals(5, dispatcher.execute("wp waypoints @mod:1", source));
+        String partial = "wp move @mod:1#1 @";
+        var completions = dispatcher.getCompletionSuggestions(dispatcher.parse(partial, source)).join();
+        assertEquals(List.of("@mod:1#1", "@mod:1#2", "@mod:1#3", "@mod:1#4", "@mod:1#5"),
+                completions.getList().stream().map(Suggestion::getText).toList());
+        assertEquals(1, dispatcher.execute("wp move @mod:1#1 @mod:1#5", source));
+        assertEquals(0, divan.get(4).x());
+        assertEquals(0, dispatcher.execute("wp move @mod:1#1 @hub:1#1", source));
+        assertEquals(1, errors.size());
+        assertEquals(1, dispatcher.execute("wp route rename Still pinned", source));
+        assertEquals("Still pinned", pinned.name());
+    }
+
     private static CommandDispatcher<FabricClientCommandSource> registeredDispatcher() throws Exception {
+        return registeredDispatcher(new ActiveGroupManager());
+    }
+
+    private static CommandDispatcher<FabricClientCommandSource> registeredDispatcher(ActiveGroupManager manager) throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
         WaypointerCommands commands = new WaypointerCommands(
-                new ActiveGroupManager(),
+                manager,
                 null,
                 new WaypointerConfig(),
                 new ChatImportCache(),

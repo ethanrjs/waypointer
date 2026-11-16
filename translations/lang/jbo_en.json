@@ -7,9 +7,19 @@
   "waypointer.settings.category.chat": "samta'a",
   "waypointer.settings.setting.beaconBeamMode.option.1": "cabna",
   "waypointer.settings.setting.beaconBeamMode.option.current": "cabna",
+  "waypointer.dungeon.packs.button": "bakfu",
+  "waypointer.dungeon.packs.use": "pilno",
+  "waypointer.dungeon.packs.state.active": "se pilno",
+  "waypointer.dungeon.packs.state.hidden": "mipri",
+  "waypointer.dungeon.packs.unlabeled": "drata pluta",
   "waypointer.screen.group_edit.name": "cmene",
   "waypointer.screen.group_edit.remove": "vimcu",
   "waypointer.dungeon.waypoint_type.item": "dacti",
   "waypointer.dungeon.waypoint_type.bat": "volratcu",
-  "waypointer.screen.painter.colors": "skari"
+  "waypointer.screen.export.options": "cuxna",
+  "waypointer.screen.export.toggle.zone.label": "daplu",
+  "waypointer.screen.painter.colors": "skari",
+  "waypointer.screen.painter.tool": "tutci",
+  "waypointer.screen.painter.tool.brush": "burcu",
+  "waypointer.screen.painter.remove": "vimcu"
 }
