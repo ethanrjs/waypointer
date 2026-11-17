@@ -7,6 +7,7 @@ import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
+import com.babbur.waypointer.codec.ImportFailures;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -100,11 +101,17 @@ public final class DungeonCommands {
                 throw new IOException("route data is too large (max " + maxBytes + " bytes)");
             }
             String payload = new String(bytes, StandardCharsets.UTF_8);
-            return new ImportReadResult(decodeImportPayload(payload), null, false);
+            try {
+                return new ImportReadResult(decodeImportPayload(payload), null, false);
+            } catch (IllegalArgumentException invalidPayload) {
+                // A damaged code gets the plain explanation; the decoder detail goes to the log.
+                String key = ImportFailures.record("dungeon file", payload, invalidPayload).translationKey(payload);
+                return new ImportReadResult(null, key != null
+                        ? Component.translatable(key).getString()
+                        : errorMessage(invalidPayload, "invalid route data"), false);
+            }
         } catch (IOException readFailure) {
             return new ImportReadResult(null, errorMessage(readFailure, "could not read route data"), true);
-        } catch (IllegalArgumentException invalidPayload) {
-            return new ImportReadResult(null, errorMessage(invalidPayload, "invalid route data"), false);
         }
     }
 

@@ -7,10 +7,10 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import java.util.Collection;
 import java.util.List;
 
-/** One space-free word, so waypoint labels can also be IDs like {@code @mod:1#15}. */
+/** One space-free word, so waypoint labels can also be IDs like {@code @mod1#15}. */
 final class RouteTokenArgument implements ArgumentType<String> {
 
-    private static final Collection<String> EXAMPLES = List.of("3", "2.1", "@mod:1#15");
+    private static final Collection<String> EXAMPLES = List.of("3", "2.1", "@mod1#15");
 
     static RouteTokenArgument token() {
         return new RouteTokenArgument();

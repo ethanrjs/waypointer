@@ -103,12 +103,12 @@ class WaypointerCommandTreeTest {
                 "wp chattemp 1 2 3 Babbur party", "wp blacklist", "wp blacklist add Babbur",
                 "wp blacklist remove Babbur",
                 "wp export", "wp export routes", "wp export config", "wp export dungeon", "wp export bare",
-                "wp export names", "wp export nonames", "wp export @mod:1", "wp export @mod:1 @mod:2#15,@f7:3",
-                "wp target @mod:1", "wp waypoint @mod:1#15 rename Lever", "wp remove @mod:1#2.1",
-                "wp gui @mod:1", "wp edit @mod:1", "wp publish @mod:1", "wp waypoints @mod:1",
-                "wp appearance waypoint @mod:1#5", "wp move @mod:1#1 @mod:1#5",
-                "wp route @mod:1 rename Divan", "wp route @mod:1 color 123456",
-                "wp route @mod:1 mode static", "wp route @mod:1 delete confirm",
+                "wp export names", "wp export nonames", "wp export @mod1", "wp export @mod1 @mod2#15,@f7:3",
+                "wp target @mod1", "wp waypoint @mod1#15 rename Lever", "wp remove @mod1#2.1",
+                "wp gui @mod1", "wp edit @mod1", "wp publish @mod1", "wp waypoints @mod1",
+                "wp appearance waypoint @mod1#5", "wp move @mod1#1 @mod1#5",
+                "wp route @mod1 rename Divan", "wp route @mod1 color 123456",
+                "wp route @mod1 mode static", "wp route @mod1 delete confirm",
                 "wp import", "wp import WP:abc",
                 "wp importfile C:\\routes\\waypoints.json", "wp importchat A1b2",
                 "wp importchat config A1b2", "wp importchat dungeon A1b2", "wp importchat catalog A1b2");
@@ -516,22 +516,22 @@ class WaypointerCommandTreeTest {
                     case "sendFeedback" -> null;
                     default -> throw new AssertionError(method.getName());
                 });
-        assertEquals(1, dispatcher.execute("wp route @mod:1 rename New name", source));
+        assertEquals(1, dispatcher.execute("wp route @mod1 rename New name", source));
         assertEquals("New name", divan.name());
-        assertEquals(1, dispatcher.execute("wp route @mod:1 radius 3.5", source));
+        assertEquals(1, dispatcher.execute("wp route @mod1 radius 3.5", source));
         assertEquals(3.5, divan.defaultRadius());
-        assertEquals(1, dispatcher.execute("wp route @mod:1 mode static", source));
+        assertEquals(1, dispatcher.execute("wp route @mod1 mode static", source));
         assertEquals(WaypointGroup.LoadMode.STATIC, divan.loadMode());
         assertSame(pinned, manager.recordingTarget());
-        assertSame(divan, WaypointerCommands.resolveGuiFocus(manager, "@mod:1"));
-        assertEquals(5, dispatcher.execute("wp waypoints @mod:1", source));
-        String partial = "wp move @mod:1#1 @";
+        assertSame(divan, WaypointerCommands.resolveGuiFocus(manager, "@mod1"));
+        assertEquals(5, dispatcher.execute("wp waypoints @mod1", source));
+        String partial = "wp move @mod1#1 @";
         var completions = dispatcher.getCompletionSuggestions(dispatcher.parse(partial, source)).join();
-        assertEquals(List.of("@mod:1#1", "@mod:1#2", "@mod:1#3", "@mod:1#4", "@mod:1#5"),
+        assertEquals(List.of("@mod1#1", "@mod1#2", "@mod1#3", "@mod1#4", "@mod1#5"),
                 completions.getList().stream().map(Suggestion::getText).toList());
-        assertEquals(1, dispatcher.execute("wp move @mod:1#1 @mod:1#5", source));
+        assertEquals(1, dispatcher.execute("wp move @mod1#1 @mod1#5", source));
         assertEquals(0, divan.get(4).x());
-        assertEquals(0, dispatcher.execute("wp move @mod:1#1 @hub:1#1", source));
+        assertEquals(0, dispatcher.execute("wp move @mod1#1 @hub1#1", source));
         assertEquals(1, errors.size());
         assertEquals(1, dispatcher.execute("wp route rename Still pinned", source));
         assertEquals("Still pinned", pinned.name());

@@ -10,6 +10,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.config.AppearanceClipboard;
 import com.babbur.waypointer.config.AppearanceScope;
 import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -336,6 +337,19 @@ public final class SettingsScreen extends Screen {
                     -1, this::resetLook,
                     null));
         }
+        if (!peeking && (target != null || "appearance".equals(activeCategoryId) && !searchActive())) {
+            out.add(new GuiTokens.ButtonSpec(Component.translatable(
+                    "waypointer.screen.appearance.copy").getString(), -1, this::copyLook,
+                    Tooltip.create(Component.translatable("waypointer.screen.appearance.copy.tooltip",
+                            lookName())), Icons.Icon.SHARE));
+            AppearanceClipboard.Copied copied = AppearanceClipboard.copied();
+            if (copied != null) {
+                out.add(new GuiTokens.ButtonSpec(Component.translatable(
+                        "waypointer.screen.appearance.paste", copied.count()).getString(), -1, this::pasteLook,
+                        Tooltip.create(Component.translatable("waypointer.screen.appearance.paste.tooltip",
+                                copied.count(), copied.source(), lookName())), Icons.Icon.DOWNLOAD));
+            }
+        }
         if (peekAvailable()) {
             out.add(new GuiTokens.ButtonSpec(Component.translatable(peeking
                     ? "waypointer.screen.settings.peek.off"
@@ -351,6 +365,52 @@ public final class SettingsScreen extends Screen {
     boolean peekAvailable() {
         return minecraft != null && minecraft.level != null
                 && (target != null || "appearance".equals(activeCategoryId) && !searchActive());
+    }
+
+    /** The level being edited, as the copy and paste tooltips name it. */
+    private String lookName() {
+        return target == null
+                ? Component.translatable("waypointer.screen.appearance.everywhere").getString()
+                : target.name().getString();
+    }
+
+    private void copyLook() {
+        int copied = target == null
+                ? AppearanceClipboard.copyGlobal(globalConfig, lookName())
+                : AppearanceClipboard.copy(target.scope(), lookName());
+        setLookStatus(copied == 0
+                ? Component.translatable("waypointer.screen.appearance.copy.nothing", lookName())
+                : Component.translatable("waypointer.screen.appearance.copied", copied, lookName()));
+        rebuildPending = true;
+    }
+
+    private void pasteLook() {
+        int pasted;
+        if (target == null) {
+            pasted = AppearanceClipboard.pasteGlobal(globalConfig);
+        } else {
+            pasted = AppearanceClipboard.paste(target.scope(), target::includes);
+            if (pasted > 0) afterScopedWrite();
+        }
+        AppearanceClipboard.Copied copied = AppearanceClipboard.copied();
+        int skipped = copied == null ? 0 : copied.count() - pasted;
+        setLookStatus(skipped > 0
+                ? Component.translatable("waypointer.screen.appearance.pasted_some", pasted, lookName(), skipped)
+                : Component.translatable("waypointer.screen.appearance.pasted", pasted, lookName()));
+        rebuildPending = true;
+    }
+
+    private Component lookStatus;
+    private long lookStatusUntil;
+
+    private void setLookStatus(Component status) {
+        lookStatus = status;
+        lookStatusUntil = System.currentTimeMillis() + 3000L;
+    }
+
+    /** The copy/paste result, shown for a few seconds above the footer. */
+    Component lookStatus() {
+        return lookStatus != null && System.currentTimeMillis() < lookStatusUntil ? lookStatus : null;
     }
 
     private void resetLook() {
@@ -1472,10 +1532,11 @@ public final class SettingsScreen extends Screen {
         } else {
             titleW = drawScopedTitle(g, Math.max(0, width / 2 - PAD_OUTER));
         }
-        Component hint = target == null ? Component.empty() : breadcrumb();
+        Component status = lookStatus();
+        Component hint = status != null ? status : target == null ? Component.empty() : breadcrumb();
         var hintText = font.substrByWidth(hint, Math.max(0, width - PAD_OUTER * 2 - titleW - GAP_SECTION));
         g.text(font, Language.getInstance().getVisualOrder(hintText),
-                width - PAD_OUTER - font.width(hintText), PAD_OUTER, TEXT_DIM, false);
+                width - PAD_OUTER - font.width(hintText), PAD_OUTER, status != null ? TEXT : TEXT_DIM, false);
 
         railTooltip = null;
         renderSidebar(g, layout, widgetMouseX, widgetMouseY);

@@ -270,17 +270,17 @@ class RouteCommandsTest {
         divan.setZoneId("crystal_hollows_structure_mines_of_divan");
         manager.fireDataChanged();
 
-        assertEquals("@mod:1", RouteIds.routeId(divan));
-        assertSame(divan, targets.route("@mod:1").value());
+        assertEquals("@mod1", RouteIds.routeId(divan));
+        assertSame(divan, targets.route("@mod1").value());
         assertSame(divan, targets.route("@MOD:1#2").value(), "a waypoint ID names its route");
-        assertFalse(targets.route("@mod:2").ok());
+        assertFalse(targets.route("@mod2").ok());
         assertFalse(targets.route("@nope").ok());
 
-        assertEquals(1, waypoints.runRename(messages.source(), "@mod:1#2", "Lever"));
+        assertEquals(1, waypoints.runRename(messages.source(), "@mod1#2", "Lever"));
         assertEquals("Lever", divan.get(1).name());
         assertEquals("", here.get(1).name(), "the target route is untouched");
-        assertEquals(0, waypoints.runRename(messages.source(), "@mod:1", "Lever"), "a route ID alone names no waypoint");
-        assertEquals(0, waypoints.runRename(messages.source(), "@mod:1#9", "Lever"));
+        assertEquals(0, waypoints.runRename(messages.source(), "@mod1", "Lever"), "a route ID alone names no waypoint");
+        assertEquals(0, waypoints.runRename(messages.source(), "@mod1#9", "Lever"));
     }
 
     @Test
@@ -291,7 +291,7 @@ class RouteCommandsTest {
         second.toggleSubwaypoint(1);
 
         WaypointerShareCommands.ExportSelection selection =
-                WaypointerShareCommands.exportSelection(manager, "@hub:2#1.1, @hub:1 @hub:1");
+                WaypointerShareCommands.exportSelection(manager, "@hub2#1.1, @hub1 @hub1");
 
         assertNull(selection.error());
         assertEquals(2, selection.groups().size(), "a repeated route is exported once");
@@ -303,7 +303,7 @@ class RouteCommandsTest {
         assertSame(first, selection.groups().get(1));
         assertEquals(3, second.size(), "exporting one waypoint leaves the route alone");
 
-        assertNotNull(WaypointerShareCommands.exportSelection(manager, "@hub:9").error());
+        assertNotNull(WaypointerShareCommands.exportSelection(manager, "@hub9").error());
         assertNotNull(WaypointerShareCommands.exportSelection(manager, "hub:1").error());
         assertNotNull(WaypointerShareCommands.exportSelection(manager, "  ").error());
     }
@@ -316,10 +316,27 @@ class RouteCommandsTest {
         divan.setZoneId("crystal_hollows_structure_mines_of_divan");
         manager.fireDataChanged();
 
-        assertEquals(List.of("@mod:1"), suggestions("@m", false));
-        assertEquals(List.of("@hub:1#"), suggestions("@h", true));
-        assertEquals(List.of("@mod:1#1", "@mod:1#2"), suggestions("@mod:1#", true));
-        assertEquals(List.of("@hub:1", "@mod:1"), suggestions("@", false));
+        assertEquals(List.of("@mod1"), suggestions("@m", false));
+        assertEquals(List.of("@hub1#"), suggestions("@h", true));
+        assertEquals(List.of("@mod1#1", "@mod1#2"), suggestions("@mod1#", true));
+        assertEquals(List.of("@hub1", "@mod"), suggestions("@", false),
+                "a bare @ lists this area's routes and the other areas' prefixes");
+        assertEquals(List.of("@mod1"), suggestions("@mod:", false), "the colon form completes too");
+        assertEquals(List.of("@mod", "@mod1"), suggestions("@div", false),
+                "a route or area name finds its ID");
+        assertEquals(List.of("@mod:1#1", "@mod:1#2"), suggestions("@mod:1#", true),
+                "waypoints keep the route form that was typed");
+    }
+
+    @Test
+    void compactAndColonIdsNameTheSameRoute() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup divan = route("Divan", 2);
+        divan.setZoneId("crystal_hollows_structure_mines_of_divan");
+        manager.fireDataChanged();
+        assertSame(divan, manager.findRoute(RouteIds.parse("@mod1")));
+        assertSame(divan, manager.findRoute(RouteIds.parse("@mod:1")));
+        assertSame(divan, manager.findRoute(RouteIds.parse("@MOD1")));
     }
 
     @Test
@@ -331,12 +348,12 @@ class RouteCommandsTest {
         divan.setZoneId("crystal_hollows_structure_mines_of_divan");
         manager.fireDataChanged();
         int firstX = divan.get(0).x();
-        assertEquals(1, waypoints.runMoveTo(messages.source(), "@mod:1#1", "@mod:1#5"));
+        assertEquals(1, waypoints.runMoveTo(messages.source(), "@mod1#1", "@mod1#5"));
         assertEquals(firstX, divan.get(4).x());
         assertSame(current, manager.recordingTarget());
-        assertEquals(0, waypoints.runMoveTo(messages.source(), "@mod:1#1", "@hub:1#2"));
+        assertEquals(0, waypoints.runMoveTo(messages.source(), "@mod1#1", "@hub1#2"));
         assertEquals(1, messages.errors.size());
-        assertEquals(1, waypoints.runMoveTo(messages.source(), "@mod:1#5", "1"));
+        assertEquals(1, waypoints.runMoveTo(messages.source(), "@mod1#5", "1"));
         assertEquals(firstX, divan.get(0).x());
     }
 
@@ -346,13 +363,29 @@ class RouteCommandsTest {
         WaypointGroup current = route("Current", 2);
         WaypointGroup other = route("Other", 2);
         manager.setRecordingTarget(current);
-        assertEquals(1, routes.forRoute(messages.source(), "@hub:2", () -> routes.runRename(messages.source(), "Renamed")));
+        assertEquals(1, routes.forRoute(messages.source(), "@hub2", () -> routes.runRename(messages.source(), "Renamed")));
         assertEquals("Renamed", other.name());
         assertEquals("Current", current.name());
         assertSame(current, manager.recordingTarget());
         assertEquals(1, routes.runRename(messages.source(), "Still current"));
         assertEquals("Still current", current.name());
-        assertEquals(0, routes.forRoute(messages.source(), "@hub:99", () -> { throw new AssertionError(); }));
+        assertEquals(0, routes.forRoute(messages.source(), "@hub99", () -> { throw new AssertionError(); }));
+    }
+
+    /** A message with its arguments spelled out; translations are not loaded in unit tests. */
+    private static String flat(Component message) {
+        StringBuilder out = new StringBuilder();
+        if (message.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents translated) {
+            out.append(translated.getKey());
+            for (Object argument : translated.getArgs()) {
+                out.append(' ').append(argument instanceof Component part ? flat(part) : String.valueOf(argument));
+            }
+        } else {
+            out.append(message.getContents() instanceof net.minecraft.network.chat.contents.PlainTextContents plain
+                    ? plain.text() : "");
+        }
+        for (Component sibling : message.getSiblings()) out.append(flat(sibling));
+        return out.toString();
     }
 
     private List<String> suggestions(String typed, boolean forWaypoint) {
@@ -362,4 +395,47 @@ class RouteCommandsTest {
     }
 
 
+
+    @Test
+    void deletingARouteByIdAsksForAConfirmThatNamesThatRoute() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup target = route("Target", 2);
+        WaypointGroup other = route("Other", 2);
+        other.setZoneId("garden");
+        manager.fireDataChanged();
+        String id = RouteIds.routeId(other);
+
+        assertEquals(0, routes.forRoute(messages.source(), id, () -> routes.runDelete(messages.source(), false)));
+        String ask = flat(messages.feedback.get(messages.feedback.size() - 1));
+        assertTrue(ask.contains("/wp route " + id + " delete confirm"), ask);
+
+        assertEquals(0, routes.runDelete(messages.source(), false));
+        ask = flat(messages.feedback.get(messages.feedback.size() - 1));
+        assertTrue(ask.contains("/wp route delete confirm"), ask);
+
+        assertEquals(1, routes.forRoute(messages.source(), id, () -> routes.runDelete(messages.source(), true)));
+        assertNull(manager.get(other.id()));
+        assertNotNull(manager.get(target.id()), "the recording target survives deleting another route by ID");
+    }
+
+    @Test
+    void idsWithoutAZoneUseTheCurrentZoneAndMissesSayWhy() {
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup first = route("First", 2);
+        WaypointGroup second = route("Second", 3);
+
+        assertSame(second, targets.route("@2").value());
+        assertEquals(1, waypoints.runRename(messages.source(), "@2#3", "End"));
+        assertEquals("End", second.get(2).name());
+        assertEquals("", first.get(1).name());
+
+        String wrongNumber = flat(targets.route("@hub9").error());
+        assertTrue(wrongNumber.contains("@hub1") && wrongNumber.contains("@hub2"), wrongNumber);
+        String emptyZone = flat(targets.route("@rift1").error());
+        assertTrue(emptyZone.contains("Rift"), emptyZone);
+
+        assertEquals(List.of("@2#1", "@2#2", "@2#3"), suggestions("@2#", true));
+        for (int i = 0; i < 9; i++) route("Filler " + i, 1);
+        assertEquals(List.of("@1#", "@10#", "@11#"), suggestions("@1", true));
+    }
 }

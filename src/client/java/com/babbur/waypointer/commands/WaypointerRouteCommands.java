@@ -409,8 +409,20 @@ final class WaypointerRouteCommands {
         WaypointGroup route = targetOrError(src);
         if (route == null) return 0;
         if (!confirmed) {
-            warn(src, Component.translatable("waypointer.command.route.delete_ask",
-                    routeName(route), Counts.of("waypoint", route.size())));
+            // Name the route in the confirm command: without it the confirm would delete the
+            // recording target, which is another route when this one was addressed by ID.
+            String id = RouteIds.routeId(route);
+            String confirm = id != null && (explicitRoute != null || route != manager.targetRoute())
+                    ? "/wp route " + id + " delete confirm" : "/wp route delete confirm";
+            if (explicitRoute != null && id == null) {
+                error(src, Component.translatable("waypointer.command.error.delete_needs_id", route.name()));
+                return 0;
+            }
+            warn(src, Component.translatable("waypointer.command.route.delete_ask_run",
+                    routeName(route), Counts.of("waypoint", route.size()),
+                    Component.literal(confirm).withStyle(style -> style
+                            .withUnderlined(true)
+                            .withClickEvent(new ClickEvent.SuggestCommand(confirm)))));
             return 0;
         }
         manager.remove(route.id());
@@ -635,8 +647,11 @@ final class WaypointerRouteCommands {
             return 0;
         }
         manager.fireDataChanged();
-        routeSuccess(src, route, Component.translatable("waypointer.command.route.position",
-                targets.number(route)));
+        int position = targets.number(route);
+        // A route addressed by ID from another zone is not in this zone's numbered list.
+        routeSuccess(src, route, position > 0
+                ? Component.translatable("waypointer.command.route.position", position)
+                : Component.translatable("waypointer.command.route.moved"));
         return 1;
     }
 

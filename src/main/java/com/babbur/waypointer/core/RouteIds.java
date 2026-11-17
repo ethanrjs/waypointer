@@ -9,15 +9,27 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Route IDs like {@code @mod:1} (route 1 in Mines of Divan) and waypoint IDs like
- * {@code @mod:1#15} or {@code @mod:1#2.1}. Zones and dungeon rooms have short names; any
- * other zone uses its full zone ID. Route numbers are stored locally per zone and are
- * not reused after deletion. Waypoint suffixes follow the editor's current numbering.
+ * Route IDs like {@code @fg1} (route 1 in Fairy Grotto) and waypoint IDs like
+ * {@code @fg1#15} or {@code @fg1#2.1}. Zones and dungeon rooms have short names; any
+ * other zone uses its full zone ID. A zone name ending in a digit takes a colon before the
+ * number ({@code @f1:2}), and the colon form is accepted for every zone ({@code @fg:1}).
+ * Route numbers are stored locally per zone and are not reused after deletion. Waypoint
+ * suffixes follow the editor's current numbering. {@code @1} and {@code @1#15} leave the zone
+ * out and mean the zone the player is in.
  */
 public final class RouteIds {
 
-    private static final Pattern REFERENCE = Pattern.compile(
-            "@([a-z0-9_-]{1,64}):([0-9]{1,10})(?:#([0-9]{1,10}(?:\\.[0-9]{1,10})?))?");
+    private static final String WAYPOINT_SUFFIX = "(?:#([0-9]{1,10}(?:\\.[0-9]{1,10})?))?";
+
+    /** {@code @fg1}: a zone whose name ends in a letter runs straight into the route number. */
+    private static final Pattern COMPACT = Pattern.compile(
+            "@([a-z0-9_-]{0,63}[a-z_-])?([0-9]{1,10})" + WAYPOINT_SUFFIX);
+
+    /** {@code @f1:2}: the colon form, needed when the zone name ends in a digit, and always accepted. */
+    private static final Pattern COLON = Pattern.compile(
+            "@([a-z0-9_-]{1,64}):([0-9]{1,10})" + WAYPOINT_SUFFIX);
+
+    private static final Pattern ZONE_TOKEN = Pattern.compile("[a-z0-9_-]{1,64}");
 
     private static final Map<String, String> ZONES = linked(
             "hub", "hub",
@@ -67,6 +79,7 @@ public final class RouteIds {
             "crystal_hollows_structure_lost_precursor_city", "lpc",
             "crystal_hollows_structure_khazad_dum", "kd",
             "crystal_hollows_structure_dragons_lair", "dl",
+            "crystal_hollows_structure_fairy_grotto", "fg",
             "crystal_hollows_structure_king_yolkar", "ky",
             "crystal_hollows_structure_odawa", "oda",
             "crystal_hollows_structure_xalx", "xalx",
@@ -245,9 +258,30 @@ public final class RouteIds {
 
     private RouteIds() {}
 
-    public record Reference(String zoneId, int routeNumber, String waypointLabel) {
+    /**
+     * A parsed ID. {@code zoneId} is null when the ID left the zone out ({@code @1}), and
+     * {@code literalZoneId} is the zone exactly as typed, for a zone whose own ID happens to be
+     * another zone's short name.
+     */
+    public record Reference(String zoneId, int routeNumber, String waypointLabel, String literalZoneId) {
+        public Reference(String zoneId, int routeNumber, String waypointLabel) {
+            this(zoneId, routeNumber, waypointLabel, zoneId);
+        }
+
         public boolean hasWaypoint() {
             return waypointLabel != null;
+        }
+
+        /** True for {@code @1}: the zone is whichever one the player is in. */
+        public boolean currentZone() {
+            return zoneId == null;
+        }
+
+        /** The same reference with its zone filled in, for IDs that left it out. */
+        public Reference inZone(String currentZoneId) {
+            if (zoneId != null || currentZoneId == null) return this;
+            String zone = Zone.canonicalId(currentZoneId);
+            return new Reference(zone, routeNumber, waypointLabel, zone);
         }
     }
 
@@ -266,7 +300,25 @@ public final class RouteIds {
 
     public static String routeId(WaypointGroup group) {
         if (group == null || group.temp() || group.runtimeOnly() || !group.routeNumberMatchesZone()) return null;
-        return "@" + shortName(group.zoneId()) + ":" + group.routeNumber();
+        String zone = shortName(group.zoneId());
+        // A zone ID that cannot be typed back (spaces, punctuation from an old import) has no ID.
+        if (!ZONE_TOKEN.matcher(zone).matches()) return null;
+        return routePrefix(zone) + group.routeNumber();
+    }
+
+    /**
+     * What a zone's route IDs start with: {@code @fg} for Fairy Grotto ({@code @fg1}), or
+     * {@code @f1:} for a name ending in a digit, where {@code @f12} would be ambiguous.
+     */
+    public static String routePrefix(String zoneShortName) {
+        String zone = zoneShortName == null ? "" : zoneShortName;
+        if (zone.isEmpty()) return "@";
+        return Character.isDigit(zone.charAt(zone.length() - 1)) ? "@" + zone + ":" : "@" + zone;
+    }
+
+    /** The route ID prefix for a zone ID, as {@link #routePrefix(String)} gives for its short name. */
+    public static String routePrefixForZone(String zoneId) {
+        return routePrefix(shortName(zoneId));
     }
 
     public static String waypointId(WaypointGroup group, int index) {
@@ -280,10 +332,15 @@ public final class RouteIds {
         return text != null && text.trim().startsWith("@");
     }
 
-    /** Parses {@code @zone:N} or {@code @zone:N#W}; null when the text is not one. */
+    /**
+     * Parses {@code @fg1}, {@code @fg1#5}, {@code @f1:2}, {@code @fg:1}, {@code @1} or
+     * {@code @1#5}; null when the text is not one.
+     */
     public static Reference parse(String text) {
         if (text == null) return null;
-        Matcher matcher = REFERENCE.matcher(text.trim().toLowerCase(Locale.ROOT));
+        String lower = text.trim().toLowerCase(Locale.ROOT);
+        Matcher matcher = COLON.matcher(lower);
+        if (!matcher.matches()) matcher = COMPACT.matcher(lower);
         if (!matcher.matches()) return null;
         int number;
         try {
@@ -292,16 +349,40 @@ public final class RouteIds {
             return null;
         }
         if (number <= 0) return null;
-        return new Reference(zoneId(matcher.group(1)), number, matcher.group(3));
+        String zone = matcher.group(1);
+        if (zone == null) return new Reference(null, number, matcher.group(3), null);
+        return new Reference(zoneId(zone), number, matcher.group(3), Zone.canonicalId(zone));
+    }
+
+    /** Why an ID named no route, for an error that says what to fix. */
+    public enum Miss { ZONE_HAS_NO_ROUTES, NUMBER_NOT_IN_ZONE, NO_CURRENT_ZONE }
+
+    public static Miss explainMiss(Collection<WaypointGroup> groups, Reference reference) {
+        if (reference == null || reference.zoneId() == null) return Miss.NO_CURRENT_ZONE;
+        String shared = Zone.routeZoneKey(reference.zoneId());
+        for (WaypointGroup group : groups) {
+            if (group.temp() || group.runtimeOnly() || !group.routeNumberMatchesZone()) continue;
+            String zone = group.zoneId();
+            if (zone.equals(reference.zoneId()) || zone.equals(shared) || zone.equals(reference.literalZoneId())) {
+                return Miss.NUMBER_NOT_IN_ZONE;
+            }
+        }
+        return Miss.ZONE_HAS_NO_ROUTES;
     }
 
     /** The saved route a reference names. A master floor also finds its normal floor's routes. */
     public static WaypointGroup find(Collection<WaypointGroup> groups, Reference reference) {
-        if (groups == null || reference == null) return null;
+        if (groups == null || reference == null || reference.zoneId() == null) return null;
         WaypointGroup exact = find(groups, reference.zoneId(), reference.routeNumber());
         if (exact != null) return exact;
         String shared = Zone.routeZoneKey(reference.zoneId());
-        return shared.equals(reference.zoneId()) ? null : find(groups, shared, reference.routeNumber());
+        if (!shared.equals(reference.zoneId())) {
+            WaypointGroup floor = find(groups, shared, reference.routeNumber());
+            if (floor != null) return floor;
+        }
+        String literal = reference.literalZoneId();
+        return literal == null || literal.equals(reference.zoneId())
+                ? null : find(groups, literal, reference.routeNumber());
     }
 
     private static WaypointGroup find(Collection<WaypointGroup> groups, String zoneId, int number) {

@@ -3,6 +3,7 @@ package com.babbur.waypointer.commands;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
 import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.screen.RouteListPresentation;
+import com.babbur.waypointer.screen.WaypointerZoneCatalog;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
@@ -20,7 +21,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Locale;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
@@ -150,14 +156,73 @@ final class WaypointerCommandSuggestions {
             }
             return count;
         }
+        Zone here = manager.currentZone();
+        // "@fg:1" is accepted as well as "@fg1"; match on the compact form.
+        String compact = compactTyped(typed);
+        boolean onlyAt = typed.equals("@");
+        String words = typed.length() > 1 ? typed.substring(1) : "";
+        Map<String, List<WaypointGroup>> zonesWithRoutes = new LinkedHashMap<>();
+        List<WaypointGroup> byName = new ArrayList<>();
+        Set<String> listedZones = new HashSet<>();
         for (WaypointGroup route : manager.allGroupsList()) {
             String id = RouteIds.routeId(route);
-            if (id == null || !id.startsWith(typed)) continue;
-            builder.suggest(forWaypoint ? id + "#" : id, Component.literal(route.name() + "  ")
-                    .append(Counts.of("waypoint", route.size())));
+            if (id == null) continue;
+            boolean inHere = here != null && Zone.sharesRoutes(route.zoneId(), here.id());
+            zonesWithRoutes.computeIfAbsent(route.zoneId(), z -> new ArrayList<>()).add(route);
+            // A bare "@" lists this area's routes; other areas are offered as prefixes below.
+            if (onlyAt && !inHere) continue;
+            // "@2" is route 2 of the zone the player is in; offered once a digit is typed.
+            String shorthand = inHere && typed.length() > 1 ? "@" + route.routeNumber() : null;
+            String match = id.startsWith(compact) ? id
+                    : shorthand != null && shorthand.startsWith(typed) ? shorthand : null;
+            if (match == null) {
+                if (!words.isEmpty() && !Character.isDigit(words.charAt(0))
+                        && route.name().toLowerCase(Locale.ROOT).contains(words)) {
+                    byName.add(route);
+                }
+                continue;
+            }
+            builder.suggest(forWaypoint ? match + "#" : match, routeTip(route));
+            listedZones.add(route.zoneId());
+            count++;
+        }
+        // Area prefixes ("@mod", "@f7:") so an ID can be built one part at a time; a typed area
+        // name ("@divan", "@grotto") also finds its prefix.
+        for (Map.Entry<String, List<WaypointGroup>> zone : zonesWithRoutes.entrySet()) {
+            String prefix = RouteIds.routePrefixForZone(zone.getKey());
+            if (prefix.equals("@") || prefix.equals(compact)) continue;
+            boolean inHere = here != null && Zone.sharesRoutes(zone.getKey(), here.id());
+            // An area whose routes are already listed needs no prefix.
+            if ((onlyAt && inHere) || listedZones.contains(zone.getKey())) continue;
+            String display = WaypointerZoneCatalog.displayZoneLabel(zone.getKey());
+            boolean matches = onlyAt || prefix.startsWith(compact)
+                    || (words.length() >= 2 && !Character.isDigit(words.charAt(0))
+                        && (display.toLowerCase(Locale.ROOT).contains(words) || zone.getKey().contains(words)));
+            if (!matches) continue;
+            builder.suggest(prefix, Component.literal(display + "  ")
+                    .append(Counts.of("route", zone.getValue().size())));
+            count++;
+        }
+        // Route names: "@divan" offers the IDs of routes named like it.
+        for (WaypointGroup route : byName) {
+            String id = RouteIds.routeId(route);
+            builder.suggest(forWaypoint ? id + "#" : id, routeTip(route));
             count++;
         }
         return count;
+    }
+
+    /** "@fg:1" typed as the colon form of a zone that does not need one reads as "@fg1". */
+    private static String compactTyped(String typed) {
+        int colon = typed.indexOf(':');
+        if (colon <= 1) return typed;
+        String zone = typed.substring(1, colon);
+        return RouteIds.routePrefixForZone(RouteIds.zoneId(zone)) + typed.substring(colon + 1);
+    }
+
+    private static Component routeTip(WaypointGroup route) {
+        return Component.literal(route.name() + "  ·  " + WaypointerZoneCatalog.displayZoneLabel(route.zoneId()) + "  ·  ")
+                .append(Counts.of("waypoint", route.size()));
     }
 
     static int suggestWaypointLabels(WaypointGroup route, SuggestionsBuilder builder) {

@@ -30,6 +30,12 @@ import com.babbur.waypointer.debug.DebugReportExport;
 import com.babbur.waypointer.debug.DebugReportAnonymizer;
 import com.babbur.waypointer.debug.DebugSignals;
 import com.babbur.waypointer.debug.PerformanceStats;
+import com.babbur.waypointer.debug.RouteIdDiagnostics;
+import com.babbur.waypointer.codec.ImportFailures;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.core.RouteIds;
+import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.input.WaypointerKeybinds;
 import com.babbur.waypointer.render.RenderCost;
@@ -282,6 +288,12 @@ public final class DebugInspectScreen extends Screen {
                     this::buildLanguageReport);
             buildSafely("Route Activation", DebugReportExport.Category.ROUTES_AND_WAYPOINTS,
                     this::buildRouteActivationReport);
+            buildSafely("Route IDs", DebugReportExport.Category.ROUTES_AND_WAYPOINTS,
+                    this::buildRouteIdReport);
+            buildSafely("Saved Route Inventory", DebugReportExport.Category.ROUTES_AND_WAYPOINTS,
+                    this::buildSavedRouteInventoryReport);
+            buildSafely("Recent Import Failures", DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY,
+                    this::buildImportFailureReport);
             buildSafely("Performance Snapshot", this::buildLivePerformanceReport);
             buildSafely("Settings and Recent Changes", DebugReportExport.Category.SETTINGS_AND_CHANGES,
                     this::buildSettingsReport);
@@ -738,6 +750,85 @@ public final class DebugInspectScreen extends Screen {
         for (String line : routeActivationLines(manager)) rows.add(new Row.BitNote(line));
     }
 
+    private void buildRouteIdReport() {
+        RouteIdDiagnostics.Report report = RouteIdDiagnostics.report(manager);
+        addSection(rows, sections, "Route IDs",
+                report.problems().isEmpty() ? "no problems" : report.problems().size() + " problem(s)",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
+        for (String line : report.summary()) rows.add(new Row.BitNote(line));
+        rows.add(new Row.KV("Shown in menus", String.valueOf(config.showRouteIdsInMenus())));
+        for (String line : report.zones()) {
+            int split = line.indexOf(": ");
+            rows.add(new Row.KVDim(line.substring(0, split), line.substring(split + 2)));
+        }
+        for (String problem : report.problems()) {
+            int split = problem.indexOf(": ");
+            rows.add(new Row.KVWarn(problem.substring(0, split), problem.substring(split + 2)));
+        }
+    }
+
+    private void buildImportFailureReport() {
+        List<ImportFailures.Recent> failures = ImportFailures.recent();
+        addSection(rows, sections, "Recent Import Failures", failures.size() + " this session",
+                DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY);
+        if (failures.isEmpty()) rows.add(new Row.KVDim("Imports", "No failed imports this session."));
+        for (ImportFailures.Recent failure : failures) {
+            rows.add(new Row.KVWarn(Instant.ofEpochMilli(failure.atMillis()).toString(),
+                    failure.origin() + ", " + failure.kind().name().toLowerCase(Locale.ROOT)
+                            + ", " + failure.length() + " chars, starts " + failure.prefix()));
+            rows.add(new Row.KVDim("Decoder detail", oneLine(failure.detail())));
+        }
+    }
+
+    private void buildSavedRouteInventoryReport() {
+        List<String> lines = savedRouteInventoryLines(manager);
+        addSection(rows, sections, "Saved Route Inventory", lines.size() + " saved",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
+        if (lines.isEmpty()) rows.add(new Row.KVDim("Routes", "No saved routes."));
+        for (String line : lines) {
+            int split = line.indexOf("  ");
+            rows.add(new Row.KVDim(line.substring(0, split), line.substring(split + 2)));
+        }
+    }
+
+    /** Every saved route in every zone, by ID and without names: what it is and how it is set up. */
+    static List<String> savedRouteInventoryLines(ActiveGroupManager manager) {
+        List<String> out = new ArrayList<>();
+        for (WaypointGroup group : manager.allGroups()) {
+            if (group.temp() || group.runtimeOnly()) continue;
+            String id = RouteIds.routeId(group);
+            int subs = 0;
+            int disabled = 0;
+            int named = 0;
+            int styled = 0;
+            for (int i = 0; i < group.size(); i++) {
+                if (group.isSubwaypoint(i)) subs++;
+                if (group.isWaypointDisabled(i)) disabled++;
+                if (group.get(i).hasName()) named++;
+                if (!group.get(i).styleOverride().isEmpty()) styled++;
+            }
+            RouteFolder folder = manager.folderForGroup(group.id());
+            StringBuilder line = new StringBuilder(id == null ? "(no ID) " + group.zoneId() : id).append("  ")
+                    .append(group.routeKind().name().toLowerCase(Locale.ROOT))
+                    .append(' ').append(group.loadMode().name().toLowerCase(Locale.ROOT))
+                    .append(group.enabled() ? ", shown" : ", hidden")
+                    .append(", waypoints=").append(group.size() - subs)
+                    .append(" sub=").append(subs)
+                    .append(" disabled=").append(disabled)
+                    .append(" named=").append(named)
+                    .append(" styled=").append(styled)
+                    .append(", radius=").append(formatRadius(group.defaultRadius()))
+                    .append('/').append(group.radiusSource().name().toLowerCase(Locale.ROOT));
+            if (folder != null) line.append(", in a folder");
+            if (group.catalogProvenance() != null) {
+                line.append(", catalog v").append(group.catalogProvenance().routeVersion());
+            }
+            if (CrystalHollowsStructureRoutes.isStructureRoute(group)) line.append(", structure-relative");
+            out.add(line.toString());
+        }
+        return out;
+    }
+
     static List<String> routeActivationLines(ActiveGroupManager manager) {
         var active = manager.activeGroups();
         String zone = manager.currentZone() == null ? null : manager.currentZone().id();
@@ -798,8 +889,18 @@ public final class DebugInspectScreen extends Screen {
             WaypointGroup group = activeGroups.get(groupIndex);
             rows.add(new Row.BitNote("Route " + (groupIndex + 1) + " of " + activeGroups.size()));
             rows.add(new Row.KV("Name", oneLine(group.name().isBlank() ? "(unnamed)" : group.name())));
-            rows.add(new Row.KVDim("ID", oneLine(group.id())));
-            rows.add(new Row.KV("Zone", oneLine(group.zoneId())));
+            WaypointGroup stored = DungeonRoomRouteLibrary.durableEditTarget(manager, group);
+            String routeId = RouteIds.routeId(stored);
+            rows.add(new Row.KV("Route ID", routeId == null ? "(none)"
+                    : stored == group ? routeId : routeId + " (of the saved route this one mirrors)"));
+            rows.add(new Row.KVDim("Internal ID", oneLine(group.id())));
+            rows.add(new Row.KV("Zone", oneLine(group.zoneId()) + " (" + group.routeKind() + ")"));
+            RouteFolder folder = stored == null ? null : manager.folderForGroup(stored.id());
+            rows.add(new Row.KVDim("Folder", folder == null ? "(none)" : "yes"));
+            if (group.catalogProvenance() != null) {
+                rows.add(new Row.KVDim("Catalog", "route " + oneLine(group.catalogProvenance().routeId())
+                        + " v" + group.catalogProvenance().routeVersion()));
+            }
             rows.add(new Row.KV("Source", routeSource(group)));
             rows.add(new Row.KVDim("Coordinates", routeCoordinateSpace(group)));
             rows.add(new Row.KV("State", "enabled=" + group.enabled()
@@ -1028,6 +1129,12 @@ public final class DebugInspectScreen extends Screen {
         }
         if (group.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
             return "stored dungeon room-local coordinates";
+        }
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            var pivot = CrystalHollowsStructureRoutes.pivotFor(group);
+            return "relative to " + CrystalHollowsStructureRoutes.structureFor(group).id()
+                    + (pivot == null ? ", structure not located in this lobby"
+                    : ", located at " + pivot.x() + "," + pivot.y() + "," + pivot.z());
         }
         return "world coordinates";
     }
@@ -1720,6 +1827,8 @@ public final class DebugInspectScreen extends Screen {
             case "Tracer and Dungeon Path Settings" -> "Tracers & paths";
             case "Dungeon Entry Path Outcomes" -> "Dungeon paths";
             case "Active Routes and Waypoints" -> "Active routes";
+            case "Saved Route Inventory" -> "Saved routes";
+            case "Recent Import Failures" -> "Import failures";
             case "Dungeon Overview" -> "Dungeon";
             case "Built-in Dungeon Secret Progress" -> "Secret progress";
             case "Recent Settings Changes" -> "Recent changes";

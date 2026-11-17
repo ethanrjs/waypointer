@@ -85,6 +85,8 @@ public final class GroupEditScreen extends Screen {
     private boolean syncingCoordinateEditors;
     private String coordinateEditError;
     private String copiedWaypointId;
+    private Component lookNotice;
+    private long lookNoticeUntil;
     private long copiedWaypointIdUntil;
     private static final int SUBWAY_ACCENT = 0xFF58C878;
     private static final int SUBWAY_STYLE_BUTTON_SIZE = 20;
@@ -1081,6 +1083,8 @@ public final class GroupEditScreen extends Screen {
         if (coordinateEditError != null) {
             g.text(font, coordinateEditError, PAD_OUTER, PAD_OUTER + 14,
                     GuiTokens.DANGER, false);
+        } else if (lookNotice != null && System.currentTimeMillis() < lookNoticeUntil) {
+            g.text(font, lookNotice, PAD_OUTER, PAD_OUTER + 14, TEXT_DIM, false);
         } else if (copiedWaypointId != null && System.currentTimeMillis() < copiedWaypointIdUntil) {
             g.text(font, Component.translatable("waypointer.screen.main.copied_id", copiedWaypointId),
                     PAD_OUTER, PAD_OUTER + 14, TEXT_DIM, false);
@@ -2112,6 +2116,12 @@ public final class GroupEditScreen extends Screen {
                 : ContextMenuOverlay.Item.of(lookLabel, lookCount == 0 ? null
                         : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
                         () -> openAppearance(look)));
+        if (look != null) {
+            items.addAll(WaypointerScreen.lookClipboardItems(look, notice -> {
+                lookNotice = notice;
+                lookNoticeUntil = System.currentTimeMillis() + 2500L;
+            }));
+        }
         if (group.usesDungeonSteps()) {
             items.add(ContextMenuOverlay.Item.of(
                     Component.translatable("waypointer.screen.group_edit.menu.types"),

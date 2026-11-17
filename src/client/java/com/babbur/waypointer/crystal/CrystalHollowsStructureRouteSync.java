@@ -54,10 +54,10 @@ public final class CrystalHollowsStructureRouteSync {
                 for (WaypointGroup source : manager.allGroups()) {
                     if (!CrystalHollowsStructureRoutes.isStructureRoute(source)
                             || !source.enabled() || source.isEmpty()) continue;
-                    CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(source);
-                    if (pivot == null) continue;
+                    StructurePlacement placement = CrystalHollowsStructureRoutes.placementFor(source);
+                    if (placement == null) continue;
                     String id = generatedId(source.id());
-                    String signature = signature(source, pivot);
+                    String signature = signature(source, placement);
                     WaypointGroup existing = manager.get(id);
                     if (existing != null && !isGeneratedGroup(existing)) continue;
                     if (existing != null && signature.equals(signatures.get(id))) {
@@ -65,7 +65,7 @@ public final class CrystalHollowsStructureRouteSync {
                         nextSignatures.put(id, signature);
                         continue;
                     }
-                    replacements.put(id, project(source, pivot, existing));
+                    replacements.put(id, project(source, placement, existing));
                     nextSignatures.put(id, signature);
                 }
             }
@@ -85,6 +85,10 @@ public final class CrystalHollowsStructureRouteSync {
     }
 
     static WaypointGroup project(WaypointGroup source, CrystalHollowsPosition pivot, WaypointGroup previous) {
+        return project(source, StructurePlacement.at(pivot), previous);
+    }
+
+    static WaypointGroup project(WaypointGroup source, StructurePlacement placement, WaypointGroup previous) {
         WaypointGroup group = new WaypointGroup(generatedId(source.id()), source.name(),
                 CrystalHollowsStructureFolder.ZONE_ID);
         group.setRuntimeOnly(true);
@@ -100,7 +104,7 @@ public final class CrystalHollowsStructureRouteSync {
         group.setStyleOverride(source.styleOverride());
         List<Waypoint> waypoints = new ArrayList<>(source.size());
         for (Waypoint stored : source.waypoints()) {
-            waypoints.add(CrystalHollowsStructureZones.toWorld(stored, pivot));
+            waypoints.add(placement.toWorld(stored));
         }
         group.addAll(waypoints);
         int progress = previous != null && previous.size() == group.size()
@@ -110,8 +114,14 @@ public final class CrystalHollowsStructureRouteSync {
     }
 
     static String signature(WaypointGroup source, CrystalHollowsPosition pivot) {
+        return signature(source, StructurePlacement.at(pivot));
+    }
+
+    static String signature(WaypointGroup source, StructurePlacement placement) {
+        CrystalHollowsPosition pivot = placement.pivot();
         StringBuilder out = new StringBuilder(source.id()).append('|').append(source.name())
                 .append('|').append(pivot.x()).append(',').append(pivot.y()).append(',').append(pivot.z())
+                .append('@').append(placement.quarterTurns())
                 .append('|').append(source.loadMode()).append('|').append(source.defaultRadius())
                 .append('|').append(source.skipAheadEnabled()).append('|').append(source.stylePresetId())
                 .append('|').append(source.styleOverride().values().hashCode())

@@ -66,7 +66,8 @@ class WaypointerScreenTest {
                 "Fairy Grotto #2", "crystal_hollows");
         grotto.setRuntimeOnly(true);
         String grottoZone = WaypointerZoneCatalog.generatedStructureZoneId(grotto);
-        assertTrue(WaypointerZoneCatalog.isStructureBrowseZone(grottoZone));
+        assertEquals(CrystalHollowsStructureZones.zoneId(CrystalHollowsStructure.FAIRY_GROTTO), grottoZone,
+                "grottos have routes now, so their markers open the route zone");
         assertFalse(WaypointerZoneCatalog.canRetargetRoute(
                 WaypointGroup.create("Saved route", "hub"), grottoZone));
         assertEquals("Fairy Grotto", WaypointerZoneCatalog.displayZoneLabel(grottoZone));
@@ -75,7 +76,8 @@ class WaypointerScreenTest {
         manager.add(grotto);
         assertEquals(grottoZone,
                 WaypointerZoneCatalog.islandDropdownIdsForManager(manager, false, grottoZone).get(1));
-        assertEquals(1, WaypointerZoneCatalog.normalGroupCountForZone(manager, grottoZone));
+        assertEquals(0, WaypointerZoneCatalog.normalGroupCountForZone(manager, grottoZone),
+                "like other route zones, the grotto zone counts saved routes, not detected markers");
     }
 
     @Test
@@ -1096,5 +1098,24 @@ class WaypointerScreenTest {
         manager.onZoneChanged(Zone.fromId("hub"));
         assertEquals("hub", WaypointerZoneCatalog.initialSelectedZoneId(manager));
         assertNull(WaypointerZoneCatalog.currentDungeonRoomZoneId(manager));
+    }
+
+    @Test
+    void menuKeepsAPickedIslandUntilThePlayerLeavesTheArea() {
+        WaypointerZoneCatalog.forgetSelection();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.addZoneListener(WaypointerZoneCatalog::onZoneChanged);
+        manager.onZoneChanged(Zone.fromId("mineshaft_unknown"));
+        assertEquals("mineshaft_unknown", WaypointerZoneCatalog.initialSelectedZoneId(manager));
+
+        WaypointerZoneCatalog.rememberSelection(manager, "dwarven_mines");
+        assertEquals("dwarven_mines", WaypointerZoneCatalog.initialSelectedZoneId(manager));
+
+        manager.onZoneChanged(Zone.fromId("dwarven_mines"));
+        assertEquals("dwarven_mines", WaypointerZoneCatalog.initialSelectedZoneId(manager));
+        manager.onZoneChanged(Zone.fromId("mineshaft_unknown"));
+        assertEquals("mineshaft_unknown", WaypointerZoneCatalog.initialSelectedZoneId(manager),
+                "leaving the area forgets the pick");
+        WaypointerZoneCatalog.forgetSelection();
     }
 }

@@ -93,6 +93,7 @@ public final class WaypointerConfig {
     private boolean routesFollowDefaultReachRadius = true;
     private boolean shareCodesWithoutAngleBrackets = false;
     private boolean inWorldLabels = false;
+    private boolean inWorldTracers = false;
     private transient DefaultReachRadiusListener defaultReachRadiusListener;
 
     private double editModePlacementReach = DEFAULT_EDIT_MODE_PLACEMENT_REACH;
@@ -678,6 +679,7 @@ public final class WaypointerConfig {
     public boolean routesFollowDefaultReachRadius() { return routesFollowDefaultReachRadius; }
     public boolean shareCodesWithoutAngleBrackets() { return shareCodesWithoutAngleBrackets; }
     public boolean inWorldLabels() { return inWorldLabels; }
+    public boolean inWorldTracers() { return inWorldTracers; }
     public double editModePlacementReach()    { return normalizeEditModePlacementReach(editModePlacementReach); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
@@ -895,6 +897,7 @@ public final class WaypointerConfig {
     public void setRoutesFollowDefaultReachRadius(boolean v) { this.routesFollowDefaultReachRadius = v; save(); }
     public void setShareCodesWithoutAngleBrackets(boolean v) { this.shareCodesWithoutAngleBrackets = v; save(); }
     public void setInWorldLabels(boolean v) { this.inWorldLabels = v; save(); }
+    public void setInWorldTracers(boolean v) { this.inWorldTracers = v; save(); }
 
     public interface DefaultReachRadiusListener {
         void changed(double previous, double current);
@@ -1516,6 +1519,7 @@ public final class WaypointerConfig {
         routesFollowDefaultReachRadius = defaults.routesFollowDefaultReachRadius;
         shareCodesWithoutAngleBrackets = defaults.shareCodesWithoutAngleBrackets;
         inWorldLabels = defaults.inWorldLabels;
+        inWorldTracers = defaults.inWorldTracers;
         editModePlacementReach = defaults.editModePlacementReach;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;

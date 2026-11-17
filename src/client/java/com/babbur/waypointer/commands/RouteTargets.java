@@ -95,19 +95,45 @@ final class RouteTargets {
                 () -> Component.translatable("waypointer.command.error.route_not_found", reference, zoneName()));
     }
 
-    /** A route by ID such as {@code @mod:1}, from any zone. A waypoint ID names its route. */
+    /** A route by ID such as {@code @mod1}, from any zone. A waypoint ID names its route. */
     static Lookup<WaypointGroup> routeById(ActiveGroupManager manager, String id) {
         RouteIds.Reference reference = RouteIds.parse(id);
         if (reference == null) {
             return Lookup.fail(Component.translatable("waypointer.command.error.route_id_invalid", id));
         }
         WaypointGroup route = manager.findRoute(reference);
-        return route == null
-                ? Lookup.fail(Component.translatable("waypointer.command.error.route_id", id))
-                : Lookup.of(route);
+        return route == null ? Lookup.fail(missingRoute(manager, reference, id)) : Lookup.of(route);
     }
 
-    /** A waypoint by ID such as {@code @mod:1#15} or {@code @mod:1#2.1}. */
+    /** Says what an ID that names no route got wrong: the zone, or the number within it. */
+    private static Component missingRoute(ActiveGroupManager manager, RouteIds.Reference typed, String id) {
+        RouteIds.Reference reference = manager.resolveReference(typed);
+        return switch (manager.explainMissingRoute(typed)) {
+            case NO_CURRENT_ZONE -> Component.translatable("waypointer.command.error.route_id_no_zone", id);
+            case ZONE_HAS_NO_ROUTES -> Component.translatable("waypointer.command.error.route_id_zone",
+                    id, Zone.fromId(reference.zoneId()).displayName());
+            case NUMBER_NOT_IN_ZONE -> Component.translatable("waypointer.command.error.route_id_number",
+                    id, Zone.fromId(reference.zoneId()).displayName(), idsIn(manager, reference));
+        };
+    }
+
+    private static String idsIn(ActiveGroupManager manager, RouteIds.Reference reference) {
+        List<String> ids = new ArrayList<>();
+        String shared = Zone.routeZoneKey(reference.zoneId());
+        for (WaypointGroup route : manager.allGroupsList()) {
+            String routeId = RouteIds.routeId(route);
+            if (routeId == null) continue;
+            String zone = route.zoneId();
+            if (zone.equals(reference.zoneId()) || zone.equals(shared) || zone.equals(reference.literalZoneId())) {
+                ids.add(routeId);
+            }
+        }
+        int shown = Math.min(ids.size(), 6);
+        String listed = String.join(", ", ids.subList(0, shown));
+        return shown < ids.size() ? listed + ", +" + (ids.size() - shown) : listed;
+    }
+
+    /** A waypoint by ID such as {@code @mod1#15} or {@code @mod1#2.1}. */
     static Lookup<WaypointAt> waypointById(ActiveGroupManager manager, String id) {
         Lookup<WaypointGroup> route = routeById(manager, id);
         if (!route.ok()) return Lookup.fail(route.error());

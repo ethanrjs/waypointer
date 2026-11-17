@@ -503,7 +503,13 @@ public final class SettingsCatalog {
                         Setting.bool("hideTracerOnStaticRoutes", MAIN, "Hide tracer on static routes",
                                 null,
                                 (c, d) -> c.hideTracerOnStaticRoutes(),
-                                (c, d, v) -> c.setHideTracerOnStaticRoutes((Boolean) v))),
+                                (c, d, v) -> c.setHideTracerOnStaticRoutes((Boolean) v)),
+                        Setting.bool("inWorldTracers", MAIN, "In-world tracers",
+                                null,
+                                (c, d) -> c.inWorldTracers(),
+                                (c, d, v) -> c.setInWorldTracers((Boolean) v))
+                                .localOnly()
+                                .aliases("hud caching", "lunar", "choppy", "world", "3d")),
                 Group.parented("beacon_beams", "Beacon beams",
                         (c, d) -> c.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF,
                         Setting.enumCycle("beaconBeamMode", MAIN, "Beacon beams",
@@ -595,7 +601,7 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setShowRouteIndicesInGui((Boolean) v))
                                 .aliases("command", "index", "number"),
                         Setting.bool("showRouteIdsInMenus", MAIN, "Show route IDs in menus",
-                                "Show local route IDs such as @mod:1 in route lists and editors. Copy ID is always available. Waypoint suffixes follow the editor's numbering and change when reordered.",
+                                "Show local route IDs such as @mod1 in route lists and editors. Copy ID is always available. Waypoint suffixes follow the editor's numbering and change when reordered.",
                                 (c, d) -> c.showRouteIdsInMenus(),
                                 (c, d, v) -> c.setShowRouteIdsInMenus((Boolean) v))
                                 .localOnly()

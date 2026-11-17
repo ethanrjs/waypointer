@@ -1,5 +1,6 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.codec.ImportFailures;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import net.minecraft.network.chat.Component;
 
@@ -48,9 +49,17 @@ final class WaypointCommandImport {
         try {
             return Result.success(UniversalShareCodec.decode(payload));
         } catch (IllegalArgumentException e) {
-            return Result.failure(Component.translatable(
-                    "waypointer.command.import.failed", failureMessage(e)));
+            return Result.failure(failure("command", payload, e));
         }
+    }
+
+    /** What to tell the player; the decoder's own detail goes to the log and /wp debug. */
+    static Component failure(String origin, String payload, Exception e) {
+        ImportFailures.Kind kind = ImportFailures.record(origin, payload, e);
+        String key = kind.translationKey(payload);
+        return key != null
+                ? Component.translatable(key)
+                : Component.translatable("waypointer.command.import.failed", failureMessage(e));
     }
 
     private static String failureMessage(Exception failure) {

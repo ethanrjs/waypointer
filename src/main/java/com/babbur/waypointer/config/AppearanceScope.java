@@ -148,6 +148,30 @@ public final class AppearanceScope {
         if (current.values().containsKey(property)) write(current.without(property));
     }
 
+    /**
+     * Sets every allowed property of {@code copied} on this level in one write. A value this
+     * level would inherit anyway is not pinned here. Returns how many properties were pasted.
+     */
+    public int paste(WaypointStyle copied, java.util.function.Predicate<String> allowed) {
+        if (copied == null) return 0;
+        WaypointerConfig inherited = inherited();
+        Map<String, String> next = new LinkedHashMap<>(style().values());
+        int pasted = 0;
+        for (Map.Entry<String, String> entry : copied.values().entrySet()) {
+            String property = entry.getKey();
+            if (!WaypointStyles.supportedProperties().contains(property)
+                    || allowed != null && !allowed.test(property)) continue;
+            if (entry.getValue().equals(WaypointStyles.valueOf(inherited, property))) {
+                next.remove(property);
+            } else {
+                next.put(property, entry.getValue());
+            }
+            pasted++;
+        }
+        if (pasted > 0) write(next.isEmpty() ? WaypointStyle.EMPTY : new WaypointStyle(next));
+        return pasted;
+    }
+
     public void clear() {
         Map<String, String> kept = new LinkedHashMap<>(style().values());
         kept.keySet().removeAll(WaypointStyles.supportedProperties());

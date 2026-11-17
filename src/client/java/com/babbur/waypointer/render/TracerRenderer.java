@@ -17,6 +17,7 @@ import java.util.function.Predicate;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -56,6 +57,65 @@ public final class TracerRenderer implements HudElement {
 
     public void install() {
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, HUD_ID, this);
+        WorldOverlayCompat.register(context -> {
+            long started = RenderCost.start();
+            try {
+                submitWorldTracers(context);
+            } finally {
+                RenderCost.stop(started);
+            }
+        });
+    }
+
+    /** How far in front of the camera an in-world tracer starts, in blocks. */
+    private static final double WORLD_TRACER_START = 1.0;
+
+    /**
+     * In-world tracers (issue #195): the same tracers, drawn as world lines from just in front of
+     * the camera instead of on the HUD. Clients that cache the HUD at a lower frame rate (Lunar's
+     * HUD caching) redraw the world every frame, so these stay smooth while the camera turns.
+     * They have no off-screen edge arrow; a line to a target behind the camera is simply not seen.
+     */
+    private void submitWorldTracers(LevelRenderContext context) {
+        if (!config.inWorldTracers()) return;
+        var groups = manager.activeGroups();
+        if (groups.isEmpty() || context.poseStack() == null) return;
+        boolean focusActive = manager.tempWaypointFocusActive();
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        Camera camera = MinecraftCompat.mainCamera(mc.gameRenderer);
+        if (camera == null || !camera.isInitialized()) return;
+        Vec3 camPos = camera.position();
+        Vector3fc forward = camera.forwardVector();
+        float startX = (float) (forward.x() * WORLD_TRACER_START);
+        float startY = (float) (forward.y() * WORLD_TRACER_START);
+        float startZ = (float) (forward.z() * WORLD_TRACER_START);
+        RenderSubmission.submit(context, context.poseStack(),
+                WaypointerRenderPipelines.linesThroughWalls(config.renderAntialiasing()), (lines, pose) -> {
+                    for (WaypointGroup group : groups) {
+                        boolean tempFocus = focusActive && group.temp() && group.focusedVisibleIndex() >= 0;
+                        for (int pass = 0; pass < 2; pass++) {
+                            Waypoint target = straightTracerTarget(
+                                    group, tempFocus, player, camPos, pass == 0, pass == 1);
+                            if (target == null) continue;
+                            WaypointerConfig options = WaypointStyles.resolve(config, group, target);
+                            float alpha = (float) options.tracerOpacity();
+                            if (tempFocus) alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
+                            alpha *= tracerFadeAlpha(group, pass == 1);
+                            if (alpha <= 0) continue;
+                            WaypointWorldRenderer.populateWaypointRenderAnchor(
+                                    mc.level, target, waypointBoxBoundsScratch);
+                            int color = options.matchTracerToWaypointColor()
+                                    ? resolvedTargetColor(group, target, options) : options.tracerColor();
+                            RenderHelpers.emitLine(lines, pose, startX, startY, startZ,
+                                    (float) (waypointBoxBoundsScratch[0] - camPos.x),
+                                    (float) (waypointBoxBoundsScratch[1] - camPos.y),
+                                    (float) (waypointBoxBoundsScratch[2] - camPos.z),
+                                    color & 0xFFFFFF, alpha, (float) options.tracerThickness());
+                            RenderDiagnostics.recordStraightTracerSubmitted(group);
+                        }
+                    }
+                });
     }
 
     private Waypoint straightTracerTarget(WaypointGroup group, boolean tempFocus,
@@ -178,7 +238,7 @@ public final class TracerRenderer implements HudElement {
     private void extractTracers(GuiGraphicsExtractor g) {
         var groups = manager.activeGroups();
         for (WaypointGroup group : groups) WaypointSkipFade.observe(group, config);
-        if (groups.isEmpty()) return;
+        if (groups.isEmpty() || config.inWorldTracers()) return;
         boolean focusActive = manager.tempWaypointFocusActive();
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;

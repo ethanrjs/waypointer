@@ -117,7 +117,7 @@ final class WaypointerShareCommands {
         }
     }
 
-    /** Routes and single waypoints named by IDs such as {@code @mod:1 @mod:2#15}, in the order given. */
+    /** Routes and single waypoints named by IDs such as {@code @mod1 @mod2#15}, in the order given. */
     static ExportSelection exportSelection(ActiveGroupManager manager, String ids) {
         List<WaypointGroup> groups = new ArrayList<>();
         for (String id : (ids == null ? "" : ids.trim()).split("[\\s,]+")) {
@@ -503,14 +503,12 @@ final class WaypointerShareCommands {
                       String origin, Zone targetZone,
                       UniversalShareCodec.Type expectedType) {
         if (result == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.import.failed", "unexpected import failure"));
-            ImportFeedback.failure("Invalid import text.");
+            error(src, Component.translatable("waypointer.import.error.invalid"));
             return;
         }
         if (result.error() != null) {
+            // Chat already says what went wrong; a second, vaguer toast only adds noise.
             error(src, result.error());
-            ImportFeedback.failure("Invalid import text.");
             return;
         }
 

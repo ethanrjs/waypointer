@@ -26,8 +26,10 @@ class CrystalHollowsStructureZonesTest {
         }
         assertFalse(CrystalHollowsStructureZones.supports(CrystalHollowsStructure.CRYSTAL_NUCLEUS));
         assertFalse(CrystalHollowsStructureZones.supports(CrystalHollowsStructure.WISHING_TARGET));
-        assertFalse(CrystalHollowsStructureZones.supports(CrystalHollowsStructure.FAIRY_GROTTO),
-                "a structure that can appear twice per lobby has no single pivot");
+        assertTrue(CrystalHollowsStructureZones.supports(CrystalHollowsStructure.FAIRY_GROTTO),
+                "grotto routes find their grotto by its Jasper layout, not by a sighting");
+        assertFalse(CrystalHollowsStructureZones.supports(CrystalHollowsStructure.CORLEONE),
+                "other structures that can appear more than once have no single pivot");
         assertTrue(CrystalHollowsStructureZones.supports(CrystalHollowsStructure.JUNGLE_TEMPLE));
         assertFalse(CrystalHollowsStructureZones.isStructureZone("crystal_hollows"));
         assertFalse(CrystalHollowsStructureZones.isStructureZone(null));

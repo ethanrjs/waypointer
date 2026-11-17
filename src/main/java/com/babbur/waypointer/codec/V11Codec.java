@@ -236,6 +236,7 @@ public final class V11Codec {
                         .normalizeId(copy.zoneId()));
             } else if (!options.includeZone) {
                 route.addProperty("zone", Zone.UNKNOWN.id());
+                route.remove("grottoLayout");
             }
             if (options.hasAllExportFieldsOff()) route.addProperty("name", "");
             if (!options.includeGroupMeta) {

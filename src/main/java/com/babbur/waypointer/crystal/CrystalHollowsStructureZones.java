@@ -30,7 +30,7 @@ public final class CrystalHollowsStructureZones {
         return structure != null
                 && structure.kind() != CrystalHollowsStructure.Kind.FIXED
                 && structure != CrystalHollowsStructure.WISHING_TARGET
-                && !structure.multiInstance();
+                && (!structure.multiInstance() || structure == CrystalHollowsStructure.FAIRY_GROTTO);
     }
 
     public static List<Definition> definitions() {

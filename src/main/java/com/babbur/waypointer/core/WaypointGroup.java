@@ -62,6 +62,7 @@ public final class WaypointGroup {
     private int gradientEndColor   = 0xFF3040;
     private String stylePresetId = "";
     private String icon = RouteIcon.NONE;
+    private String grottoLayout = "";
     private WaypointStyle styleOverride = WaypointStyle.EMPTY;
     private WaypointPaint paint;
     private boolean paintEnabled = true;
@@ -125,6 +126,7 @@ public final class WaypointGroup {
         copy.enabled = enabled;
         copy.stylePresetId = stylePresetId;
         copy.icon = icon;
+        copy.grottoLayout = grottoLayout;
         copy.styleOverride = styleOverride;
         copy.waypoints.addAll(waypoints);
         copy.manualColors.addAll(manualColors);
@@ -132,6 +134,11 @@ public final class WaypointGroup {
     }
 
     public String icon() { return icon; }
+    /** Fairy Grotto routes: the grotto's Jasper layout text, or empty. */
+    public String grottoLayout() { return grottoLayout; }
+    public void setGrottoLayout(String text) {
+        grottoLayout = com.babbur.waypointer.crystal.FairyGrottoLayout.normalizeText(text);
+    }
     public void setIcon(String spec) { icon = RouteIcon.normalize(spec); }
     public String stylePresetId() { return stylePresetId; }
     public void setStylePresetId(String id) { stylePresetId = id == null ? "" : id.strip(); }
@@ -160,7 +167,7 @@ public final class WaypointGroup {
     public boolean runtimeOnly()    { return runtimeOnly; }
     public CatalogRouteProvenance catalogProvenance() { return catalogProvenance; }
 
-    /** This route's number within its zone, as in route ID {@code @mod:1}; 0 until assigned. */
+    /** This route's number within its zone, as in route ID {@code @mod1}; 0 until assigned. */
     public int routeNumber() { return routeNumber; }
 
     public void setRouteNumber(int number) {

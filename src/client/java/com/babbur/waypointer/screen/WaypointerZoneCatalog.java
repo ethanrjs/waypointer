@@ -30,11 +30,52 @@ public final class WaypointerZoneCatalog {
 
     private WaypointerZoneCatalog() {}
 
+    /*
+     * The menu opens on the player's current island (issue #198). If they pick another island in
+     * the menu, it reopens on that pick until they leave the area they were in when they picked it.
+     */
+    private static String rememberedArea;
+    private static String rememberedSelection;
+
     static String initialSelectedZoneId(ActiveGroupManager manager) {
         List<String> ids = zoneIdsForManager(manager);
+        String area = areaKey(currentZoneId(manager));
+        if (rememberedSelection != null && area.equals(rememberedArea)
+                && (ids.contains(rememberedSelection) || isStructureBrowseZone(rememberedSelection))) {
+            return rememberedSelection;
+        }
         String fallback = selectorEntryForZoneId(currentZoneId(manager));
         if (ids.contains(fallback)) return fallback;
         return ids.isEmpty() ? Zone.UNKNOWN.id() : ids.get(0);
+    }
+
+    /** Remembers the island the menu was left on, for the area the player is in now. */
+    static void rememberSelection(ActiveGroupManager manager, String selection) {
+        if (selection == null) return;
+        rememberedArea = areaKey(currentZoneId(manager));
+        rememberedSelection = selection;
+    }
+
+    /** Forgets the remembered island once the player leaves its area. */
+    public static void onZoneChanged(Zone zone) {
+        if (rememberedArea == null) return;
+        if (!rememberedArea.equals(areaKey(zone == null ? Zone.UNKNOWN.id() : zone.id()))) forgetSelection();
+    }
+
+    static void forgetSelection() {
+        rememberedArea = null;
+        rememberedSelection = null;
+    }
+
+    /**
+     * The area a zone belongs to for remembering the menu's island: every dungeon room is one
+     * area, and a Crystal Hollows structure is part of the Crystal Hollows.
+     */
+    public static String areaKey(String zoneId) {
+        if (zoneId == null) return Zone.UNKNOWN.id();
+        if (isDungeonRoomZone(zoneId)) return DUNGEON_ROOMS_ZONE_ID;
+        if (CrystalHollowsStructureZones.isStructureZone(zoneId)) return "crystal_hollows";
+        return Zone.routeZoneKey(zoneId);
     }
 
     static String currentZoneId(ActiveGroupManager manager) {

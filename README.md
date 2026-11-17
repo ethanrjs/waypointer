@@ -25,20 +25,30 @@ Config export uses universal `WP:` V10 kind-3 codes. Legacy `WPC:` versions 1-6 
 
 ## Route and waypoint IDs
 
-`@mod:1` names route 1 in Mines of Divan; `@mod:1#5` names its fifth main waypoint.
-A subwaypoint uses a suffix such as `@mod:1#5.1`. Route lists show these IDs by default,
+`@mod1` names route 1 in Mines of Divan; `@mod1#5` names its fifth main waypoint.
+A subwaypoint uses a suffix such as `@mod1#5.1`. Areas whose short name ends in a digit
+take a colon before the number (`@f7:2`), and the colon form works for every area (`@mod:1`). Route lists show these IDs by default,
 and route and waypoint menus always offer **Copy ID**.
 
-- `/wp route @mod:1 rename Divan loop` edits that route without changing the recording target.
-- `/wp waypoint @mod:1#5 rename Chest` edits a waypoint from any zone.
-- `/wp move @mod:1#1 @mod:1#5` reorders waypoints within the same route.
-- `/wp edit @mod:1`, `/wp waypoints @mod:1`, and `/wp export @mod:1#5` accept IDs too.
+- `/wp route @mod1 rename Divan loop` edits that route without changing the recording target.
+- `/wp waypoint @mod1#5 rename Chest` edits a waypoint from any zone.
+- `/wp move @mod1#1 @mod1#5` reorders waypoints within the same route.
+- `/wp edit @mod1`, `/wp waypoints @mod1`, and `/wp export @mod1#5` accept IDs too.
+- `@2` and `@2#5` leave the area out and mean the area you are standing in.
+- `/wp debug` lists every area's IDs, its next number, and any route without a usable ID.
 
 IDs belong to your local installation. Imported routes receive their own local IDs;
 use an exported code or a catalog link to share a route with someone else. Route numbers
 survive restarts and are not reused after deletion. Moving a route to another zone
 gives it a new ID. Waypoint suffixes follow the editor's numbering, so inserting,
-removing, or reordering waypoints can change them. Tab completion helps find IDs.
+removing, or reordering waypoints can change them.
+
+Tab completion suggests IDs: `@` lists the routes in your area and every other area's
+prefix (`@mod`, `@fg`), an area prefix lists its routes, `@1#` lists waypoints, and typing
+part of a route or area name (`@divan`, `@grotto`) finds its ID.
+
+Fairy Grotto routes are numbered like any other area: `@fg1`, `@fg2`. A grotto route
+records the grotto it was made in, and is placed on that grotto in any lobby, at any turn.
 
 ## Community routes
 

@@ -376,16 +376,28 @@ public final class Storage {
         }
         Map<String, Integer> routeNumbers = new LinkedHashMap<>();
         if (root.has("routeNumberHighWatermarks")) {
-            JsonObject saved = root.getAsJsonObject("routeNumberHighWatermarks");
+            JsonElement element = root.get("routeNumberHighWatermarks");
+            JsonObject saved = element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
             for (Map.Entry<String, JsonElement> entry : saved.entrySet()) {
-                int number = entry.getValue().getAsBigDecimal().intValueExact();
-                if (number < 0) throw new IllegalArgumentException("Negative route number for " + entry.getKey());
-                routeNumbers.put(entry.getKey(), number);
+                // A damaged counter only costs that zone's "numbers are not reused" memory;
+                // it must not send every saved route to quarantine.
+                int number = wholeNumber(entry.getValue());
+                if (number > 0) routeNumbers.put(entry.getKey(), number);
             }
         }
         return new ParsedGroups(List.copyOf(groups), List.copyOf(folders),
                 Map.copyOf(memberships), Map.copyOf(routeNumbers), canonicalizedZoneCount,
                 canonicalizedZoneCount > 0 || !root.has("routeNumberHighWatermarks"));
+    }
+
+    /** A positive whole number from saved JSON, or 0 when the value is anything else. */
+    private static int wholeNumber(JsonElement value) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) return 0;
+        try {
+            return Math.max(0, value.getAsBigDecimal().intValueExact());
+        } catch (ArithmeticException | NumberFormatException notWhole) {
+            return 0;
+        }
     }
 
     private static boolean persistableFolderMember(WaypointGroup group, RouteFolder folder) {
@@ -455,6 +467,7 @@ public final class Storage {
         o.addProperty("gradientEndColor",   g.gradientEndColor());
         o.addProperty("paintEnabled", g.paintEnabled());
         if (!g.icon().isEmpty()) o.addProperty("icon", g.icon());
+        if (!g.grottoLayout().isEmpty()) o.addProperty("grottoLayout", g.grottoLayout());
         if (!g.stylePresetId().isEmpty()) o.addProperty("stylePresetId", g.stylePresetId());
         if (!g.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(g.styleOverride()));
         if (g.catalogProvenance() != null) {
@@ -490,6 +503,8 @@ public final class Storage {
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
         if (o.has("icon") && o.get("icon").isJsonPrimitive()) g.setIcon(o.get("icon").getAsString());
+        if (o.has("grottoLayout") && o.get("grottoLayout").isJsonPrimitive())
+            g.setGrottoLayout(o.get("grottoLayout").getAsString());
         if (o.has("stylePresetId") && o.get("stylePresetId").isJsonPrimitive())
             g.setStylePresetId(o.get("stylePresetId").getAsString());
         g.setStyleOverride(styleFromJson(o.get("styleOverride")));
@@ -517,9 +532,9 @@ public final class Storage {
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
         if (o.has("radiusSource") && o.get("radiusSource").isJsonPrimitive()) parseEnum(WaypointGroup.RadiusSource.class,
                 o.get("radiusSource").getAsString()).ifPresent(g::setRadiusSource);
-        if (o.has("routeNumber") && o.get("routeNumber").isJsonPrimitive()
-                && o.get("routeNumber").getAsJsonPrimitive().isNumber()) {
-            g.setRouteNumber(o.get("routeNumber").getAsBigDecimal().intValueExact());
+        if (o.has("routeNumber")) {
+            int number = wholeNumber(o.get("routeNumber"));
+            if (number > 0) g.setRouteNumber(number);
         }
         if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
         if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,

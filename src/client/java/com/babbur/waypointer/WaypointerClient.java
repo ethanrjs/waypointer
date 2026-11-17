@@ -21,6 +21,7 @@ import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsMinimap;
 import com.babbur.waypointer.crystal.CrystalHollowsStore;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync;
+import com.babbur.waypointer.crystal.FairyGrottoRoutes;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.crystal.MetalDetectorController;
 import com.babbur.waypointer.crystal.StructureRelayController;
@@ -51,6 +52,7 @@ import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
 import com.babbur.waypointer.screen.WaypointerScreen;
+import com.babbur.waypointer.screen.WaypointerZoneCatalog;
 import com.babbur.waypointer.update.WaypointerUpdateChecker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -148,6 +150,7 @@ public final class WaypointerClient implements ClientModInitializer {
         storage.load(manager);
         migrateLegacyDungeonRoutes();
         storage.attach(manager);
+        manager.addZoneListener(WaypointerClient::onMenuAreaChanged);
         config.setDefaultReachRadiusListener(WaypointerClient::followDefaultReachRadius);
         UniversalShareCodec.shareWithoutAngleBracketsWhen(() -> config.shareCodesWithoutAngleBrackets());
         adoptDefaultReachRadius();
@@ -303,6 +306,21 @@ public final class WaypointerClient implements ClientModInitializer {
         WaypointerScreen.open(manager, config);
     }
 
+    /**
+     * Leaving an area makes the menu open on the new island again (issue #198): a main menu put
+     * away with the keybind is not resumed, and the island picked in the menu is forgotten.
+     */
+    private static void onMenuAreaChanged(Zone zone) {
+        String area = WaypointerZoneCatalog.areaKey(zone == null ? Zone.UNKNOWN.id() : zone.id());
+        if (!area.equals(lastMenuArea) && suspendedWaypointerGuiScreen instanceof WaypointerScreen) {
+            suspendedWaypointerGuiScreen = null;
+        }
+        lastMenuArea = area;
+        WaypointerZoneCatalog.onZoneChanged(zone);
+    }
+
+    private static String lastMenuArea;
+
     private static Screen resumableWaypointerGuiScreen() {
         Screen screen = suspendedWaypointerGuiScreen;
         if (screen == null) return null;
@@ -332,7 +350,10 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsStore = CrystalHollowsStore.loadDefault();
         crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
         crystalHollowsTracker.install();
-        new CrystalHollowsStructureRouteSync(manager, crystalHollowsTracker).install();
+        CrystalHollowsStructureRouteSync structureRouteSync =
+                new CrystalHollowsStructureRouteSync(manager, crystalHollowsTracker);
+        structureRouteSync.install();
+        FairyGrottoRoutes.install(manager, crystalHollowsTracker, structureRouteSync::sync);
         new CrystalHollowsMinimap(crystalHollowsTracker, config).install();
         crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
         crystalHollowsCompass.install();

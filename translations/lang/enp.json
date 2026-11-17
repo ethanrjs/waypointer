@@ -300,7 +300,6 @@
   "waypointer.command.import.invalid_path": "Wrong thread path: %1$s",
   "waypointer.command.import.no_file": "No readly thread at %1$s",
   "waypointer.command.import.file_too_large": "Thread is %1$s bytes (> %2$s). Will not load it; check that the path points at a wayord outsend.",
-  "waypointer.command.import.read_failed": "Could not read %1$s: %2$s",
   "waypointer.command.import.expired": "That inbring key has ended. Ask the sender to send the codec again.",
   "waypointer.command.import.success": "Inbrought %1$s path(s) from %2$s (layout: %3$s)",
   "waypointer.command.import.retargeted.one": "%1$s path without stead ken given to %2$s",

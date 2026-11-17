@@ -32,7 +32,7 @@ final class WaypointerCommandHelp {
             new HelpSection("routes", "waypointer.command.help.section.routes_target",
                     List.of(
                             new HelpRow(" route <id> <command>", "waypointer.command.help.route_id",
-                                    "route @mod:1 rename Divan loop"),
+                                    "route @mod1 rename Divan loop"),
                             new HelpRow(" route new <name>", "waypointer.command.help.route_new",
                                     "route new Fairy souls"),
                             new HelpRow(" route rename <name>", "waypointer.command.help.route_rename_target",
@@ -74,7 +74,7 @@ final class WaypointerCommandHelp {
                                     "clear", "clear confirm"))),
             new HelpSection("waypoints", "waypointer.command.help.section.waypoints",
                     List.of(
-                            new HelpRow(" waypoint <id>", "waypointer.command.help.ids", "waypoint @mod:1#5"),
+                            new HelpRow(" waypoint <id>", "waypointer.command.help.ids", "waypoint @mod1#5"),
                             new HelpRow(" add [name]", "waypointer.command.help.add_target",
                                     "add", "add Fairy Soul"),
                             new HelpRow(" add at <x> <y> <z> [name]", "waypointer.command.help.add_at",
@@ -124,7 +124,7 @@ final class WaypointerCommandHelp {
                             new HelpRow(" export [routes|bare|names|nonames]", "waypointer.command.help.export_target",
                                     "export", "export routes", "export bare"),
                             new HelpRow(" export <ids>", "waypointer.command.help.export_ids",
-                                    "export @mod:1", "export @mod:1 @mod:2#15"),
+                                    "export @mod1", "export @mod1 @mod2#15"),
                             new HelpRow(" import [payload]", "waypointer.command.help.import",
                                     "import", "import WP:..."),
                             new HelpRow(" import relative [payload]", "waypointer.command.help.import_relative",

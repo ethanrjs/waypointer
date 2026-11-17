@@ -1102,8 +1102,20 @@ public final class ActiveGroupManager {
         return !unnumbered.isEmpty();
     }
 
+    /** The saved route an ID names. An ID without a zone ({@code @1}) means the zone the player is in. */
     public WaypointGroup findRoute(RouteIds.Reference reference) {
-        return RouteIds.find(byId.values(), reference);
+        return RouteIds.find(byId.values(), resolveReference(reference));
+    }
+
+    /** Fills in the current zone for an ID that left its zone out. */
+    public RouteIds.Reference resolveReference(RouteIds.Reference reference) {
+        if (reference == null || !reference.currentZone()) return reference;
+        Zone zone = currentZone();
+        return zone == null ? reference : reference.inZone(zone.id());
+    }
+
+    public RouteIds.Miss explainMissingRoute(RouteIds.Reference reference) {
+        return RouteIds.explainMiss(byId.values(), resolveReference(reference));
     }
 
     public Map<String, Integer> routeNumberHighWatermarks() {

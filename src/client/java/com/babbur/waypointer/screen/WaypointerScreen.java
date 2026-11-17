@@ -7,6 +7,8 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.codec.ImportFailures;
+import com.babbur.waypointer.config.AppearanceClipboard;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.color.RouteColorPolicy;
@@ -807,6 +809,12 @@ public final class WaypointerScreen extends Screen {
     }
 
     @Override
+    public void removed() {
+        WaypointerZoneCatalog.rememberSelection(manager, selectedZoneId);
+        super.removed();
+    }
+
+    @Override
     public void onClose() {
         if (publishDraft != null) MinecraftCompat.setScreen(minecraft, publishDraft.screen());
         else super.onClose();
@@ -1279,6 +1287,7 @@ public final class WaypointerScreen extends Screen {
                             : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
                     () -> MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
                             this, config, WaypointerClient.dungeonConfig(), look))));
+            items.addAll(lookClipboardItems(look, this::flashMainNotice));
         }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable(group.enabled()
@@ -1428,6 +1437,31 @@ public final class WaypointerScreen extends Screen {
 
     private static boolean isInside(int mx, int my, int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    /** Copy look / Paste look for a route or waypoint menu (issue #196). */
+    static List<ContextMenuOverlay.Item> lookClipboardItems(AppearanceTarget look,
+                                                           java.util.function.Consumer<Component> notice) {
+        List<ContextMenuOverlay.Item> items = new ArrayList<>();
+        String name = look.name().getString();
+        if (look.scope().count() > 0) {
+            items.add(ContextMenuOverlay.Item.of(Component.translatable("waypointer.screen.main.menu.copy_look"),
+                    null, () -> notice.accept(Component.translatable("waypointer.screen.appearance.copied",
+                            AppearanceClipboard.copy(look.scope(), name), name))).withIcon(Icons.Icon.SHARE));
+        }
+        AppearanceClipboard.Copied copied = AppearanceClipboard.copied();
+        if (copied != null) {
+            items.add(ContextMenuOverlay.Item.of(Component.translatable(
+                    "waypointer.screen.main.menu.paste_look", copied.count()), copied.source(), () -> {
+                int pasted = AppearanceClipboard.paste(look.scope(), look::includes);
+                if (pasted > 0) look.afterWrite().run();
+                int skipped = copied.count() - pasted;
+                notice.accept(skipped > 0
+                        ? Component.translatable("waypointer.screen.appearance.pasted_some", pasted, name, skipped)
+                        : Component.translatable("waypointer.screen.appearance.pasted", pasted, name));
+            }).withIcon(Icons.Icon.DOWNLOAD));
+        }
+        return items;
     }
 
     private void flashMainNotice(String notice) {
@@ -2177,7 +2211,7 @@ public final class WaypointerScreen extends Screen {
         if (importInFlight) return;
         String text = minecraft.keyboardHandler.getClipboard();
         if (text == null || text.isBlank()) {
-            ImportFeedback.failure("Clipboard is empty.");
+            ImportFeedback.failure(Component.translatable("waypointer.import.error.clipboard_empty").getString());
             return;
         }
         importInFlight = true;
@@ -2246,7 +2280,7 @@ public final class WaypointerScreen extends Screen {
                     WaypointImporter.importAny(text, defaultImportedRouteName),
                     null, null, null, null);
         } catch (RuntimeException failure) {
-            return new ClipboardImportOutcome(null, null, null, null, importFailureText(failure));
+            return new ClipboardImportOutcome(null, null, null, null, importFailureText(text, failure));
         }
     }
 
@@ -2266,12 +2300,15 @@ public final class WaypointerScreen extends Screen {
     }
 
     static String importFailureText(RuntimeException failure) {
-        String detail = failure == null ? null : failure.getMessage();
-        if (detail == null || detail.isBlank()
-                || detail.startsWith("unrecognized waypoint payload")) {
-            return Component.translatable("waypointer.import.error.unrecognized").getString();
-        }
-        return detail;
+        return importFailureText(null, failure);
+    }
+
+    /** What the import toast says; the decoder's own detail goes to the log and /wp debug. */
+    static String importFailureText(String payload, RuntimeException failure) {
+        ImportFailures.Kind kind = ImportFailures.record("clipboard", payload, failure);
+        String key = kind.translationKey(payload);
+        if (key != null) return Component.translatable(key).getString();
+        return failure.getMessage();
     }
 
     static void installImportedWaypointGroups(
@@ -2292,7 +2329,7 @@ public final class WaypointerScreen extends Screen {
                 DungeonRoutePacks.importedPack(decoded.format()));
         if (routes.isEmpty()) {
             ImportFeedback.failure(Component.translatable(
-                    "waypointer.import.error.damaged").getString());
+                    "waypointer.import.error.no_routes").getString());
             return;
         }
 
